@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "CLEVER Driver",
+    "slug": "clever-driver-app",
+    "scheme": "clever-driver",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.evnsolution.clever.driver",
+      "buildNumber": "1"
+    },
+    "android": {
+      "package": "com.evnsolution.clever.driver",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#C7D833"
+      },
+      "softwareKeyboardLayoutMode": "resize",
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "extra": {
+      "projectStartIssue": "EVNSolution/clever-change-control#240",
+      "frameworkBootstrapIssue": "EVNSolution/clever-driver-app#1"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-status-bar"
+    ]
+  }
+}
