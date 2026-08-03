@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
   PREVIEW_DELIVERY_ORDERS,
 } from './deliveryPlan';
@@ -46,6 +47,36 @@ describe('delivery order plan', () => {
       moved.map((_, index) => index + 1),
     );
     assert.equal(source[0], firstOrder);
+  });
+
+  it('groups the delivery view by canonical destination while preserving order totals', () => {
+    const firstOrder = PREVIEW_DELIVERY_ORDERS[0];
+    assert.ok(firstOrder);
+    const movedLocationOrder = {
+      ...firstOrder,
+      coordinate: {
+        ...firstOrder.coordinate,
+        latitude: firstOrder.coordinate.latitude + 0.0001,
+      },
+      id: 'same-destination-different-location',
+      sellerOrderKey: 'same-destination-different-location',
+      sequence: PREVIEW_DELIVERY_ORDERS.length + 1,
+    };
+    const orders = [...PREVIEW_DELIVERY_ORDERS, movedLocationOrder];
+
+    const groups = groupDeliveryOrdersByDestination(orders);
+
+    assert.equal(groups.length, 3);
+    assert.equal(
+      groups.reduce((sum, group) => sum + group.orderCount, 0),
+      orders.length,
+    );
+    assert.equal(
+      groups.reduce((sum, group) => sum + group.boxCount, 0),
+      orders.reduce((sum, order) => sum + order.shippedBoxes, 0),
+    );
+    assert.deepEqual(groups[0]?.conditionCodes, ['AMBIENT', 'COLD']);
+    assert.equal(groups[0]?.orderCount, 3);
   });
 
   it('clamps a dragged order to the plan boundary', () => {

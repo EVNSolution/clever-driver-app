@@ -17,6 +17,16 @@ export type DeliveryOrder = {
   };
 };
 
+export type DeliveryDestinationGroup = {
+  address: string;
+  boxCount: number;
+  conditionCodes: DeliveryConditionCode[];
+  destinationId: string;
+  destinationName: string;
+  key: string;
+  orderCount: number;
+};
+
 export type ServerDeliveryRouteGeometry = {
   coordinates: [longitude: number, latitude: number][];
   type: 'LineString';
@@ -117,6 +127,38 @@ export const PREVIEW_DELIVERY_ORDERS: DeliveryOrder[] = [
     ...DESTINATIONS.daeju,
   },
 ];
+
+export function groupDeliveryOrdersByDestination(
+  orders: DeliveryOrder[],
+): DeliveryDestinationGroup[] {
+  const groups = new Map<string, DeliveryDestinationGroup>();
+
+  for (const order of orders) {
+    const key = order.destinationId;
+    const group = groups.get(key);
+
+    if (group === undefined) {
+      groups.set(key, {
+        address: order.address,
+        boxCount: order.shippedBoxes,
+        conditionCodes: [order.conditionCode],
+        destinationId: order.destinationId,
+        destinationName: order.destinationName,
+        key,
+        orderCount: 1,
+      });
+      continue;
+    }
+
+    group.boxCount += order.shippedBoxes;
+    group.orderCount += 1;
+    if (!group.conditionCodes.includes(order.conditionCode)) {
+      group.conditionCodes.push(order.conditionCode);
+    }
+  }
+
+  return [...groups.values()];
+}
 
 export function moveDeliveryOrderToIndex(
   orders: DeliveryOrder[],
