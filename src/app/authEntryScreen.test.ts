@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 
 const appDirectory = dirname(fileURLToPath(import.meta.url));
 const authScreenPath = join(appDirectory, '../ui/auth/AuthEntryScreen.tsx');
+const appRootPath = join(appDirectory, 'AppRoot.tsx');
+const sessionStorePath = join(appDirectory, '../auth/driverAuthSessionStore.ts');
 
 describe('DSV authentication entry screen', () => {
   it('keeps the Routes visual entry pattern under the Driver brand', () => {
@@ -28,12 +30,26 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /label="비밀번호 확인"/u);
   });
 
-  it('uses the approved DSV authentication client without persisting tokens', () => {
+  it('uses the approved DSV authentication client', () => {
     const source = readFileSync(authScreenPath, 'utf8');
 
     assert.match(source, /loginDriverAccount/u);
     assert.match(source, /registerDriverAccount/u);
-    assert.doesNotMatch(source, /SecureStore|AsyncStorage/u);
+  });
+
+  it('restores and refreshes login through SecureStore without saving credentials', () => {
+    const appRoot = readFileSync(appRootPath, 'utf8');
+    const sessionStore = readFileSync(sessionStorePath, 'utf8');
+
+    assert.match(appRoot, /readDriverAuthRefreshToken/u);
+    assert.match(appRoot, /refreshDriverAccountSession/u);
+    assert.match(appRoot, /saveDriverAuthSession/u);
+    assert.match(appRoot, /clearDriverAuthSession/u);
+    assert.match(sessionStore, /SecureStore\.setItemAsync/u);
+    assert.match(sessionStore, /SecureStore\.getItemAsync/u);
+    assert.match(sessionStore, /SecureStore\.deleteItemAsync/u);
+    assert.doesNotMatch(sessionStore, /password/u);
+    assert.doesNotMatch(sessionStore, /accessToken/u);
   });
 
   it('shows concrete linked and unlinked success states in Korean', () => {
