@@ -198,7 +198,9 @@ describe('authenticated driver screens', () => {
     assert.match(source, /'text-font': \['Noto Sans Bold'\]/u);
     assert.match(source, /id="delivery-destination-marker"/u);
     assert.match(source, /id="delivery-depot-marker"/u);
-    assert.match(source, /'text-field': '출발'/u);
+    assert.match(source, /'icon-size': 0\.65/u);
+    assert.match(source, /'symbol-sort-key': 5000/u);
+    assert.doesNotMatch(source, /'text-field': '출발'/u);
     assert.match(source, /depotCoordinate/u);
     assert.doesNotMatch(source, /CircleLayerSpecification|delivery-marker-circle/u);
     const screenSource = readFileSync(
