@@ -19,8 +19,10 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import {
+  groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
   type DeliveryConditionCode,
+  type DeliveryDestinationGroup,
   type DeliveryOrder,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
@@ -63,6 +65,7 @@ export function DeliveryScreen({
     (sum, order) => sum + order.shippedBoxes,
     0,
   );
+  const destinationGroups = groupDeliveryOrdersByDestination(orders);
 
   function startEditing() {
     setDraftOrders(orders);
@@ -116,7 +119,7 @@ export function DeliveryScreen({
         <View style={styles.deliveryHeadingCopy}>
           <Text style={styles.title}>{formatDeliveryDate(deliveryDate)} 배송</Text>
           <Text style={styles.summaryText}>
-            주문 {orders.length}건 · {totalBoxes}박스
+            주문 {orders.length}건 · 배송지 {destinationGroups.length}곳 · {totalBoxes}박스
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -146,12 +149,12 @@ export function DeliveryScreen({
       </View>
 
       <View style={styles.orderList}>
-        {orders.map((order, index) => (
-          <OrderRow
+        {destinationGroups.map((group, index) => (
+          <DestinationGroupRow
+            group={group}
             index={index}
-            isLast={index === orders.length - 1}
-            key={order.id}
-            order={order}
+            isLast={index === destinationGroups.length - 1}
+            key={group.key}
           />
         ))}
       </View>
@@ -171,14 +174,14 @@ function formatDeliveryDate(deliveryDate: string): string {
   return `${Number(match.groups.month)}월 ${Number(match.groups.day)}일`;
 }
 
-function OrderRow({
+function DestinationGroupRow({
+  group,
   index,
   isLast,
-  order,
 }: {
+  group: DeliveryDestinationGroup;
   index: number;
   isLast: boolean;
-  order: DeliveryOrder;
 }) {
   return (
     <View style={[styles.orderRow, !isLast && styles.orderRowDivider]}>
@@ -187,15 +190,18 @@ function OrderRow({
       </View>
       <View style={styles.orderCopy}>
         <Text numberOfLines={1} style={styles.destinationName}>
-          {order.destinationName}
+          {group.destinationName}
         </Text>
         <Text numberOfLines={2} style={styles.address}>
-          {order.address}
+          {group.address}
         </Text>
+        <Text style={styles.groupOrderCount}>주문 {group.orderCount}건</Text>
       </View>
       <View style={styles.orderRight}>
-        <ConditionBadge conditionCode={order.conditionCode} />
-        <Text style={styles.boxCount}>{order.shippedBoxes}박스</Text>
+        <Text numberOfLines={1} style={styles.groupConditions}>
+          {group.conditionCodes.join(' · ')}
+        </Text>
+        <Text style={styles.boxCount}>{group.boxCount}박스</Text>
       </View>
     </View>
   );
@@ -588,6 +594,18 @@ const styles = StyleSheet.create({
   orderRight: {
     alignItems: 'flex-end',
     gap: 6,
+    maxWidth: '34%',
+  },
+  groupOrderCount: {
+    color: '#344054',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  groupConditions: {
+    color: '#475467',
+    fontSize: 10,
+    fontWeight: '900',
   },
   boxCount: {
     color: '#027a48',
