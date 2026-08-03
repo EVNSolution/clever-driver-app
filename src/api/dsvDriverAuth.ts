@@ -41,6 +41,10 @@ export type LoginDriverAccountRequest = {
   password: string;
 };
 
+export type RefreshDriverAccountRequest = {
+  refreshToken: string;
+};
+
 type ErrorEnvelope = {
   data: null;
   error: {
@@ -78,9 +82,18 @@ export async function loginDriverAccount(
   return postAuth('/api/dsv/driver/auth/login', request);
 }
 
+export async function refreshDriverAccountSession(
+  request: RefreshDriverAccountRequest,
+): Promise<DriverAuthSession> {
+  return postAuth('/api/dsv/driver/auth/refresh', request);
+}
+
 async function postAuth(
   path: string,
-  body: RegisterDriverAccountRequest | LoginDriverAccountRequest,
+  body:
+    | RegisterDriverAccountRequest
+    | LoginDriverAccountRequest
+    | RefreshDriverAccountRequest,
 ): Promise<DriverAuthSession> {
   let url: string;
   try {

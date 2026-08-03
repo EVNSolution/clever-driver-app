@@ -48,10 +48,12 @@ source 갱신이 프레임 연속성을 방해하지 않도록 하기 위한 것
 
 비밀번호 검증, 계정 생성, 로그인 세션과 DSV 배송원 연결은 서버가 소유한다.
 앱은 승인된 DSV 인증 API 계약에 따라 가입과 로그인 요청을 전송하고, 응답
-토큰과 계정 정보는 현재 화면 메모리에만 둔다. `EXPO_PUBLIC_DSV_API_BASE_URL`
+access token과 계정 정보는 화면 메모리에만 두고, 30일 refresh token과
+만료 시각만 Expo SecureStore에 보관한다. `EXPO_PUBLIC_DSV_API_BASE_URL`
 은 localhost 또는 `127.0.0.1` 개발 서버를 제외하고 HTTPS여야 한다. 토큰
-저장, 자동 로그인, 갱신과 만료 처리는 Expo SecureStore 사용 범위를 별도로
-확정한 뒤 구현한다.
+앱 시작 시 refresh token으로 DSV 세션을 복원하고 access token 만료 1분 전
+자동 갱신한다. 로그아웃과 만료 세션은 SecureStore에서 삭제하며
+비밀번호와 access token은 영구 저장하지 않는다.
 
 ## 확장 기준
 

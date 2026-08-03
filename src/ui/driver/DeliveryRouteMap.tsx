@@ -50,11 +50,13 @@ const DESTINATION_MARKER_PAINT = {
 } satisfies SymbolLayerSpecification['paint'];
 
 const DEPOT_MARKER_LAYOUT = {
-  ...DESTINATION_MARKER_LAYOUT,
+  'icon-allow-overlap': true,
+  'icon-anchor': 'bottom',
+  'icon-ignore-placement': true,
   'icon-image': 'delivery-depot-pin-image',
-  'symbol-sort-key': 1,
-  'text-field': '출발',
-  'text-size': 8,
+  'icon-optional': false,
+  'icon-size': 0.65,
+  'symbol-sort-key': 5000,
 } satisfies SymbolLayerSpecification['layout'];
 
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
@@ -145,7 +147,6 @@ export function DeliveryRouteMap({
             <Layer
               id="delivery-depot-marker"
               layout={DEPOT_MARKER_LAYOUT}
-              paint={DESTINATION_MARKER_PAINT}
               source="delivery-depot-source"
               type="symbol"
             />

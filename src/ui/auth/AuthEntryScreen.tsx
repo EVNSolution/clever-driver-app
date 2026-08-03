@@ -45,7 +45,7 @@ const EMPTY_REGISTRATION_FORM: RegistrationFormValues = {
 };
 
 type AuthEntryScreenProps = {
-  onAuthenticated?(session: DriverAuthSession): void;
+  onAuthenticated?(session: DriverAuthSession): Promise<void> | void;
 };
 
 export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
@@ -90,7 +90,7 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
       setAuthSession(session);
       setMessage(formatAuthSuccessMessage(session));
       if (session.account.connectionStatus === 'LINKED') {
-        onAuthenticated?.(session);
+        await onAuthenticated?.(session);
       }
     } catch (error) {
       setMessage(formatAuthErrorMessage(error));
@@ -121,7 +121,7 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
       setAuthSession(session);
       setMessage(formatAuthSuccessMessage(session));
       if (session.account.connectionStatus === 'LINKED') {
-        onAuthenticated?.(session);
+        await onAuthenticated?.(session);
       }
     } catch (error) {
       setMessage(formatAuthErrorMessage(error));

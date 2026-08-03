@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import {
   AuthApiError,
   loginDriverAccount,
+  refreshDriverAccountSession,
   registerDriverAccount,
 } from './dsvDriverAuth';
 
@@ -102,6 +103,28 @@ describe('DSV driver auth API client', () => {
       loginId: 'driver01',
       password: 'password123',
     });
+  });
+
+  it('refreshes the stored DSV session without resending credentials', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let requestUrl = '';
+    let requestBody: unknown;
+    globalThis.fetch = async (input, init) => {
+      requestUrl = input.toString();
+      requestBody = JSON.parse(init?.body as string);
+      return new Response(JSON.stringify({ data: SUCCESS_DATA, error: null }));
+    };
+
+    const result = await refreshDriverAccountSession({
+      refreshToken: 'refresh-token',
+    });
+
+    assert.equal(result.use, 'dsv_driver_account');
+    assert.equal(
+      requestUrl,
+      'https://dsv.example.test/api/dsv/driver/auth/refresh',
+    );
+    assert.deepEqual(requestBody, { refreshToken: 'refresh-token' });
   });
 
   it('rejects missing, insecure, or non-local API base URLs before sending credentials', async () => {
