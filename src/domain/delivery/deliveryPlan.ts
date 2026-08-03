@@ -10,11 +10,27 @@ export type DeliveryOrder = {
   notes: string | null;
   destinationId: string;
   destinationName: string;
+  estimatedArrivalAt?: string | null;
+  status?: string;
   address: string;
   coordinate: {
     latitude: number;
     longitude: number;
   };
+};
+
+export type DeliveryCoordinate = {
+  latitude: number;
+  longitude: number;
+};
+
+export type CurrentDeliverySummary = {
+  boxCount: number;
+  deliveryStopId: string;
+  destinationId: string;
+  destinationName: string;
+  estimatedArrivalAt: string | null;
+  orderCount: number;
 };
 
 export type DeliveryDestinationGroup = {
@@ -201,6 +217,36 @@ export function buildDeliveryDestinationPoints(
       label: String(index + 1),
       sortOrder: index + 1,
     }));
+}
+
+export function buildCurrentDeliverySummary(
+  orders: DeliveryOrder[],
+  deliveryStopId: string | null,
+): CurrentDeliverySummary | null {
+  if (deliveryStopId === null) {
+    return null;
+  }
+
+  const currentOrder = orders.find(({ id }) => id === deliveryStopId);
+  if (currentOrder === undefined) {
+    return null;
+  }
+
+  const destinationOrders = orders.filter(
+    ({ destinationId }) => destinationId === currentOrder.destinationId,
+  );
+
+  return {
+    boxCount: destinationOrders.reduce(
+      (total, order) => total + order.shippedBoxes,
+      0,
+    ),
+    deliveryStopId: currentOrder.id,
+    destinationId: currentOrder.destinationId,
+    destinationName: currentOrder.destinationName,
+    estimatedArrivalAt: currentOrder.estimatedArrivalAt ?? null,
+    orderCount: destinationOrders.length,
+  };
 }
 
 export function moveDeliveryOrderToIndex(

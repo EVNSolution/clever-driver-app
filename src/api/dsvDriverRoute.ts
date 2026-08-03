@@ -1,4 +1,5 @@
 import type {
+  DeliveryCoordinate,
   DeliveryOrder,
   ServerDeliveryRouteGeometry,
 } from '../domain/delivery/deliveryPlan';
@@ -27,6 +28,7 @@ type AssignedRouteStop = {
   coordinates: { latitude: number | null; longitude: number | null };
   deliveryStopId: string;
   destinationId: string | null;
+  estimatedArrivalAt?: string | null;
   orderName: string;
   recipientName: string | null;
   sellerOrderKey: string | null;
@@ -40,10 +42,20 @@ type AssignedRouteEnvelope = {
     status: string;
     route?: {
       deliveryDate: string;
+      depot?: { latitude: number | null; longitude: number | null };
+      etaSnapshot?: {
+        nextStopEta: {
+          deliveryStopId: string;
+          estimatedArrivalAt: string | null;
+        } | null;
+        pickupCompletedAt?: string | null;
+        status: 'FAILED' | 'PRE_PICKUP' | 'READY';
+      };
       id: string;
       name: string;
       routeGeometry: ServerDeliveryRouteGeometry | null;
       stops: AssignedRouteStop[];
+      timezone?: string;
     };
   } | null;
   error?: { code: string; message: string } | null;
@@ -52,12 +64,16 @@ type AssignedRouteEnvelope = {
 export type DriverDeliveryRoute = {
   availableRoutes: DriverDeliveryRouteChoice[];
   deliveryDate: string;
+  depotCoordinate: DeliveryCoordinate | null;
+  etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
+  nextDeliveryStopId: string | null;
   orders: DeliveryOrder[];
   routeId: string;
   routeName: string;
   routePlanId: string;
   routeAccessToken: string;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
+  timezone: string;
 };
 
 export type DriverDeliveryRouteChoice = {
@@ -111,14 +127,24 @@ export async function loadDriverDeliveryRoute(
     );
   }
 
+  const etaStatus = route.etaSnapshot?.status ?? 'PRE_PICKUP';
+
   return {
     deliveryDate: route.deliveryDate,
+    depotCoordinate: readCoordinate(route.depot),
+    etaStatus,
+    nextDeliveryStopId:
+      route.etaSnapshot?.nextStopEta?.deliveryStopId ??
+      route.stops.find(({ status }) => !isTerminalStopStatus(status))
+        ?.deliveryStopId ??
+      null,
     orders: route.stops.map(mapAssignedRouteStop),
     routeId: route.id,
     routeName: route.name,
     routePlanId: routeChoice.routePlanId,
     routeAccessToken: routeChoice.routeAccessToken,
     serverRouteGeometry: readServerRouteGeometry(route.routeGeometry),
+    timezone: route.timezone ?? 'Asia/Seoul',
     availableRoutes: routeChoices,
   };
 }
@@ -212,12 +238,33 @@ function mapAssignedRouteStop(stop: AssignedRouteStop): DeliveryOrder {
     customerCode: '',
     destinationId: stop.destinationId ?? stop.deliveryStopId,
     destinationName: stop.recipientName?.trim() || stop.orderName,
+    estimatedArrivalAt: stop.estimatedArrivalAt ?? null,
     id: stop.deliveryStopId,
     notes: null,
     sellerOrderKey: stop.sellerOrderKey,
     sequence: stop.sequence,
     shippedBoxes: stop.shippedBoxes as number,
+    status: stop.status,
   };
+}
+
+function readCoordinate(
+  coordinate:
+    | { latitude: number | null; longitude: number | null }
+    | undefined,
+): DeliveryCoordinate | null {
+  return coordinate !== undefined &&
+    Number.isFinite(coordinate.latitude) &&
+    Number.isFinite(coordinate.longitude)
+    ? {
+        latitude: coordinate.latitude as number,
+        longitude: coordinate.longitude as number,
+      }
+    : null;
+}
+
+function isTerminalStopStatus(status: string): boolean {
+  return ['CANCELLED', 'DELIVERED', 'FAILED', 'SKIPPED'].includes(status);
 }
 
 function formatDeliveryAddress(parts: (string | null)[]): string {

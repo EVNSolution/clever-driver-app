@@ -54,6 +54,14 @@ describe('DSV assigned route API client', () => {
           status: 'ASSIGNED_ROUTE',
           route: {
             deliveryDate: '2026-07-31',
+            depot: { latitude: 35.9676, longitude: 126.7369 },
+            etaSnapshot: {
+              nextStopEta: {
+                deliveryStopId: 'stop-1',
+                estimatedArrivalAt: '2026-07-31T01:30:00.000Z',
+              },
+              status: 'READY',
+            },
             id: 'route-116',
             name: '#116',
             routeGeometry: serverGeometry,
@@ -70,6 +78,7 @@ describe('DSV assigned route API client', () => {
                 coordinates: { latitude: 37.51, longitude: 127.01 },
                 deliveryStopId: 'stop-1',
                 destinationId: null,
+                estimatedArrivalAt: '2026-07-31T01:30:00.000Z',
                 orderName: '#0525032088',
                 recipientName: '케이팜',
                 sellerOrderKey: '0525032088',
@@ -99,11 +108,18 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.orders[0]?.sellerOrderKey, '0525032088');
     assert.equal(route?.orders[0]?.shippedBoxes, 4);
     assert.equal(route?.orders[0]?.conditionCode, 'COLD');
+    assert.equal(route?.orders[0]?.estimatedArrivalAt, '2026-07-31T01:30:00.000Z');
+    assert.equal(route?.orders[0]?.status, 'PENDING');
     assert.equal(
       route?.orders[0]?.address,
       '서울시 강남구 테헤란로 1 2층 (역삼동, 빌딩)',
     );
     assert.deepEqual(route?.serverRouteGeometry, serverGeometry);
+    assert.deepEqual(route?.depotCoordinate, {
+      latitude: 35.9676,
+      longitude: 126.7369,
+    });
+    assert.equal(route?.nextDeliveryStopId, 'stop-1');
   });
 
   it('loads the route selected by date instead of always using the latest route', async () => {

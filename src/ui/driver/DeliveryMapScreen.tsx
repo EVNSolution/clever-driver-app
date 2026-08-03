@@ -1,174 +1,230 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-import type {
-  DeliveryOrder,
-  ServerDeliveryRouteGeometry,
+import {
+  buildCurrentDeliverySummary,
+  type DeliveryCoordinate,
+  type DeliveryOrder,
+  type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
-const DESTINATION_PIN_IMAGE = require('../../../assets/map/destination-pin.png') as number;
-
 type DeliveryMapScreenProps = {
+  canCompleteDelivery: boolean;
+  depotCoordinate: DeliveryCoordinate | null;
+  nextDeliveryStopId: string | null;
+  onCompleteDelivery(deliveryStopId: string): Promise<void>;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
+  timezone: string;
 };
 
 export function DeliveryMapScreen({
+  canCompleteDelivery,
+  depotCoordinate,
+  nextDeliveryStopId,
+  onCompleteDelivery,
   orders,
   serverRouteGeometry,
+  timezone,
 }: DeliveryMapScreenProps) {
-  const destinationCount = new Set(
-    orders.map(({ destinationId }) => destinationId),
-  ).size;
+  const [isCompleting, setIsCompleting] = useState(false);
+  const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
+  const isCompletionDisabled =
+    summary === null || !canCompleteDelivery || isCompleting;
+
+  function confirmDeliveryCompletion() {
+    if (summary === null || isCompletionDisabled) {
+      return;
+    }
+
+    Alert.alert(
+      '배송 완료',
+      `${summary.destinationName} 배송을 완료 처리할까요?`,
+      [
+        { style: 'cancel', text: '취소' },
+        {
+          onPress: () => {
+            setIsCompleting(true);
+            void onCompleteDelivery(summary.deliveryStopId)
+              .catch((error: unknown) => {
+                Alert.alert(
+                  '배송 완료 실패',
+                  error instanceof Error
+                    ? error.message
+                    : '배송 완료 상태를 저장하지 못했습니다.',
+                );
+              })
+              .finally(() => setIsCompleting(false));
+          },
+          text: '완료',
+        },
+      ],
+    );
+  }
 
   return (
     <View style={styles.screen}>
-      <View style={styles.heading}>
-        <Text style={styles.eyebrow}>배송지 순서 미리보기</Text>
-        <Text style={styles.title}>지도</Text>
-        <Text style={styles.description}>
-          {serverRouteGeometry === null
-            ? '배송지 위치만 표시합니다. 서버 경로가 오면 그대로 반영합니다.'
-            : '서버가 생성한 경로 geometry를 그대로 표시합니다.'}
-        </Text>
-      </View>
+      <DeliveryRouteMap
+        depotCoordinate={depotCoordinate}
+        interactionMode="explore"
+        orders={orders}
+        serverRouteGeometry={serverRouteGeometry}
+        style={styles.map}
+      />
 
-      <View style={styles.mapCard}>
-        <DeliveryRouteMap
-          interactionMode="explore"
-          orders={orders}
-          serverRouteGeometry={serverRouteGeometry}
-          style={styles.map}
-        />
-        <View pointerEvents="none" style={styles.mapLegend}>
-          <View style={styles.legendMarker}>
-            <Image source={DESTINATION_PIN_IMAGE} style={styles.legendMarkerImage} />
-            <Text style={styles.legendMarkerText}>1</Text>
-          </View>
-          <View style={styles.legendCopy}>
-            <Text style={styles.legendTitle}>
-              주문 {orders.length}건 · 배송지 {destinationCount}곳
-            </Text>
-            <Text style={styles.legendText}>표식 안 숫자는 배송지 방문 순서</Text>
-          </View>
+      <View style={styles.deliveryPanel}>
+        <Text style={styles.panelLabel}>지금 가는 배송지</Text>
+        <Text numberOfLines={1} style={styles.destinationName}>
+          {summary?.destinationName ?? '배송 시작 전입니다'}
+        </Text>
+
+        <View style={styles.metrics}>
+          <DeliveryMetric label="주문 수" value={`${summary?.orderCount ?? 0}건`} />
+          <View style={styles.metricDivider} />
+          <DeliveryMetric label="박스 수" value={`${summary?.boxCount ?? 0}개`} />
+          <View style={styles.metricDivider} />
+          <DeliveryMetric
+            label="ETA"
+            value={formatEta(summary?.estimatedArrivalAt ?? null, timezone)}
+          />
         </View>
-      </View>
 
-      <View style={styles.disclaimer}>
-        <Text style={styles.disclaimerTitle}>
-          {serverRouteGeometry === null
-            ? '서버 경로를 기다리고 있습니다'
-            : '서버 경로 표시 중'}
-        </Text>
-        <Text style={styles.disclaimerText}>
-          {serverRouteGeometry === null
-            ? 'DSV 서버 geometry가 없어 경로 선을 표시하지 않습니다. 앱은 배송지 사이를 임의로 연결하지 않습니다.'
-            : 'DSV 서버가 OSRM/VWorld로 생성해 응답한 geometry를 수정 없이 표시합니다.'}
-        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isCompletionDisabled }}
+          disabled={isCompletionDisabled}
+          onPress={confirmDeliveryCompletion}
+          style={({ pressed }) => [
+            styles.completeButton,
+            isCompletionDisabled && styles.completeButtonDisabled,
+            pressed && styles.completeButtonPressed,
+          ]}
+        >
+          {isCompleting ? (
+            <ActivityIndicator color="#ffffff" size="small" />
+          ) : (
+            <Text style={styles.completeButtonText}>배송 완료</Text>
+          )}
+        </Pressable>
       </View>
     </View>
   );
 }
 
+function DeliveryMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metric}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text numberOfLines={1} style={styles.metricValue}>{value}</Text>
+    </View>
+  );
+}
+
+function formatEta(estimatedArrivalAt: string | null, timezone: string): string {
+  if (estimatedArrivalAt === null) {
+    return '대기 중';
+  }
+
+  const date = new Date(estimatedArrivalAt);
+  if (Number.isNaN(date.getTime())) {
+    return '대기 중';
+  }
+
+  try {
+    return new Intl.DateTimeFormat('ko-KR', {
+      hour: '2-digit',
+      hour12: false,
+      minute: '2-digit',
+      timeZone: timezone,
+    }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('ko-KR', {
+      hour: '2-digit',
+      hour12: false,
+      minute: '2-digit',
+    }).format(date);
+  }
+}
+
 const styles = StyleSheet.create({
   screen: {
+    backgroundColor: '#ffffff',
     flex: 1,
-    gap: 14,
-    paddingBottom: 16,
-    paddingHorizontal: 18,
-    paddingTop: 22,
-  },
-  heading: {
-    gap: 4,
-  },
-  eyebrow: {
-    color: '#0b57d0',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  title: {
-    color: '#111827',
-    fontSize: 25,
-    fontWeight: '900',
-  },
-  description: {
-    color: '#667085',
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  mapCard: {
-    backgroundColor: '#e8eef7',
-    borderColor: '#d0d5dd',
-    borderRadius: 20,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 340,
-    overflow: 'hidden',
   },
   map: {
     flex: 1,
+    width: '100%',
   },
-  mapLegend: {
-    alignItems: 'center',
+  deliveryPanel: {
     backgroundColor: '#ffffff',
-    borderRadius: 13,
-    bottom: 14,
-    elevation: 4,
-    flexDirection: 'row',
-    gap: 10,
-    left: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    position: 'absolute',
+    borderTopColor: '#e5e7eb',
+    borderTopWidth: 1,
+    elevation: 8,
+    paddingBottom: 12,
+    paddingHorizontal: 18,
+    paddingTop: 12,
   },
-  legendMarker: {
-    alignItems: 'center',
-    height: 40,
-    justifyContent: 'center',
-    width: 31,
-  },
-  legendMarkerImage: {
-    height: 40,
-    left: 0,
-    position: 'absolute',
-    top: 0,
-    width: 31,
-  },
-  legendMarkerText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '900',
-    position: 'absolute',
-    top: 6,
-  },
-  legendCopy: {
-    gap: 1,
-  },
-  legendTitle: {
-    color: '#344054',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  legendText: {
+  panelLabel: {
     color: '#667085',
     fontSize: 10,
-  },
-  disclaimer: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e5e7eb',
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 4,
-    padding: 13,
-  },
-  disclaimerTitle: {
-    color: '#344054',
-    fontSize: 13,
     fontWeight: '800',
   },
-  disclaimerText: {
+  destinationName: {
+    color: '#101828',
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  metrics: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginVertical: 10,
+  },
+  metric: {
+    flex: 1,
+    gap: 1,
+  },
+  metricDivider: {
+    backgroundColor: '#e5e7eb',
+    height: 28,
+    width: 1,
+  },
+  metricLabel: {
     color: '#667085',
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  metricValue: {
+    color: '#1d2939',
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  completeButton: {
+    alignItems: 'center',
+    backgroundColor: '#0b57d0',
+    borderRadius: 12,
+    height: 46,
+    justifyContent: 'center',
+  },
+  completeButtonDisabled: {
+    backgroundColor: '#b8c2d1',
+  },
+  completeButtonPressed: {
+    opacity: 0.82,
+  },
+  completeButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });
