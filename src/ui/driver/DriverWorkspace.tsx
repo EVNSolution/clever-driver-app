@@ -146,8 +146,8 @@ export function DriverWorkspace({
               </>
             ) : (
               <DeliveryMapScreen
-                canCompleteDelivery={route.etaStatus !== 'PRE_PICKUP'}
                 depotCoordinate={route.depotCoordinate}
+                etaStatus={route.etaStatus}
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onCompleteDelivery={completeDelivery}
                 orders={orders}

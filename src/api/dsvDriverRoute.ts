@@ -29,12 +29,15 @@ type AssignedRouteStop = {
   deliveryStopId: string;
   destinationId: string | null;
   estimatedArrivalAt?: string | null;
+  customerNote?: string | null;
   orderName: string;
   recipientName: string | null;
   sellerOrderKey: string | null;
   sequence: number;
   shippedBoxes: number | null;
   status: string;
+  timeWindowEnd?: string | null;
+  timeWindowStart?: string | null;
 };
 
 type AssignedRouteEnvelope = {
@@ -127,7 +130,8 @@ export async function loadDriverDeliveryRoute(
     );
   }
 
-  const etaStatus = route.etaSnapshot?.status ?? 'PRE_PICKUP';
+  const etaSnapshot = route.etaSnapshot;
+  const etaStatus = etaSnapshot?.status ?? 'PRE_PICKUP';
 
   return {
     deliveryDate: route.deliveryDate,
@@ -138,7 +142,12 @@ export async function loadDriverDeliveryRoute(
       route.stops.find(({ status }) => !isTerminalStopStatus(status))
         ?.deliveryStopId ??
       null,
-    orders: route.stops.map(mapAssignedRouteStop),
+    orders: route.stops.map((stop) => mapAssignedRouteStop(
+      stop,
+      etaSnapshot?.nextStopEta?.deliveryStopId === stop.deliveryStopId
+        ? etaSnapshot.nextStopEta.estimatedArrivalAt
+        : null,
+    )),
     routeId: route.id,
     routeName: route.name,
     routePlanId: routeChoice.routePlanId,
@@ -209,7 +218,10 @@ async function requestJson<T>(
   return (await response.json()) as T;
 }
 
-function mapAssignedRouteStop(stop: AssignedRouteStop): DeliveryOrder {
+function mapAssignedRouteStop(
+  stop: AssignedRouteStop,
+  snapshotEstimatedArrivalAt: string | null,
+): DeliveryOrder {
   const { latitude, longitude } = stop.coordinates;
   if (
     !Number.isFinite(latitude) ||
@@ -238,13 +250,16 @@ function mapAssignedRouteStop(stop: AssignedRouteStop): DeliveryOrder {
     customerCode: '',
     destinationId: stop.destinationId ?? stop.deliveryStopId,
     destinationName: stop.recipientName?.trim() || stop.orderName,
-    estimatedArrivalAt: stop.estimatedArrivalAt ?? null,
+    estimatedArrivalAt:
+      stop.estimatedArrivalAt ?? snapshotEstimatedArrivalAt ?? null,
     id: stop.deliveryStopId,
-    notes: null,
+    notes: stop.customerNote?.trim() || null,
     sellerOrderKey: stop.sellerOrderKey,
     sequence: stop.sequence,
     shippedBoxes: stop.shippedBoxes as number,
     status: stop.status,
+    timeWindowEnd: stop.timeWindowEnd ?? null,
+    timeWindowStart: stop.timeWindowStart ?? null,
   };
 }
 

@@ -2,13 +2,14 @@ node_modules/
 .expo/
 dist/
 coverage/
+**/build/
 
 .env
 .env.*
 !.env.example
 
-android/
-ios/
+/android/
+/ios/
 
 *.jks
 *.keystore

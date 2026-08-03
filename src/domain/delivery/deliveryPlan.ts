@@ -11,6 +11,8 @@ export type DeliveryOrder = {
   destinationId: string;
   destinationName: string;
   estimatedArrivalAt?: string | null;
+  timeWindowEnd?: string | null;
+  timeWindowStart?: string | null;
   status?: string;
   address: string;
   coordinate: {
@@ -25,12 +27,18 @@ export type DeliveryCoordinate = {
 };
 
 export type CurrentDeliverySummary = {
+  address: string;
   boxCount: number;
   deliveryStopId: string;
   destinationId: string;
   destinationName: string;
   estimatedArrivalAt: string | null;
+  conditionCodes: DeliveryConditionCode[];
+  notes: string[];
   orderCount: number;
+  timeWindowEnd: string | null;
+  timeWindowOrderCount: number;
+  timeWindowStart: string | null;
 };
 
 export type DeliveryDestinationGroup = {
@@ -235,8 +243,18 @@ export function buildCurrentDeliverySummary(
   const destinationOrders = orders.filter(
     ({ destinationId }) => destinationId === currentOrder.destinationId,
   );
+  const constrainedOrders = destinationOrders.filter(
+    ({ timeWindowEnd, timeWindowStart }) =>
+      timeWindowEnd != null || timeWindowStart != null,
+  );
+  const earliestConstrainedOrder = [...constrainedOrders].sort((left, right) =>
+    (left.timeWindowEnd ?? left.timeWindowStart ?? '').localeCompare(
+      right.timeWindowEnd ?? right.timeWindowStart ?? '',
+    ),
+  )[0];
 
   return {
+    address: currentOrder.address,
     boxCount: destinationOrders.reduce(
       (total, order) => total + order.shippedBoxes,
       0,
@@ -244,8 +262,13 @@ export function buildCurrentDeliverySummary(
     deliveryStopId: currentOrder.id,
     destinationId: currentOrder.destinationId,
     destinationName: currentOrder.destinationName,
+    conditionCodes: [...new Set(destinationOrders.map(({ conditionCode }) => conditionCode))],
     estimatedArrivalAt: currentOrder.estimatedArrivalAt ?? null,
+    notes: [...new Set(destinationOrders.flatMap(({ notes }) => notes ? [notes] : []))],
     orderCount: destinationOrders.length,
+    timeWindowEnd: earliestConstrainedOrder?.timeWindowEnd ?? null,
+    timeWindowOrderCount: constrainedOrders.length,
+    timeWindowStart: earliestConstrainedOrder?.timeWindowStart ?? null,
   };
 }
 

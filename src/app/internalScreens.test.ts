@@ -212,6 +212,28 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /박스 수/u);
     assert.match(screenSource, /ETA/u);
     assert.match(screenSource, /배송 완료/u);
+    assert.match(screenSource, /summary\.address/u);
+    assert.match(screenSource, /지도 열기/u);
+    assert.match(screenSource, /openDestinationMap/u);
+    assert.doesNotMatch(screenSource, /canCompleteDelivery/u);
+    const destinationMapSource = readFileSync(
+      join(appDirectory, '../platform/destinationMap.ts'),
+      'utf8',
+    );
+    assert.match(destinationMapSource, /Clipboard\.setStringAsync\(address\)/u);
+    assert.match(destinationMapSource, /requireNativeModule<AndroidMapChooser>\('MapChooser'\)/u);
+    const androidChooserSource = readFileSync(
+      join(
+        projectRoot,
+        'modules/map-chooser/android/src/main/java/com/evnsolution/clever/driver/mapchooser/MapChooserModule.kt',
+      ),
+      'utf8',
+    );
+    assert.match(androidChooserSource, /Intent\.createChooser/u);
+    assert.match(androidChooserSource, /Intent\.ACTION_VIEW/u);
+    assert.match(androidChooserSource, /geo:0,0\?q=/u);
+    assert.match(screenSource, /시간 지정/u);
+    assert.match(screenSource, /출발 전/u);
     assert.doesNotMatch(screenSource, /배송지 순서 미리보기|서버가 생성한 경로|서버 경로 표시 중/u);
     assert.match(
       source,
