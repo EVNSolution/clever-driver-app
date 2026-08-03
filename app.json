@@ -32,6 +32,14 @@
     "plugins": [
       "expo-secure-store",
       "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "배송 완료 증빙 사진을 촬영하기 위해 카메라를 사용합니다.",
+          "microphonePermission": false,
+          "photosPermission": "배송 완료 증빙 사진을 선택하기 위해 사진 앨범을 사용합니다."
+        }
+      ],
       "@maplibre/maplibre-react-native"
     ]
   }

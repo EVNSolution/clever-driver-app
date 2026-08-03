@@ -19,6 +19,7 @@
     "@maplibre/maplibre-react-native": "11.3.4",
     "expo": "~56.0.17",
     "expo-clipboard": "~56.0.4",
+    "expo-image-picker": "~56.0.22",
     "expo-secure-store": "~56.0.4",
     "expo-status-bar": "~56.0.4",
     "expo-symbols": "~56.0.6",
