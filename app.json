@@ -9,7 +9,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.evnsolution.clever.driver",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "배송 지도에서 현재 위치를 표시하기 위해 위치 권한을 사용합니다."
+      }
     },
     "android": {
       "package": "com.evnsolution.clever.driver",
