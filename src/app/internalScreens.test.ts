@@ -36,8 +36,38 @@ describe('authenticated driver screens', () => {
     assert.match(source, /availableRoutes/u);
     assert.match(source, /selectedRoutePlanId/u);
     assert.match(source, /routePlanId/u);
+    assert.match(source, /const \[isExpanded, setIsExpanded\] = useState\(false\)/u);
+    assert.match(source, /accessibilityState=\{\{ expanded: isExpanded \}\}/u);
+    assert.match(source, /setIsExpanded\(false\)/u);
+    assert.match(source, /styles\.dateAccordionList/u);
+    assert.doesNotMatch(source, /\n\s*horizontal\n/u);
     assert.doesNotMatch(source, /routes\.length < 2/u);
     assert.doesNotMatch(source, /2026-07-31.*배송 선택/u);
+  });
+
+  it('opens one delivery Space page for whole-destination release and first-claim pickup', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const screen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliverySpaceScreen.tsx'),
+      'utf8',
+    );
+    const client = readFileSync(
+      join(appDirectory, '../api/dsvDriverDeliverySpace.ts'),
+      'utf8',
+    );
+
+    assert.match(workspace, /DeliverySpaceScreen/u);
+    assert.match(screen, /label="내 배송"/u);
+    assert.match(screen, /label="공용 배송"/u);
+    assert.match(screen, /배송지의 모든 주문이 공용 배송으로 이동/u);
+    assert.match(screen, /다른 배송원이 먼저 가져갔습니다/u);
+    assert.match(client, /destinationId/u);
+    assert.match(client, /expectedVersion/u);
+    assert.match(client, /\/driver\/delivery-space/u);
+    assert.doesNotMatch(screen, /sellerOrderKey|orderId/u);
   });
 
   it('shows only index, destination, address, condition, and boxes in order rows', () => {

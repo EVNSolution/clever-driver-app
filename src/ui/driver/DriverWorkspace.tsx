@@ -11,6 +11,7 @@ import {
 import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
+import { DeliverySpaceScreen } from './DeliverySpaceScreen';
 
 type DriverWorkspaceTab = 'delivery' | 'map';
 
@@ -24,6 +25,7 @@ export function DriverWorkspace({
   onLogout,
 }: DriverWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
+  const [isDeliverySpaceOpen, setIsDeliverySpaceOpen] = useState(false);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -107,7 +109,13 @@ export function DriverWorkspace({
           <RouteLoadState onRetry={retryRouteLoad} state={loadState} />
         ) : (
           <>
-            {activeTab === 'delivery' ? (
+            {isDeliverySpaceOpen ? (
+              <DeliverySpaceScreen
+                accessToken={route.routeAccessToken}
+                onAssignmentsChanged={() => setLoadAttempt((attempt) => attempt + 1)}
+                onBack={() => setIsDeliverySpaceOpen(false)}
+              />
+            ) : activeTab === 'delivery' ? (
               <>
                 <RouteDateSelector
                   onSelect={selectRoute}
@@ -116,6 +124,7 @@ export function DriverWorkspace({
                 />
                 <DeliveryScreen
                   deliveryDate={route.deliveryDate}
+                  onOpenDeliverySpace={() => setIsDeliverySpaceOpen(true)}
                   onOrdersChange={setOrders}
                   orders={orders}
                   serverRouteGeometry={route.serverRouteGeometry}
@@ -136,7 +145,10 @@ export function DriverWorkspace({
           icon={<DeliveryPackageIcon isSelected={activeTab === 'delivery'} />}
           isSelected={activeTab === 'delivery'}
           label="배송"
-          onPress={() => setActiveTab('delivery')}
+          onPress={() => {
+            setActiveTab('delivery');
+            setIsDeliverySpaceOpen(false);
+          }}
         />
         <TabButton
           icon={
@@ -149,7 +161,10 @@ export function DriverWorkspace({
           }
           isSelected={activeTab === 'map'}
           label="지도"
-          onPress={() => setActiveTab('map')}
+          onPress={() => {
+            setActiveTab('map');
+            setIsDeliverySpaceOpen(false);
+          }}
         />
       </View>
     </View>
@@ -165,45 +180,91 @@ function RouteDateSelector({
   routes: DriverDeliveryRouteChoice[];
   selectedRoutePlanId: string;
 }) {
-  return (
-    <ScrollView
-      contentContainerStyle={styles.dateSelectorContent}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.dateSelector}
-    >
-      {routes.map((routeChoice) => {
-        const isSelected = routeChoice.routePlanId === selectedRoutePlanId;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const selectedRoute =
+    routes.find((routeChoice) => (
+      routeChoice.routePlanId === selectedRoutePlanId
+    )) ?? routes[0];
 
-        return (
-          <Pressable
-            accessibilityLabel={`${formatDeliveryDate(routeChoice.deliveryDate)} 배송 선택`}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isSelected }}
-            key={routeChoice.routePlanId}
-            onPress={() => onSelect(routeChoice.routePlanId)}
-            style={({ pressed }) => [
-              styles.datePill,
-              isSelected && styles.datePillSelected,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={[
-              styles.datePillText,
-              isSelected && styles.datePillTextSelected,
-            ]}>
-              {formatDeliveryDate(routeChoice.deliveryDate)}
+  if (selectedRoute === undefined) {
+    return null;
+  }
+
+  function selectRoute(routePlanId: string) {
+    onSelect(routePlanId);
+    setIsExpanded(false);
+  }
+
+  return (
+    <View style={styles.dateAccordion}>
+      <Pressable
+        accessibilityLabel={`배송 날짜 ${formatDeliveryDate(selectedRoute.deliveryDate)} 목록 ${isExpanded ? '접기' : '펼치기'}`}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={() => setIsExpanded((expanded) => !expanded)}
+        style={({ pressed }) => [
+          styles.dateAccordionHeader,
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <View style={styles.dateAccordionSelection}>
+          <Text style={styles.dateAccordionLabel}>배송 날짜</Text>
+          <View style={styles.dateAccordionValueRow}>
+            <Text style={styles.dateAccordionValue}>
+              {formatDeliveryDate(selectedRoute.deliveryDate)}
             </Text>
-            <Text style={[
-              styles.datePillMeta,
-              isSelected && styles.datePillTextSelected,
-            ]}>
-              {routeChoice.routeName}
+            <Text numberOfLines={1} style={styles.dateAccordionMeta}>
+              {selectedRoute.routeName}
             </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+          </View>
+        </View>
+        <Text accessibilityElementsHidden style={styles.dateAccordionChevron}>
+          {isExpanded ? '▲' : '▼'}
+        </Text>
+      </Pressable>
+
+      {isExpanded ? (
+        <ScrollView
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={routes.length > 3}
+          style={styles.dateAccordionList}
+        >
+          {routes.map((routeChoice) => {
+            const isSelected = routeChoice.routePlanId === selectedRoutePlanId;
+
+            return (
+              <Pressable
+                accessibilityLabel={`${formatDeliveryDate(routeChoice.deliveryDate)} 배송 선택`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                key={routeChoice.routePlanId}
+                onPress={() => selectRoute(routeChoice.routePlanId)}
+                style={({ pressed }) => [
+                  styles.dateAccordionOption,
+                  isSelected && styles.dateAccordionOptionSelected,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <View style={styles.dateAccordionOptionText}>
+                  <Text style={[
+                    styles.dateAccordionOptionDate,
+                    isSelected && styles.dateAccordionOptionDateSelected,
+                  ]}>
+                    {formatDeliveryDate(routeChoice.deliveryDate)}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.dateAccordionOptionMeta}>
+                    {routeChoice.routeName}
+                  </Text>
+                </View>
+                {isSelected ? (
+                  <Text style={styles.dateAccordionCheck}>✓</Text>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+    </View>
   );
 }
 
@@ -348,45 +409,89 @@ const styles = StyleSheet.create({
   screenArea: {
     flex: 1,
   },
-  dateSelector: {
+  dateAccordion: {
     backgroundColor: '#ffffff',
     borderBottomColor: '#e5e7eb',
     borderBottomWidth: 1,
-    maxHeight: 51,
   },
-  dateSelectorContent: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  datePill: {
+  dateAccordionHeader: {
     alignItems: 'center',
-    backgroundColor: '#f2f4f7',
-    borderColor: '#e5e7eb',
-    borderRadius: 999,
-    borderWidth: 1,
     flexDirection: 'row',
-    gap: 5,
-    minHeight: 34,
-    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
   },
-  datePillSelected: {
-    backgroundColor: '#e8f1ff',
-    borderColor: '#0b57d0',
+  dateAccordionSelection: {
+    flex: 1,
+    gap: 1,
   },
-  datePillText: {
-    color: '#475467',
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  datePillMeta: {
+  dateAccordionLabel: {
     color: '#667085',
     fontSize: 10,
+    fontWeight: '700',
+  },
+  dateAccordionValueRow: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dateAccordionValue: {
+    color: '#101828',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  dateAccordionMeta: {
+    color: '#667085',
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  dateAccordionChevron: {
+    color: '#667085',
+    fontSize: 10,
+    marginLeft: 12,
+  },
+  dateAccordionList: {
+    borderTopColor: '#eaecf0',
+    borderTopWidth: 1,
+    maxHeight: 168,
+  },
+  dateAccordionOption: {
+    alignItems: 'center',
+    borderBottomColor: '#f2f4f7',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  dateAccordionOptionSelected: {
+    backgroundColor: '#f0f6ff',
+  },
+  dateAccordionOptionText: {
+    flex: 1,
+    gap: 2,
+  },
+  dateAccordionOptionDate: {
+    color: '#344054',
+    fontSize: 13,
     fontWeight: '800',
   },
-  datePillTextSelected: {
+  dateAccordionOptionDateSelected: {
     color: '#0b57d0',
+  },
+  dateAccordionOptionMeta: {
+    color: '#667085',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  dateAccordionCheck: {
+    color: '#0b57d0',
+    fontSize: 16,
+    fontWeight: '900',
+    marginLeft: 12,
   },
   routeState: {
     alignItems: 'center',
