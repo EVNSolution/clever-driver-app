@@ -3,11 +3,14 @@ import {
   GeoJSONSource,
   Images,
   Layer,
+  LocationManager,
   Map as MapLibreMap,
+  UserLocation,
   type SymbolLayerSpecification,
 } from '@maplibre/maplibre-react-native';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -72,6 +75,7 @@ type DeliveryRouteMapProps = {
 };
 
 type MapLoadState = 'loading' | 'ready' | 'error';
+type LocationPermission = 'idle' | 'requesting' | 'granted' | 'denied';
 
 export function DeliveryRouteMap({
   depotCoordinate = null,
@@ -80,12 +84,30 @@ export function DeliveryRouteMap({
   serverRouteGeometry,
   style,
 }: DeliveryRouteMapProps) {
+  const canExplore = interactionMode === 'explore';
   const [mapLoadState, setMapLoadState] = useState<MapLoadState>('loading');
+  const [locationPermission, setLocationPermission] =
+    useState<LocationPermission>(canExplore ? 'requesting' : 'idle');
   const mapModel = useMemo(
     () => buildDeliveryMapModel(orders, serverRouteGeometry, depotCoordinate),
     [depotCoordinate, orders, serverRouteGeometry],
   );
-  const canExplore = interactionMode === 'explore';
+
+  useEffect(() => {
+    if (!canExplore || locationPermission !== 'requesting') return undefined;
+
+    let isActive = true;
+    void LocationManager.requestPermissions()
+      .then((granted) => {
+        if (isActive) setLocationPermission(granted ? 'granted' : 'denied');
+      })
+      .catch(() => {
+        if (isActive) setLocationPermission('denied');
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [canExplore, locationPermission]);
 
   return (
     <View style={[styles.container, style]}>
@@ -152,7 +174,26 @@ export function DeliveryRouteMap({
             />
           </GeoJSONSource>
         )}
+        {canExplore && locationPermission === 'granted' ? (
+          <UserLocation animated accuracy heading minDisplacement={5} />
+        ) : null}
       </MapLibreMap>
+
+      {canExplore && locationPermission !== 'granted' ? (
+        <Pressable
+          accessibilityRole="button"
+          disabled={locationPermission === 'requesting'}
+          onPress={() => setLocationPermission('requesting')}
+          style={styles.locationPermissionButton}
+        >
+          <View style={styles.locationPermissionDot} />
+          <Text style={styles.locationPermissionText}>
+            {locationPermission === 'requesting'
+              ? '내 위치 확인 중'
+              : '내 위치 권한 허용'}
+          </Text>
+        </Pressable>
+      ) : null}
 
       {mapLoadState !== 'ready' ? (
         <View pointerEvents="none" style={styles.mapStateOverlay}>
@@ -253,6 +294,38 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  locationPermissionButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    borderColor: '#d0d5dd',
+    borderRadius: 18,
+    borderWidth: 1,
+    elevation: 3,
+    flexDirection: 'row',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    position: 'absolute',
+    right: 12,
+    shadowColor: '#101828',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    top: 12,
+  },
+  locationPermissionDot: {
+    backgroundColor: '#33b5e5',
+    borderColor: '#ffffff',
+    borderRadius: 6,
+    borderWidth: 2,
+    height: 12,
+    width: 12,
+  },
+  locationPermissionText: {
+    color: '#344054',
+    fontSize: 12,
+    fontWeight: '700',
   },
   mapStateOverlay: {
     alignItems: 'center',

@@ -192,6 +192,14 @@ describe('authenticated driver screens', () => {
     assert.match(source, /touchZoom=\{canExplore\}/u);
     assert.match(source, /touchPitch=\{false\}/u);
     assert.match(source, /touchRotate=\{false\}/u);
+    assert.match(source, /LocationManager\.requestPermissions\(\)/u);
+    assert.match(source, /<UserLocation/u);
+    assert.match(source, /animated/u);
+    assert.match(source, /accuracy/u);
+    assert.match(source, /heading/u);
+    assert.match(source, /minDisplacement=\{5\}/u);
+    assert.match(source, /canExplore && locationPermission === 'granted'/u);
+    assert.match(source, /내 위치 권한 허용/u);
     assert.match(source, /<Images/u);
     assert.match(source, /'icon-anchor': 'bottom'/u);
     assert.match(source, /'text-offset': \[0, -2\]/u);
@@ -240,6 +248,8 @@ describe('authenticated driver screens', () => {
       /https:\/\/tiles\.openfreemap\.org\/styles\/liberty/u,
     );
     assert.match(appConfig, /@maplibre\/maplibre-react-native/u);
+    assert.match(appConfig, /NSLocationWhenInUseUsageDescription/u);
+    assert.match(appConfig, /현재 위치를 표시/u);
     assert.match(packageManifest, /@maplibre\/maplibre-react-native/u);
   });
 

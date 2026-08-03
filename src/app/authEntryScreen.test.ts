@@ -52,6 +52,16 @@ describe('DSV authentication entry screen', () => {
     assert.doesNotMatch(sessionStore, /accessToken/u);
   });
 
+  it('keeps automatic login active across temporary server failures', () => {
+    const appRoot = readFileSync(appRootPath, 'utf8');
+
+    assert.match(appRoot, /resolveDriverAuthRecoveryAction/u);
+    assert.match(appRoot, /AUTO_LOGIN_RETRY_DELAY_MS/u);
+    assert.match(appRoot, /자동 로그인을 다시 연결하고 있습니다/u);
+    assert.match(appRoot, /아이디로 로그인/u);
+    assert.match(appRoot, /setAutoLoginEnabled\(false\)/u);
+  });
+
   it('shows concrete linked and unlinked success states in Korean', () => {
     const source = readFileSync(authScreenPath, 'utf8');
 

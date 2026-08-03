@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  AuthApiError,
   refreshDriverAccountSession,
   type DriverAuthSession,
 } from '../api/dsvDriverAuth';
+import {
+  AUTO_LOGIN_RETRY_DELAY_MS,
+  resolveDriverAuthRecoveryAction,
+} from '../auth/driverAuthRecovery';
 import {
   clearDriverAuthSession,
   readDriverAuthRefreshToken,
@@ -20,29 +29,58 @@ import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
 export function AppRoot() {
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [autoLoginEnabled, setAutoLoginEnabled] = useState(true);
+  const [autoLoginAttempt, setAutoLoginAttempt] = useState(0);
+  const [hasAutoLoginConnectionError, setHasAutoLoginConnectionError] =
+    useState(false);
 
   const acceptAuthSession = useCallback(async (session: DriverAuthSession) => {
     await saveDriverAuthSession(session);
+    setAutoLoginEnabled(true);
+    setHasAutoLoginConnectionError(false);
     setAuthSession(session);
   }, []);
 
   const discardAuthSession = useCallback(async () => {
+    setAutoLoginEnabled(false);
+    setHasAutoLoginConnectionError(false);
+    setIsRestoringSession(false);
     setAuthSession(null);
     await clearDriverAuthSession();
   }, []);
 
   useEffect(() => {
+    if (!autoLoginEnabled) {
+      return undefined;
+    }
+
     let isActive = true;
+    let retryTimeout: ReturnType<typeof setTimeout> | undefined;
     void readDriverAuthRefreshToken()
       .then(async (refreshToken) => {
-        if (refreshToken === null) return;
+        if (refreshToken === null) {
+          if (isActive) setAutoLoginEnabled(false);
+          return;
+        }
         const session = await refreshDriverAccountSession({ refreshToken });
         if (!isActive) return;
         await acceptAuthSession(session);
       })
       .catch(async (error: unknown) => {
-        if (error instanceof AuthApiError && error.code === 'SESSION_EXPIRED') {
+        if (resolveDriverAuthRecoveryAction(error) === 'discard') {
           await clearDriverAuthSession();
+          if (isActive) setAutoLoginEnabled(false);
+          return;
+        }
+        if (isActive) {
+          setHasAutoLoginConnectionError(true);
+          retryTimeout = setTimeout(
+            () => {
+              setIsRestoringSession(true);
+              setAutoLoginAttempt((attempt) => attempt + 1);
+            },
+            AUTO_LOGIN_RETRY_DELAY_MS,
+          );
         }
       })
       .finally(() => {
@@ -50,8 +88,9 @@ export function AppRoot() {
       });
     return () => {
       isActive = false;
+      if (retryTimeout !== undefined) clearTimeout(retryTimeout);
     };
-  }, [acceptAuthSession]);
+  }, [acceptAuthSession, autoLoginAttempt, autoLoginEnabled]);
 
   useEffect(() => {
     if (authSession === null) return undefined;
@@ -64,7 +103,7 @@ export function AppRoot() {
       })
         .then(acceptAuthSession)
         .catch((error: unknown) => {
-          if (error instanceof AuthApiError && error.code === 'SESSION_EXPIRED') {
+          if (resolveDriverAuthRecoveryAction(error) === 'discard') {
             void discardAuthSession();
             return;
           }
@@ -80,7 +119,39 @@ export function AppRoot() {
       <SafeAreaProvider>
         <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
-          {isRestoringSession ? (
+          {authSession === null && hasAutoLoginConnectionError ? (
+            <View style={styles.recoveryState}>
+              <ActivityIndicator color="#0b57d0" size="large" />
+              <Text style={styles.recoveryTitle}>
+                자동 로그인을 다시 연결하고 있습니다.
+              </Text>
+              <Text style={styles.recoveryText}>
+                저장된 로그인은 유지됩니다. 서버 연결이 복구되면 자동으로
+                들어갑니다.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setIsRestoringSession(true);
+                  setAutoLoginAttempt((attempt) => attempt + 1);
+                }}
+                style={styles.primaryButton}
+              >
+                <Text style={styles.primaryButtonText}>지금 다시 시도</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setAutoLoginEnabled(false);
+                  setHasAutoLoginConnectionError(false);
+                  setIsRestoringSession(false);
+                }}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>아이디로 로그인</Text>
+              </Pressable>
+            </View>
+          ) : isRestoringSession ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color="#0b57d0" size="large" />
             </View>
@@ -110,5 +181,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
+  },
+  primaryButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#0b57d0',
+    borderRadius: 12,
+    marginTop: 28,
+    paddingVertical: 14,
+  },
+  primaryButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  recoveryState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  recoveryText: {
+    color: '#667085',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  recoveryTitle: {
+    color: '#1d2939',
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 18,
+    textAlign: 'center',
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    borderColor: '#d0d5dd',
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+    paddingVertical: 13,
+  },
+  secondaryButtonText: {
+    color: '#344054',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
