@@ -1,52 +1,41 @@
+import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import type { DriverAuthSession } from '../api/dsvDriverAuth';
+import { AuthEntryScreen } from '../ui/auth/AuthEntryScreen';
+import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
+
 export function AppRoot() {
+  const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
+
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar style="dark" />
-        <View style={styles.content}>
-          <Text style={styles.eyebrow}>EV&amp; SOLUTION</Text>
-          <Text style={styles.title}>CLEVER Driver</Text>
-          <Text style={styles.description}>
-            DSV 배송원을 위한 앱 기반 구성이 완료되었습니다.
-          </Text>
-        </View>
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar style="dark" />
+          {authSession === null ? (
+            <AuthEntryScreen onAuthenticated={setAuthSession} />
+          ) : (
+            <DriverWorkspace
+              authSession={authSession}
+              onLogout={() => setAuthSession(null)}
+            />
+          )}
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: '#F7F8F2',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  eyebrow: {
-    marginBottom: 12,
-    color: '#5A6417',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.4,
-  },
-  title: {
-    color: '#171914',
-    fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: -1.2,
-  },
-  description: {
-    marginTop: 14,
-    maxWidth: 320,
-    color: '#53574C',
-    fontSize: 17,
-    lineHeight: 25,
+    backgroundColor: '#f7f9fc',
   },
 });

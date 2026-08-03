@@ -7,6 +7,9 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_DSV_API_BASE_URL": "https://clever-route-api.cleversystem.ai"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -15,6 +18,9 @@
       "credentialsSource": "remote",
       "distribution": "store",
       "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_DSV_API_BASE_URL": "https://clever-route-api.cleversystem.ai"
+      },
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
