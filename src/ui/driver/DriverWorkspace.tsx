@@ -3,7 +3,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { DriverAuthSession } from '../../api/dsvDriverAuth';
-import { completeDriverDeliveryStop } from '../../api/dsvDriverEvents';
+import {
+  completeDriverDeliveryStop,
+  startDriverDeliveryRoute,
+} from '../../api/dsvDriverEvents';
 import {
   loadDriverDeliveryRoute,
   type DriverDeliveryRoute,
@@ -94,6 +97,15 @@ export function DriverWorkspace({
     setLoadAttempt((attempt) => attempt + 1);
   }
 
+  async function startDelivery() {
+    if (route === null) {
+      return;
+    }
+
+    await startDriverDeliveryRoute(route.routeAccessToken, route.routeId);
+    setLoadAttempt((attempt) => attempt + 1);
+  }
+
   return (
     <View style={styles.workspace}>
       <View style={styles.appHeader}>
@@ -150,6 +162,7 @@ export function DriverWorkspace({
                 etaStatus={route.etaStatus}
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onCompleteDelivery={completeDelivery}
+                onStartDelivery={startDelivery}
                 orders={orders}
                 serverRouteGeometry={route.serverRouteGeometry}
                 timezone={route.timezone}
