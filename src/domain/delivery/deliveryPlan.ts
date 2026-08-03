@@ -25,6 +25,7 @@ export type DeliveryDestinationGroup = {
   destinationName: string;
   key: string;
   orderCount: number;
+  orders: DeliveryOrder[];
 };
 
 export type ServerDeliveryRouteGeometry = {
@@ -146,12 +147,14 @@ export function groupDeliveryOrdersByDestination(
         destinationName: order.destinationName,
         key,
         orderCount: 1,
+        orders: [order],
       });
       continue;
     }
 
     group.boxCount += order.shippedBoxes;
     group.orderCount += 1;
+    group.orders.push(order);
     if (!group.conditionCodes.includes(order.conditionCode)) {
       group.conditionCodes.push(order.conditionCode);
     }
