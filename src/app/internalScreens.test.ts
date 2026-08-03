@@ -220,6 +220,12 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /박스 수/u);
     assert.match(screenSource, /ETA/u);
     assert.match(screenSource, /배송 완료/u);
+    assert.match(screenSource, /etaStatus === 'PRE_PICKUP'/u);
+    assert.match(screenSource, /배송 시작/u);
+    assert.match(screenSource, /픽업을 완료하고 배송을 시작할까요/u);
+    assert.match(screenSource, /onStartDelivery/u);
+    assert.match(screenSource, /styles\.startOverlay/u);
+    assert.match(screenSource, /styles\.startButton/u);
     assert.match(screenSource, /summary\.address/u);
     assert.match(screenSource, /지도 열기/u);
     assert.match(screenSource, /openDestinationMap/u);
@@ -242,6 +248,10 @@ describe('authenticated driver screens', () => {
     assert.match(androidChooserSource, /geo:0,0\?q=/u);
     assert.match(screenSource, /시간 지정/u);
     assert.match(screenSource, /출발 전/u);
+    assert.match(
+      readFileSync(join(appDirectory, '../ui/driver/DriverWorkspace.tsx'), 'utf8'),
+      /startDriverDeliveryRoute/u,
+    );
     assert.doesNotMatch(screenSource, /배송지 순서 미리보기|서버가 생성한 경로|서버 경로 표시 중/u);
     assert.match(
       source,

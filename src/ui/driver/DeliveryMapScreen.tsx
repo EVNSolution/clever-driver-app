@@ -22,6 +22,7 @@ type DeliveryMapScreenProps = {
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   nextDeliveryStopId: string | null;
   onCompleteDelivery(deliveryStopId: string): Promise<void>;
+  onStartDelivery(): Promise<void>;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
@@ -32,13 +33,16 @@ export function DeliveryMapScreen({
   etaStatus,
   nextDeliveryStopId,
   onCompleteDelivery,
+  onStartDelivery,
   orders,
   serverRouteGeometry,
   timezone,
 }: DeliveryMapScreenProps) {
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
-  const isCompletionDisabled = summary === null || isCompleting;
+  const isCompletionDisabled =
+    etaStatus === 'PRE_PICKUP' || summary === null || isCompleting || isStarting;
 
   async function handleOpenMap() {
     if (summary === null) return;
@@ -83,19 +87,73 @@ export function DeliveryMapScreen({
     );
   }
 
+  function confirmDeliveryStart() {
+    if (isStarting) return;
+
+    Alert.alert(
+      '배송 시작',
+      '픽업을 완료하고 배송을 시작할까요?',
+      [
+        { style: 'cancel', text: '취소' },
+        {
+          onPress: () => {
+            setIsStarting(true);
+            void onStartDelivery()
+              .catch((error: unknown) => {
+                Alert.alert(
+                  '배송 시작 실패',
+                  error instanceof Error
+                    ? error.message
+                    : '배송 시작 상태를 저장하지 못했습니다.',
+                );
+              })
+              .finally(() => setIsStarting(false));
+          },
+          text: '시작',
+        },
+      ],
+    );
+  }
+
   return (
     <View style={styles.screen}>
-      <DeliveryRouteMap
-        depotCoordinate={depotCoordinate}
-        interactionMode="explore"
-        orders={orders}
-        serverRouteGeometry={serverRouteGeometry}
-        style={styles.map}
-      />
+      <View style={styles.mapArea}>
+        <DeliveryRouteMap
+          depotCoordinate={depotCoordinate}
+          interactionMode="explore"
+          orders={orders}
+          serverRouteGeometry={serverRouteGeometry}
+          style={styles.map}
+        />
 
-      {summary === null ? null : (
-        <DeliveryAttentionBanner summary={summary} timezone={timezone} />
-      )}
+        {summary === null ? null : (
+          <DeliveryAttentionBanner summary={summary} timezone={timezone} />
+        )}
+
+        {etaStatus === 'PRE_PICKUP' ? (
+          <View pointerEvents="box-none" style={styles.startOverlay}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ busy: isStarting, disabled: isStarting }}
+              disabled={isStarting}
+              onPress={confirmDeliveryStart}
+              style={({ pressed }) => [
+                styles.startButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              {isStarting ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.startButtonText}>배송 시작</Text>
+                  <Text style={styles.startButtonCaption}>픽업 완료</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.deliveryPanel}>
         <Text style={styles.panelLabel}>지금 가는 배송지</Text>
@@ -263,6 +321,46 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     width: '100%',
+  },
+  mapArea: {
+    flex: 1,
+    position: 'relative',
+  },
+  startOverlay: {
+    alignItems: 'center',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  startButton: {
+    alignItems: 'center',
+    backgroundColor: '#0b57d0',
+    borderColor: '#ffffff',
+    borderRadius: 20,
+    borderWidth: 3,
+    elevation: 10,
+    height: 76,
+    justifyContent: 'center',
+    minWidth: 196,
+    paddingHorizontal: 32,
+    shadowColor: '#101828',
+    shadowOffset: { height: 5, width: 0 },
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+  },
+  startButtonText: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  startButtonCaption: {
+    color: '#dbeafe',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 2,
   },
   deliveryPanel: {
     backgroundColor: '#ffffff',
