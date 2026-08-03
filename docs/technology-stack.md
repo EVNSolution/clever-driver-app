@@ -12,6 +12,7 @@
 | Node.js | 20.19.4 이상 | 기존 앱 엔진 기준 |
 | 민감정보 저장 | Expo SecureStore | 추후 승인된 인증 토큰 저장 |
 | 배송 증빙 선택 | Expo ImagePicker | 카메라 촬영과 앨범 사진 선택을 Expo SDK에 맞게 처리 |
+| 배송 증빙 업로드 | Expo FileSystem + Expo Fetch | 로컬 사진 URI를 `File`로 변환해 표준 멀티파트 파일로 전송 |
 | 전화번호 처리 | libphonenumber-js | 국가번호와 E.164 정규화 |
 | 테스트 | Node test runner + tsx | 도메인 테스트를 네이티브 런타임과 분리 |
 | 정적 검사 | Expo ESLint + `tsc --noEmit` | 기존 검증 명령 유지 |
