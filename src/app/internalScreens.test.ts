@@ -192,7 +192,18 @@ describe('authenticated driver screens', () => {
     assert.match(source, /touchZoom=\{canExplore\}/u);
     assert.match(source, /touchPitch=\{false\}/u);
     assert.match(source, /touchRotate=\{false\}/u);
+    assert.match(source, /<Images/u);
+    assert.match(source, /'icon-anchor': 'bottom'/u);
+    assert.match(source, /'text-offset': \[0, -2\]/u);
     assert.match(source, /'text-font': \['Noto Sans Bold'\]/u);
+    assert.match(source, /id="delivery-destination-marker"/u);
+    assert.doesNotMatch(source, /CircleLayerSpecification|delivery-marker-circle/u);
+    const screenSource = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryMapScreen.tsx'),
+      'utf8',
+    );
+    assert.match(screenSource, /표식 안 숫자는 배송지 방문 순서/u);
+    assert.doesNotMatch(screenSource, /표식 안 숫자는 주문 방문 순서/u);
     assert.match(
       source,
       /https:\/\/tiles\.openfreemap\.org\/styles\/liberty/u,

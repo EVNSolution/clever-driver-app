@@ -1,10 +1,12 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import type {
   DeliveryOrder,
   ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
+
+const DESTINATION_PIN_IMAGE = require('../../../assets/map/destination-pin.png') as number;
 
 type DeliveryMapScreenProps = {
   orders: DeliveryOrder[];
@@ -22,7 +24,7 @@ export function DeliveryMapScreen({
   return (
     <View style={styles.screen}>
       <View style={styles.heading}>
-        <Text style={styles.eyebrow}>주문 순서 미리보기</Text>
+        <Text style={styles.eyebrow}>배송지 순서 미리보기</Text>
         <Text style={styles.title}>지도</Text>
         <Text style={styles.description}>
           {serverRouteGeometry === null
@@ -40,13 +42,14 @@ export function DeliveryMapScreen({
         />
         <View pointerEvents="none" style={styles.mapLegend}>
           <View style={styles.legendMarker}>
+            <Image source={DESTINATION_PIN_IMAGE} style={styles.legendMarkerImage} />
             <Text style={styles.legendMarkerText}>1</Text>
           </View>
           <View style={styles.legendCopy}>
             <Text style={styles.legendTitle}>
               주문 {orders.length}건 · 배송지 {destinationCount}곳
             </Text>
-            <Text style={styles.legendText}>표식 안 숫자는 주문 방문 순서</Text>
+            <Text style={styles.legendText}>표식 안 숫자는 배송지 방문 순서</Text>
           </View>
         </View>
       </View>
@@ -120,16 +123,23 @@ const styles = StyleSheet.create({
   },
   legendMarker: {
     alignItems: 'center',
-    backgroundColor: '#0b57d0',
-    borderRadius: 17,
-    height: 34,
+    height: 40,
     justifyContent: 'center',
-    width: 34,
+    width: 31,
+  },
+  legendMarkerImage: {
+    height: 40,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+    width: 31,
   },
   legendMarkerText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '900',
+    position: 'absolute',
+    top: 6,
   },
   legendCopy: {
     gap: 1,

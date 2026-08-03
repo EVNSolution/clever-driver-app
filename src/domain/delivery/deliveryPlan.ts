@@ -28,6 +28,13 @@ export type DeliveryDestinationGroup = {
   orders: DeliveryOrder[];
 };
 
+export type DeliveryDestinationPoint = {
+  coordinate: [longitude: number, latitude: number];
+  destinationId: string;
+  label: string;
+  sortOrder: number;
+};
+
 export type ServerDeliveryRouteGeometry = {
   coordinates: [longitude: number, latitude: number][];
   type: 'LineString';
@@ -161,6 +168,39 @@ export function groupDeliveryOrdersByDestination(
   }
 
   return [...groups.values()];
+}
+
+export function buildDeliveryDestinationPoints(
+  orders: DeliveryOrder[],
+): DeliveryDestinationPoint[] {
+  const destinations = new Map<
+    string,
+    Omit<DeliveryDestinationPoint, 'label' | 'sortOrder'> & { sequence: number }
+  >();
+
+  for (const order of orders) {
+    const destination = destinations.get(order.destinationId);
+    if (destination === undefined || order.sequence < destination.sequence) {
+      destinations.set(order.destinationId, {
+        coordinate: [order.coordinate.longitude, order.coordinate.latitude],
+        destinationId: order.destinationId,
+        sequence: order.sequence,
+      });
+    }
+  }
+
+  return [...destinations.values()]
+    .sort(
+      (left, right) =>
+        left.sequence - right.sequence ||
+        left.destinationId.localeCompare(right.destinationId),
+    )
+    .map(({ coordinate, destinationId }, index) => ({
+      coordinate,
+      destinationId,
+      label: String(index + 1),
+      sortOrder: index + 1,
+    }));
 }
 
 export function moveDeliveryOrderToIndex(
