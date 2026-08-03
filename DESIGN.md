@@ -7,10 +7,16 @@
 - Primary product surfaces: DSV 배송원 인증, 배송, 지도
 - Evidence reviewed: `docs/project-brief.md`, `docs/technology-stack.md`,
   `docs/code-organization.md`, `src/ui/auth/AuthEntryScreen.tsx`,
+  `src/ui/driver/DriverWorkspace.tsx`, `src/ui/driver/DeliveryProofModal.tsx`,
+  `src/ui/driver/DriverSettingsModal.tsx`,
   `../clever-routes-app/src/app/NativeRouteMapPreview.tsx`,
   `../clever-routes-app/src/app/routeMapGeoJson.ts`
 
 ## Brand
+
+- Personality: 현장 업무에 맞는 직접적이고 차분한 도구
+- Trust signals: 일관된 파란색 주요 액션, 초록색 완료 상태, 명확한 결과 문구
+- Avoid: Android 기본 Alert와 앱 전용 팝업의 혼용, 장식적인 모션, 모호한 명칭
 
 `CLEVER Driver`는 `CLEVER Routes`와 같은 제품군임을 알아볼 수 있는 파란색과
 초록색의 조합을 사용하되, DSV 배송원 전용 제품 이름과 업무 흐름을 유지한다.
@@ -25,6 +31,13 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
 - 결정한 순서를 목록과 지도에서 같은 번호로 확인한다.
 - 경로 선은 서버가 OSRM/VWorld로 생성한 geometry가 있을 때만 그대로 표시한다.
 - 서버 계약이 확정되기 전에는 미리보기 데이터와 화면 메모리 상태만 사용한다.
+- 플랫폼에 따라 앱 경고·확인 화면의 모양과 행동이 달라지지 않게 한다.
+
+Non-goals: Android 시스템 권한 창이나 외부 지도 앱 선택기처럼 OS가 소유하는
+화면을 앱 디자인으로 위장하지 않는다.
+
+Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버튼 순서, 색상 의미와
+한국어 문장 규칙을 사용한다.
 
 ## Personas and jobs
 
@@ -67,6 +80,9 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
 - 모션: 핸들을 누른 채 주문 카드가 슬롯 경계를 넘는 순간 주변 주문만 220ms
   cubic-out으로 자리를 비운다. 드래그 카드는 별도 레이아웃 애니메이션 없이
   손가락을 따르고, 손을 놓을 때까지 재정렬을 미루지 않는다.
+- 앱 다이얼로그: 화면 중앙 흰색 카드, 24px 모서리, 어두운 반투명 배경,
+  48px 상태 아이콘, 48px 액션 버튼을 사용한다. 기본 액션은 파란색, 위험 액션은
+  빨간색, 취소는 회색으로 구분한다.
 
 ## Components
 
@@ -82,6 +98,10 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
 - 편집 완료/취소: 완료 시 화면 메모리 순서를 반영하고 취소 시 원래 순서 복원
 - MapLibre 지도: 서버 제공 경로 선, 번호 표식, 서버 경로 대기 상태 안내
 - 하단 탭: `배송`, `지도`
+- 앱 다이얼로그: `AppDialog` 한 종류에서 정보·성공·주의·오류 상태와
+  단일 확인 또는 취소/실행 버튼 조합을 제공한다.
+- 바텀시트: 환경설정과 배송 증빙처럼 내용 탐색 또는 입력이 필요한 경우에만
+  사용하고, 짧은 확인·결과는 앱 다이얼로그를 사용한다.
 
 ## Accessibility
 
@@ -90,6 +110,8 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
   라벨을 제공한다.
 - 색상만으로 상태를 전달하지 않고 텍스트와 아이콘 기호를 함께 사용한다.
 - 순서 변경 후 화면 읽기 순서가 실제 배송 순서와 일치하게 유지된다.
+- 앱 다이얼로그는 `alert` 역할과 modal 접근성 범위를 제공하고 모든 버튼은
+  최소 44pt 터치 영역을 유지한다.
 
 ## Responsive behavior
 
@@ -115,6 +137,10 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
 - 지도 로딩/오류: 진행 문구 또는 목록에서 확인 가능한 대체 안내 표시
 - 서버 경로 없음: 배송지 표식만 표시하고 경로를 임의 생성하지 않았음을 안내
 - 인증 해제: 로그아웃하면 인증 화면으로 복귀하고 내부 상태를 폐기
+- 확인 팝업: 취소를 왼쪽, 실행을 오른쪽에 배치한다. 위험 실행은 빨간색으로
+  표시하고 성공·오류 결과는 한 개의 `확인` 액션으로 닫는다.
+- 시스템 권한 요청: OS 권한 창을 그대로 사용하고, 거부 결과와 설정 이동 안내는
+  앱 다이얼로그로 표시한다.
 
 ## Content voice
 
@@ -140,15 +166,18 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
 - 클라이언트는 경로를 계산하지 않는다. DSV 서버가 OSRM/VWorld로 생성해 응답한
   GeoJSON `LineString` geometry만 수정 없이 MapLibre source에 전달한다.
 - 서버 geometry가 없거나 stale/unavailable 상태면 경로 선을 그리지 않는다.
-- 위치 권한, GPS 추적, 카메라, 알림은 이번 범위에서 제외한다.
+- 위치·카메라·사진 앨범 권한 요청은 OS API를 사용한다. OS 소유 권한 창과 외부
+  앱 선택기는 커스텀 스타일을 적용하지 않으며 그 전후의 앱 안내만 `AppDialog`로
+  통일한다.
+- 앱 코드에서 Android 기본 `Alert.alert`를 사용하지 않는다.
 - 주문 순서 변경은 배정이나 배송지 연결을 변경하지 않고 sequence만 바꾼다.
 - 시스템의 동작 줄이기 설정이 켜져 있으면 정착·레이아웃 애니메이션을 생략하고
   순서만 즉시 반영한다.
 
 ## Open questions
 
-- 배송원별 배정 배송지와 주문을 제공할 DSV API 계약
-- 순서 확정의 저장 단위, 낙관적 잠금과 충돌 응답 계약
-- 배송원 계정에 배정된 경로 geometry를 제공할 driver-scoped DSV API 계약
-- 서버 geometry의 fresh/stale/unavailable 상태와 순서 확정 revision 계약
-- 배송 시작 이후 순서 재확정 허용 정책
+- [ ] 배송원별 배정 배송지와 주문을 제공할 DSV API 계약
+- [ ] 순서 확정의 저장 단위, 낙관적 잠금과 충돌 응답 계약
+- [ ] 배송원 계정에 배정된 경로 geometry를 제공할 driver-scoped DSV API 계약
+- [ ] 서버 geometry의 fresh/stale/unavailable 상태와 순서 확정 revision 계약
+- [ ] 배송 시작 이후 순서 재확정 허용 정책

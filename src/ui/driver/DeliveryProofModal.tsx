@@ -2,7 +2,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -16,6 +15,7 @@ import type {
   DriverProofPhotoSource,
   DriverProofPhotoUpload,
 } from '../../api/dsvDriverProofMedia';
+import { useAppDialog } from './AppDialog';
 
 const MAX_PROOF_PHOTO_BYTES = 10 * 1024 * 1024;
 
@@ -35,6 +35,7 @@ export function DeliveryProofModal({
   onClose,
   onUpload,
 }: DeliveryProofModalProps) {
+  const { dialog, showDialog } = useAppDialog();
   const insets = useSafeAreaInsets();
   const [isUploading, setIsUploading] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedProofPhoto | null>(null);
@@ -44,13 +45,21 @@ export function DeliveryProofModal({
       if (source === 'camera') {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert('카메라 권한 필요', '배송 증빙을 촬영하려면 카메라 권한을 허용해 주세요.');
+          showDialog({
+            message: '배송 증빙을 촬영하려면 환경설정에서 카메라 권한을 허용해 주세요.',
+            title: '카메라 권한이 필요합니다',
+            tone: 'warning',
+          });
           return;
         }
       } else {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert('사진 권한 필요', '배송 증빙을 선택하려면 사진 권한을 허용해 주세요.');
+          showDialog({
+            message: '배송 증빙을 선택하려면 환경설정에서 사진 앨범 권한을 허용해 주세요.',
+            title: '사진 앨범 권한이 필요합니다',
+            tone: 'warning',
+          });
           return;
         }
       }
@@ -71,7 +80,11 @@ export function DeliveryProofModal({
       const asset = result.assets[0];
       if (asset === undefined) return;
       if (asset.fileSize !== undefined && asset.fileSize > MAX_PROOF_PHOTO_BYTES) {
-        Alert.alert('사진이 너무 큽니다', '10MB 이하의 사진을 선택해 주세요.');
+        showDialog({
+          message: '10MB 이하의 사진을 선택해 주세요.',
+          title: '사진이 너무 큽니다',
+          tone: 'warning',
+        });
         return;
       }
 
@@ -82,7 +95,11 @@ export function DeliveryProofModal({
         uri: asset.uri,
       });
     } catch {
-      Alert.alert('사진을 열 수 없습니다', '잠시 후 다시 시도해 주세요.');
+      showDialog({
+        message: '잠시 후 다시 시도해 주세요.',
+        title: '사진을 열 수 없습니다',
+        tone: 'danger',
+      });
     }
   }
 
@@ -92,15 +109,21 @@ export function DeliveryProofModal({
     setIsUploading(true);
     try {
       await onUpload(selectedPhoto);
-      Alert.alert('증빙 업로드 완료', '배송 증빙 사진을 저장했습니다.');
-      onClose();
+      showDialog({
+        actions: [{ label: '확인', onPress: onClose, tone: 'primary' }],
+        dismissible: false,
+        message: '배송 증빙 사진을 저장했습니다.',
+        title: '증빙 업로드 완료',
+        tone: 'success',
+      });
     } catch (error) {
-      Alert.alert(
-        '증빙 업로드 실패',
-        error instanceof Error
+      showDialog({
+        message: error instanceof Error
           ? error.message
           : '배송 증빙 사진을 업로드하지 못했습니다.',
-      );
+        title: '증빙 업로드 실패',
+        tone: 'danger',
+      });
     } finally {
       setIsUploading(false);
     }
@@ -191,6 +214,7 @@ export function DeliveryProofModal({
           )}
         </View>
       </View>
+      {dialog}
     </Modal>
   );
 }
