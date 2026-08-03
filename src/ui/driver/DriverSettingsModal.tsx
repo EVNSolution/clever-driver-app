@@ -2,7 +2,6 @@ import { LocationManager } from '@maplibre/maplibre-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   AppState,
   Linking,
   Modal,
@@ -14,6 +13,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useAppDialog } from './AppDialog';
 
 type PermissionKey = 'camera' | 'location' | 'photos';
 type PermissionState = {
@@ -31,6 +32,7 @@ type DriverSettingsModalProps = {
 };
 
 export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
+  const { dialog, showDialog } = useAppDialog();
   const insets = useSafeAreaInsets();
   const [permissions, setPermissions] = useState<Record<PermissionKey, PermissionState>>({
     camera: INITIAL_PERMISSION,
@@ -50,6 +52,34 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
     return () => subscription.remove();
   }, []);
 
+  async function openAppSettings() {
+    try {
+      await Linking.openSettings();
+    } catch {
+      showDialog({
+        message: '기기 설정에서 CLEVER Driver 권한을 확인해 주세요.',
+        title: '설정을 열 수 없습니다',
+        tone: 'danger',
+      });
+    }
+  }
+
+  function showOpenSettingsDialog() {
+    showDialog({
+      actions: [
+        { label: '취소', tone: 'secondary' },
+        {
+          label: '설정 열기',
+          onPress: () => void openAppSettings(),
+          tone: 'primary',
+        },
+      ],
+      message: '이 권한은 앱에서 다시 요청할 수 없습니다.',
+      title: '기기 설정에서 허용해 주세요',
+      tone: 'warning',
+    });
+  }
+
   async function requestPermission(key: PermissionKey) {
     if (requestingPermission !== null) return;
     if (permissions[key].status === 'granted' || !permissions[key].canAskAgain) {
@@ -67,11 +97,15 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
       const granted = typeof result === 'boolean' ? result : result.granted;
       const canAskAgain = typeof result === 'boolean' ? true : result.canAskAgain;
       if (!granted && !canAskAgain) {
-        showOpenSettingsAlert();
+        showOpenSettingsDialog();
       }
       setPermissions(await readPermissionSnapshot());
     } catch {
-      Alert.alert('권한 확인 실패', '기기 설정에서 앱 권한을 확인해 주세요.');
+      showDialog({
+        message: '기기 설정에서 앱 권한을 확인해 주세요.',
+        title: '권한을 확인하지 못했습니다',
+        tone: 'danger',
+      });
     } finally {
       setRequestingPermission(null);
     }
@@ -146,6 +180,7 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
           </Pressable>
         </View>
       </View>
+      {dialog}
     </Modal>
   );
 }
@@ -230,25 +265,6 @@ async function readPermissionSnapshot(): Promise<
 
 async function requestLocationPermission(): Promise<boolean> {
   return LocationManager.requestPermissions();
-}
-
-async function openAppSettings() {
-  try {
-    await Linking.openSettings();
-  } catch {
-    Alert.alert('설정을 열 수 없습니다', '기기 설정에서 CLEVER Driver 권한을 확인해 주세요.');
-  }
-}
-
-function showOpenSettingsAlert() {
-  Alert.alert(
-    '기기 설정에서 권한을 허용해 주세요',
-    '이 권한은 앱에서 다시 요청할 수 없습니다.',
-    [
-      { style: 'cancel', text: '취소' },
-      { onPress: () => void openAppSettings(), text: '설정 열기' },
-    ],
-  );
 }
 
 const styles = StyleSheet.create({

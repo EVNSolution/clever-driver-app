@@ -344,4 +344,29 @@ describe('authenticated driver screens', () => {
     assert.match(settings, /getMediaLibraryPermissionsAsync/u);
     assert.match(settings, /Linking\.openSettings/u);
   });
+
+  it('uses the CLEVER dialog instead of Android alert dialogs', () => {
+    const dialog = readFileSync(
+      join(appDirectory, '../ui/driver/AppDialog.tsx'),
+      'utf8',
+    );
+    const dialogOwners = [
+      'DeliveryMapScreen.tsx',
+      'DeliveryProofModal.tsx',
+      'DeliverySpaceScreen.tsx',
+      'DriverSettingsModal.tsx',
+    ].map((fileName) => readFileSync(
+      join(appDirectory, `../ui/driver/${fileName}`),
+      'utf8',
+    ));
+
+    assert.match(dialog, /rgba\(15, 23, 42, 0\.56\)/u);
+    assert.match(dialog, /borderRadius: 24/u);
+    assert.match(dialog, /#0b57d0/u);
+    assert.match(dialog, /accessibilityViewIsModal/u);
+    for (const owner of dialogOwners) {
+      assert.match(owner, /useAppDialog/u);
+      assert.doesNotMatch(owner, /Alert\.alert/u);
+    }
+  });
 });

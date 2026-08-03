@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import {
 } from '../../domain/delivery/deliveryPlan';
 import { openDestinationMap } from '../../platform/destinationMap';
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
+import { useAppDialog } from './AppDialog';
 import { DeliveryProofModal } from './DeliveryProofModal';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
@@ -45,6 +45,7 @@ export function DeliveryMapScreen({
   serverRouteGeometry,
   timezone,
 }: DeliveryMapScreenProps) {
+  const { dialog, showDialog } = useAppDialog();
   const [isCompleting, setIsCompleting] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [proofDelivery, setProofDelivery] = useState<{
@@ -61,10 +62,11 @@ export function DeliveryMapScreen({
     try {
       await openDestinationMap(summary.address);
     } catch {
-      Alert.alert(
-        '주소를 복사했습니다',
-        '지도 앱을 열지 못했습니다. 다른 지도 앱에서 주소를 붙여넣어 주세요.',
-      );
+      showDialog({
+        message: '지도 앱을 열지 못했습니다. 다른 지도 앱에서 주소를 붙여넣어 주세요.',
+        title: '주소를 복사했습니다',
+        tone: 'info',
+      });
     }
   }
 
@@ -73,11 +75,9 @@ export function DeliveryMapScreen({
       return;
     }
 
-    Alert.alert(
-      '배송 완료',
-      `${summary.destinationName} 배송을 완료 처리할까요?`,
-      [
-        { style: 'cancel', text: '취소' },
+    showDialog({
+      actions: [
+        { label: '취소', tone: 'secondary' },
         {
           onPress: () => {
             setIsCompleting(true);
@@ -89,47 +89,55 @@ export function DeliveryMapScreen({
                 });
               })
               .catch((error: unknown) => {
-                Alert.alert(
-                  '배송 완료 실패',
-                  error instanceof Error
+                showDialog({
+                  message: error instanceof Error
                     ? error.message
                     : '배송 완료 상태를 저장하지 못했습니다.',
-                );
+                  title: '배송 완료 실패',
+                  tone: 'danger',
+                });
               })
               .finally(() => setIsCompleting(false));
           },
-          text: '완료',
+          label: '완료',
+          tone: 'primary',
         },
       ],
-    );
+      message: `${summary.destinationName} 배송을 완료 처리할까요?`,
+      title: '배송 완료',
+      tone: 'success',
+    });
   }
 
   function confirmDeliveryStart() {
     if (isStarting) return;
 
-    Alert.alert(
-      '배송 시작',
-      '픽업을 완료하고 배송을 시작할까요?',
-      [
-        { style: 'cancel', text: '취소' },
+    showDialog({
+      actions: [
+        { label: '취소', tone: 'secondary' },
         {
           onPress: () => {
             setIsStarting(true);
             void onStartDelivery()
               .catch((error: unknown) => {
-                Alert.alert(
-                  '배송 시작 실패',
-                  error instanceof Error
+                showDialog({
+                  message: error instanceof Error
                     ? error.message
                     : '배송 시작 상태를 저장하지 못했습니다.',
-                );
+                  title: '배송 시작 실패',
+                  tone: 'danger',
+                });
               })
               .finally(() => setIsStarting(false));
           },
-          text: '시작',
+          label: '시작',
+          tone: 'primary',
         },
       ],
-    );
+      message: '픽업을 완료하고 배송을 시작할까요?',
+      title: '배송 시작',
+      tone: 'info',
+    });
   }
 
   return (
@@ -243,6 +251,7 @@ export function DeliveryMapScreen({
           )}
         />
       )}
+      {dialog}
     </View>
   );
 }

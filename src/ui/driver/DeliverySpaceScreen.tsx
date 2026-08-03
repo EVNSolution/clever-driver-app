@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   type DriverDeliveryBundle,
   type DriverDeliverySpace,
 } from '../../api/dsvDriverDeliverySpace';
+import { useAppDialog } from './AppDialog';
 
 type SpaceSection = 'mine' | 'available';
 
@@ -29,6 +29,7 @@ export function DeliverySpaceScreen({
   onAssignmentsChanged(): void;
   onBack(): void;
 }) {
+  const { dialog, showDialog } = useAppDialog();
   const [section, setSection] = useState<SpaceSection>('mine');
   const [space, setSpace] = useState<DriverDeliverySpace | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -64,18 +65,19 @@ export function DeliverySpaceScreen({
   }, [accessToken]);
 
   function confirmRelease(bundle: DriverDeliveryBundle) {
-    Alert.alert(
-      '배송 반납',
-      `${bundle.destinationName} 배송지의 주문 ${bundle.orderCount}건을 공용 배송으로 반납할까요?`,
-      [
-        { style: 'cancel', text: '취소' },
+    showDialog({
+      actions: [
+        { label: '취소', tone: 'secondary' },
         {
           onPress: () => void runCommand(bundle, 'release'),
-          style: 'destructive',
-          text: '반납',
+          label: '반납',
+          tone: 'danger',
         },
       ],
-    );
+      message: `${bundle.destinationName} 배송지의 주문 ${bundle.orderCount}건을 공용 배송으로 반납할까요?`,
+      title: '배송 반납',
+      tone: 'warning',
+    });
   }
 
   async function runCommand(
@@ -212,6 +214,7 @@ export function DeliverySpaceScreen({
           ))}
         </ScrollView>
       )}
+      {dialog}
     </View>
   );
 }
