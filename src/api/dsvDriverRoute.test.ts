@@ -60,8 +60,8 @@ describe('DSV assigned route API client', () => {
             stops: [
               {
                 address: {
-                  address1: '서울시 강남구 테헤란로 1',
-                  address2: '2층',
+                  address1: '서울시 강남구 테헤란로 1 2층 (역삼동, 빌딩)',
+                  address2: '2층 (역삼동,빌딩)',
                   city: '서울',
                   postalCode: '06134',
                   province: '서울',
@@ -99,6 +99,10 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.orders[0]?.sellerOrderKey, '0525032088');
     assert.equal(route?.orders[0]?.shippedBoxes, 4);
     assert.equal(route?.orders[0]?.conditionCode, 'COLD');
+    assert.equal(
+      route?.orders[0]?.address,
+      '서울시 강남구 테헤란로 1 2층 (역삼동, 빌딩)',
+    );
     assert.deepEqual(route?.serverRouteGeometry, serverGeometry);
   });
 

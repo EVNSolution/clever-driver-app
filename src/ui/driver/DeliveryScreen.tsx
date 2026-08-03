@@ -118,9 +118,13 @@ export function DeliveryScreen({
       <View style={styles.deliveryHeader}>
         <View style={styles.deliveryHeadingCopy}>
           <Text style={styles.title}>{formatDeliveryDate(deliveryDate)} 배송</Text>
-          <Text style={styles.summaryText}>
-            주문 {orders.length}건 · 배송지 {destinationGroups.length}곳 · {totalBoxes}박스
-          </Text>
+          <View style={styles.summaryItems}>
+            <Text style={styles.summaryText}>주문 {orders.length}건</Text>
+            <View style={styles.summaryDivider} />
+            <Text style={styles.summaryText}>배송지 {destinationGroups.length}곳</Text>
+            <View style={styles.summaryDivider} />
+            <Text style={styles.summaryText}>{totalBoxes}박스</Text>
+          </View>
         </View>
         <View style={styles.headerActions}>
           <Pressable
@@ -128,6 +132,7 @@ export function DeliveryScreen({
             accessibilityRole="button"
             onPress={onOpenDeliverySpace}
             style={({ pressed }) => [
+              styles.headerActionButton,
               styles.spaceButton,
               pressed && styles.buttonPressed,
             ]}
@@ -139,6 +144,7 @@ export function DeliveryScreen({
             accessibilityRole="button"
             onPress={startEditing}
             style={({ pressed }) => [
+              styles.headerActionButton,
               styles.editButton,
               pressed && styles.buttonPressed,
             ]}
@@ -183,26 +189,51 @@ function DestinationGroupRow({
   index: number;
   isLast: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
-    <View style={[styles.orderRow, !isLast && styles.orderRowDivider]}>
-      <View style={styles.sequenceBadge}>
-        <Text style={styles.sequenceBadgeText}>{index + 1}</Text>
-      </View>
-      <View style={styles.orderCopy}>
-        <Text numberOfLines={1} style={styles.destinationName}>
-          {group.destinationName}
-        </Text>
-        <Text numberOfLines={2} style={styles.address}>
-          {group.address}
-        </Text>
-        <Text style={styles.groupOrderCount}>주문 {group.orderCount}건</Text>
-      </View>
-      <View style={styles.orderRight}>
-        <Text numberOfLines={1} style={styles.groupConditions}>
-          {group.conditionCodes.join(' · ')}
-        </Text>
-        <Text style={styles.boxCount}>{group.boxCount}박스</Text>
-      </View>
+    <View style={!isLast && styles.orderRowDivider}>
+      <Pressable
+        accessibilityLabel={`${group.destinationName} 주문 ${group.orderCount}건 ${isExpanded ? '접기' : '펼치기'}`}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={() => setIsExpanded((expanded) => !expanded)}
+        style={({ pressed }) => [styles.orderRow, pressed && styles.groupRowPressed]}
+      >
+        <View style={styles.sequenceBadge}>
+          <Text style={styles.sequenceBadgeText}>{index + 1}</Text>
+        </View>
+        <View style={styles.orderCopy}>
+          <Text numberOfLines={1} style={styles.destinationName}>
+            {group.destinationName}
+          </Text>
+          <Text numberOfLines={2} style={styles.address}>
+            {group.address}
+          </Text>
+          <Text style={styles.groupOrderCount}>주문 {group.orderCount}건</Text>
+        </View>
+        <View style={styles.orderRight}>
+          <Text numberOfLines={1} style={styles.groupConditions}>
+            {group.conditionCodes.join(' · ')}
+          </Text>
+          <View style={styles.groupBoxLine}>
+            <Text style={styles.boxCount}>{group.boxCount}박스</Text>
+            <Text style={styles.accordionChevron}>{isExpanded ? '▴' : '▾'}</Text>
+          </View>
+        </View>
+      </Pressable>
+
+      {isExpanded ? (
+        <View style={styles.groupOrders}>
+          {group.orders.map((order, orderIndex) => (
+            <View key={order.id} style={styles.groupOrderRow}>
+              <Text style={styles.groupOrderLabel}>주문 {orderIndex + 1}</Text>
+              <ConditionBadge conditionCode={order.conditionCode} />
+              <Text style={styles.groupOrderBoxes}>{order.shippedBoxes}박스</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -514,13 +545,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  editButton: {
+  summaryItems: {
     alignItems: 'center',
-    backgroundColor: '#0b57d0',
+    flexDirection: 'row',
+    gap: 7,
+  },
+  summaryDivider: {
+    backgroundColor: '#d0d5dd',
+    height: 12,
+    width: 1,
+  },
+  headerActionButton: {
+    alignItems: 'center',
     borderRadius: 10,
     justifyContent: 'center',
     minHeight: 44,
-    paddingHorizontal: 12,
+    width: 74,
+  },
+  editButton: {
+    backgroundColor: '#0b57d0',
   },
   editButtonText: {
     color: '#ffffff',
@@ -534,12 +577,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   spaceButton: {
-    alignItems: 'center',
     backgroundColor: '#e8f1ff',
-    borderRadius: 10,
-    justifyContent: 'center',
-    minHeight: 44,
-    paddingHorizontal: 10,
   },
   spaceButtonText: {
     color: '#0b57d0',
@@ -563,6 +601,9 @@ const styles = StyleSheet.create({
   orderRowDivider: {
     borderBottomColor: '#eaecf0',
     borderBottomWidth: 1,
+  },
+  groupRowPressed: {
+    opacity: 0.7,
   },
   orderCopy: {
     flex: 1,
@@ -606,6 +647,45 @@ const styles = StyleSheet.create({
     color: '#475467',
     fontSize: 10,
     fontWeight: '900',
+  },
+  groupBoxLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
+  accordionChevron: {
+    color: '#667085',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  groupOrders: {
+    backgroundColor: '#f8fafc',
+    borderTopColor: '#eaecf0',
+    borderTopWidth: 1,
+    marginBottom: 8,
+    marginLeft: 82,
+    paddingHorizontal: 12,
+  },
+  groupOrderRow: {
+    alignItems: 'center',
+    borderBottomColor: '#eaecf0',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 44,
+  },
+  groupOrderLabel: {
+    color: '#344054',
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  groupOrderBoxes: {
+    color: '#027a48',
+    fontSize: 11,
+    fontWeight: '800',
+    minWidth: 42,
+    textAlign: 'right',
   },
   boxCount: {
     color: '#027a48',

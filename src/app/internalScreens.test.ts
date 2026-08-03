@@ -88,6 +88,32 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /↑ 위로 이동|↓ 아래로 이동/u);
   });
 
+  it('expands a destination card to distinguish each order condition and box count', () => {
+    const source = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+
+    assert.match(source, /const \[isExpanded, setIsExpanded\] = useState\(false\)/u);
+    assert.match(source, /accessibilityState=\{\{ expanded: isExpanded \}\}/u);
+    assert.match(source, /group\.orders\.map/u);
+    assert.match(source, /주문 \{orderIndex \+ 1\}/u);
+    assert.match(source, /order\.conditionCode/u);
+    assert.match(source, /order\.shippedBoxes/u);
+  });
+
+  it('uses matching action-button geometry and visual summary separators', () => {
+    const source = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+
+    assert.equal(source.match(/styles\.headerActionButton/gu)?.length, 2);
+    assert.match(source, /styles\.summaryItems/u);
+    assert.match(source, /styles\.summaryDivider/u);
+    assert.doesNotMatch(source, /주문 \{orders\.length\}건 · 배송지/u);
+  });
+
   it('reorders individual seller orders from a left drag handle', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),

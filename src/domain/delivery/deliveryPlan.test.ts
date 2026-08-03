@@ -77,6 +77,10 @@ describe('delivery order plan', () => {
     );
     assert.deepEqual(groups[0]?.conditionCodes, ['AMBIENT', 'COLD']);
     assert.equal(groups[0]?.orderCount, 3);
+    assert.deepEqual(
+      groups[0]?.orders.map(({ id }) => id),
+      [firstOrder.id, PREVIEW_DELIVERY_ORDERS[1]?.id, movedLocationOrder.id],
+    );
   });
 
   it('clamps a dragged order to the plan boundary', () => {

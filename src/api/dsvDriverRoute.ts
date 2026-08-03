@@ -198,16 +198,15 @@ function mapAssignedRouteStop(stop: AssignedRouteStop): DeliveryOrder {
     );
   }
 
+  const address = formatDeliveryAddress([
+    stop.address.province,
+    stop.address.city,
+    stop.address.address1,
+    stop.address.address2,
+  ]);
+
   return {
-    address: [
-      stop.address.province,
-      stop.address.city,
-      stop.address.address1,
-      stop.address.address2,
-      stop.address.postalCode,
-    ].filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
-      .filter((part, index, parts) => parts.indexOf(part) === index)
-      .join(' '),
+    address,
     conditionCode: stop.conditionCode,
     coordinate: { latitude: latitude as number, longitude: longitude as number },
     customerCode: '',
@@ -219,6 +218,43 @@ function mapAssignedRouteStop(stop: AssignedRouteStop): DeliveryOrder {
     sequence: stop.sequence,
     shippedBoxes: stop.shippedBoxes as number,
   };
+}
+
+function formatDeliveryAddress(parts: (string | null)[]): string {
+  const mergedParts: string[] = [];
+
+  for (const rawPart of parts) {
+    const part = rawPart?.trim().replace(/\s+/gu, ' ');
+    if (!part) {
+      continue;
+    }
+
+    const comparisonPart = normalizeAddressForComparison(part);
+    if (
+      mergedParts.some((existingPart) =>
+        normalizeAddressForComparison(existingPart).includes(comparisonPart),
+      )
+    ) {
+      continue;
+    }
+
+    for (let index = mergedParts.length - 1; index >= 0; index -= 1) {
+      const existingPart = mergedParts[index];
+      if (
+        existingPart !== undefined &&
+        comparisonPart.includes(normalizeAddressForComparison(existingPart))
+      ) {
+        mergedParts.splice(index, 1);
+      }
+    }
+    mergedParts.push(part);
+  }
+
+  return mergedParts.join(' ');
+}
+
+function normalizeAddressForComparison(address: string): string {
+  return address.replace(/[\s,()[\]{}.-]/gu, '');
 }
 
 function readServerRouteGeometry(
