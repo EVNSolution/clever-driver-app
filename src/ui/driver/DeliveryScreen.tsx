@@ -44,6 +44,7 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 
 type DeliveryScreenProps = {
   deliveryDate: string;
+  onOpenDeliverySpace(): void;
   onOrdersChange(orders: DeliveryOrder[]): void;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -51,6 +52,7 @@ type DeliveryScreenProps = {
 
 export function DeliveryScreen({
   deliveryDate,
+  onOpenDeliverySpace,
   onOrdersChange,
   orders,
   serverRouteGeometry,
@@ -117,17 +119,30 @@ export function DeliveryScreen({
             주문 {orders.length}건 · {totalBoxes}박스
           </Text>
         </View>
-        <Pressable
-          accessibilityLabel="배송 순서 편집"
-          accessibilityRole="button"
-          onPress={startEditing}
-          style={({ pressed }) => [
-            styles.editButton,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.editButtonText}>순서 편집</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityLabel="주문 목록 열기"
+            accessibilityRole="button"
+            onPress={onOpenDeliverySpace}
+            style={({ pressed }) => [
+              styles.spaceButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.spaceButtonText}>주문 목록</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="배송 순서 편집"
+            accessibilityRole="button"
+            onPress={startEditing}
+            style={({ pressed }) => [
+              styles.editButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.editButtonText}>순서 편집</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.orderList}>
@@ -479,6 +494,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   deliveryHeadingCopy: {
+    flex: 1,
     gap: 2,
   },
   title: {
@@ -498,12 +514,31 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     minHeight: 44,
-    paddingHorizontal: 15,
+    paddingHorizontal: 12,
   },
   editButtonText: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '800',
+  },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginLeft: 8,
+  },
+  spaceButton: {
+    alignItems: 'center',
+    backgroundColor: '#e8f1ff',
+    borderRadius: 10,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 10,
+  },
+  spaceButtonText: {
+    color: '#0b57d0',
+    fontSize: 11,
+    fontWeight: '900',
   },
   orderList: {
     backgroundColor: '#ffffff',

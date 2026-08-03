@@ -56,6 +56,7 @@ export type DriverDeliveryRoute = {
   routeId: string;
   routeName: string;
   routePlanId: string;
+  routeAccessToken: string;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
 };
 
@@ -116,6 +117,7 @@ export async function loadDriverDeliveryRoute(
     routeId: route.id,
     routeName: route.name,
     routePlanId: routeChoice.routePlanId,
+    routeAccessToken: routeChoice.routeAccessToken,
     serverRouteGeometry: readServerRouteGeometry(route.routeGeometry),
     availableRoutes: routeChoices,
   };
