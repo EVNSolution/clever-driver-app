@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildCurrentDeliverySummary,
   buildDeliveryDestinationPoints,
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
@@ -109,6 +110,30 @@ describe('delivery order plan', () => {
       firstOrder.coordinate.longitude,
       firstOrder.coordinate.latitude,
     ]);
+  });
+
+  it('summarizes the server-selected next stop destination', () => {
+    const firstOrder = PREVIEW_DELIVERY_ORDERS[0];
+    const secondOrder = PREVIEW_DELIVERY_ORDERS[1];
+    assert.ok(firstOrder);
+    assert.ok(secondOrder);
+
+    const summary = buildCurrentDeliverySummary(
+      [
+        { ...firstOrder, estimatedArrivalAt: '2026-08-03T01:30:00.000Z' },
+        secondOrder,
+      ],
+      firstOrder.id,
+    );
+
+    assert.deepEqual(summary, {
+      boxCount: firstOrder.shippedBoxes + secondOrder.shippedBoxes,
+      destinationId: firstOrder.destinationId,
+      destinationName: firstOrder.destinationName,
+      estimatedArrivalAt: '2026-08-03T01:30:00.000Z',
+      orderCount: 2,
+      deliveryStopId: firstOrder.id,
+    });
   });
 
   it('clamps a dragged order to the plan boundary', () => {

@@ -17,11 +17,13 @@ import {
 
 import {
   buildDeliveryDestinationPoints,
+  type DeliveryCoordinate,
   type DeliveryOrder,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 
 const DESTINATION_PIN_IMAGE = require('../../../assets/map/destination-pin.png') as number;
+const DEPOT_PIN_IMAGE = require('../../../assets/map/depot-pin.png') as number;
 
 const DESTINATION_MARKER_LAYOUT = {
   'icon-allow-overlap': true,
@@ -47,11 +49,20 @@ const DESTINATION_MARKER_PAINT = {
   'text-halo-width': 0.6,
 } satisfies SymbolLayerSpecification['paint'];
 
+const DEPOT_MARKER_LAYOUT = {
+  ...DESTINATION_MARKER_LAYOUT,
+  'icon-image': 'delivery-depot-pin-image',
+  'symbol-sort-key': 1,
+  'text-field': '출발',
+  'text-size': 8,
+} satisfies SymbolLayerSpecification['layout'];
+
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 const MAP_PADDING = { bottom: 44, left: 34, right: 34, top: 44 } as const;
 const FALLBACK_BOUNDS = [126.91, 37.48, 127.16, 37.66] as const;
 
 type DeliveryRouteMapProps = {
+  depotCoordinate?: DeliveryCoordinate | null;
   interactionMode: 'explore' | 'pan-only';
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -61,6 +72,7 @@ type DeliveryRouteMapProps = {
 type MapLoadState = 'loading' | 'ready' | 'error';
 
 export function DeliveryRouteMap({
+  depotCoordinate = null,
   interactionMode,
   orders,
   serverRouteGeometry,
@@ -68,8 +80,8 @@ export function DeliveryRouteMap({
 }: DeliveryRouteMapProps) {
   const [mapLoadState, setMapLoadState] = useState<MapLoadState>('loading');
   const mapModel = useMemo(
-    () => buildDeliveryMapModel(orders, serverRouteGeometry),
-    [orders, serverRouteGeometry],
+    () => buildDeliveryMapModel(orders, serverRouteGeometry, depotCoordinate),
+    [depotCoordinate, orders, serverRouteGeometry],
   );
   const canExplore = interactionMode === 'explore';
 
@@ -96,7 +108,10 @@ export function DeliveryRouteMap({
           minZoom={4}
         />
         <Images
-          images={{ 'delivery-destination-pin-image': DESTINATION_PIN_IMAGE }}
+          images={{
+            'delivery-depot-pin-image': DEPOT_PIN_IMAGE,
+            'delivery-destination-pin-image': DESTINATION_PIN_IMAGE,
+          }}
         />
         {serverRouteGeometry !== null ? (
           <GeoJSONSource
@@ -125,6 +140,17 @@ export function DeliveryRouteMap({
             type="symbol"
           />
         </GeoJSONSource>
+        {mapModel.depot === null ? null : (
+          <GeoJSONSource data={mapModel.depot} id="delivery-depot-source">
+            <Layer
+              id="delivery-depot-marker"
+              layout={DEPOT_MARKER_LAYOUT}
+              paint={DESTINATION_MARKER_PAINT}
+              source="delivery-depot-source"
+              type="symbol"
+            />
+          </GeoJSONSource>
+        )}
       </MapLibreMap>
 
       {mapLoadState !== 'ready' ? (
@@ -148,8 +174,10 @@ export function DeliveryRouteMap({
 function buildDeliveryMapModel(
   orders: DeliveryOrder[],
   serverRouteGeometry: ServerDeliveryRouteGeometry | null,
+  depotCoordinate: DeliveryCoordinate | null,
 ): {
   bounds: [number, number, number, number];
+  depot: GeoJSON.Feature<GeoJSON.Point> | null;
   markers: GeoJSON.FeatureCollection<
     GeoJSON.Point,
     { destinationId: string; label: string; sortKey: number }
@@ -157,6 +185,12 @@ function buildDeliveryMapModel(
 } {
   const points = buildDeliveryDestinationPoints(orders);
   const visibleCoordinates = [
+    ...(depotCoordinate === null
+      ? []
+      : [[
+          depotCoordinate.longitude,
+          depotCoordinate.latitude,
+        ] as [longitude: number, latitude: number]]),
     ...points.map(({ coordinate }) => coordinate),
     ...(serverRouteGeometry?.coordinates ?? []),
   ];
@@ -164,6 +198,17 @@ function buildDeliveryMapModel(
 
   return {
     bounds,
+    depot:
+      depotCoordinate === null
+        ? null
+        : {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [depotCoordinate.longitude, depotCoordinate.latitude],
+            },
+            properties: {},
+          },
     markers: {
       type: 'FeatureCollection',
       features: points.map((point) => ({

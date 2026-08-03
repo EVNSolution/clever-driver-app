@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { DriverAuthSession } from '../../api/dsvDriverAuth';
+import { completeDriverDeliveryStop } from '../../api/dsvDriverEvents';
 import {
   loadDriverDeliveryRoute,
   type DriverDeliveryRoute,
@@ -80,6 +81,19 @@ export function DriverWorkspace({
     setSelectedRoutePlanId(routePlanId);
   }
 
+  async function completeDelivery(deliveryStopId: string) {
+    if (route === null) {
+      return;
+    }
+
+    await completeDriverDeliveryStop(
+      route.routeAccessToken,
+      route.routeId,
+      deliveryStopId,
+    );
+    setLoadAttempt((attempt) => attempt + 1);
+  }
+
   return (
     <View style={styles.workspace}>
       <View style={styles.appHeader}>
@@ -132,8 +146,13 @@ export function DriverWorkspace({
               </>
             ) : (
               <DeliveryMapScreen
+                canCompleteDelivery={route.etaStatus !== 'PRE_PICKUP'}
+                depotCoordinate={route.depotCoordinate}
+                nextDeliveryStopId={route.nextDeliveryStopId}
+                onCompleteDelivery={completeDelivery}
                 orders={orders}
                 serverRouteGeometry={route.serverRouteGeometry}
+                timezone={route.timezone}
               />
             )}
           </>
