@@ -1,9 +1,9 @@
 import {
   Camera,
   GeoJSONSource,
+  Images,
   Layer,
   Map as MapLibreMap,
-  type CircleLayerSpecification,
   type SymbolLayerSpecification,
 } from '@maplibre/maplibre-react-native';
 import { useMemo, useState } from 'react';
@@ -15,33 +15,41 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import type {
-  DeliveryOrder,
-  ServerDeliveryRouteGeometry,
+import {
+  buildDeliveryDestinationPoints,
+  type DeliveryOrder,
+  type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
+
+const DESTINATION_PIN_IMAGE = require('../../../assets/map/destination-pin.png') as number;
+
+const DESTINATION_MARKER_LAYOUT = {
+  'icon-allow-overlap': true,
+  'icon-anchor': 'bottom',
+  'icon-ignore-placement': true,
+  'icon-image': 'delivery-destination-pin-image',
+  'icon-optional': false,
+  'icon-size': 0.62,
+  'symbol-sort-key': ['get', 'sortKey'],
+  'text-allow-overlap': true,
+  'text-anchor': 'center',
+  'text-field': ['get', 'label'],
+  'text-font': ['Noto Sans Bold'],
+  'text-ignore-placement': true,
+  'text-offset': [0, -2],
+  'text-optional': false,
+  'text-size': 10,
+} satisfies SymbolLayerSpecification['layout'];
+
+const DESTINATION_MARKER_PAINT = {
+  'text-color': '#ffffff',
+  'text-halo-color': 'rgba(0, 0, 0, 0.32)',
+  'text-halo-width': 0.6,
+} satisfies SymbolLayerSpecification['paint'];
 
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 const MAP_PADDING = { bottom: 44, left: 34, right: 34, top: 44 } as const;
 const FALLBACK_BOUNDS = [126.91, 37.48, 127.16, 37.66] as const;
-
-const MARKER_PAINT = {
-  'circle-color': '#0b57d0',
-  'circle-radius': 20,
-  'circle-stroke-color': '#ffffff',
-  'circle-stroke-width': 3,
-} satisfies CircleLayerSpecification['paint'];
-
-const MARKER_LABEL_LAYOUT = {
-  'text-allow-overlap': true,
-  'text-field': ['get', 'label'],
-  'text-font': ['Noto Sans Bold'],
-  'text-ignore-placement': true,
-  'text-size': 10,
-} satisfies SymbolLayerSpecification['layout'];
-
-const MARKER_LABEL_PAINT = {
-  'text-color': '#ffffff',
-} satisfies SymbolLayerSpecification['paint'];
 
 type DeliveryRouteMapProps = {
   interactionMode: 'explore' | 'pan-only';
@@ -87,6 +95,9 @@ export function DeliveryRouteMap({
           maxZoom={17}
           minZoom={4}
         />
+        <Images
+          images={{ 'delivery-destination-pin-image': DESTINATION_PIN_IMAGE }}
+        />
         {serverRouteGeometry !== null ? (
           <GeoJSONSource
             data={serverRouteGeometry}
@@ -107,15 +118,9 @@ export function DeliveryRouteMap({
         ) : null}
         <GeoJSONSource data={mapModel.markers} id="delivery-marker-source">
           <Layer
-            id="delivery-marker-circle"
-            paint={MARKER_PAINT}
-            source="delivery-marker-source"
-            type="circle"
-          />
-          <Layer
-            id="delivery-marker-label"
-            layout={MARKER_LABEL_LAYOUT}
-            paint={MARKER_LABEL_PAINT}
+            id="delivery-destination-marker"
+            layout={DESTINATION_MARKER_LAYOUT}
+            paint={DESTINATION_MARKER_PAINT}
             source="delivery-marker-source"
             type="symbol"
           />
@@ -145,31 +150,12 @@ function buildDeliveryMapModel(
   serverRouteGeometry: ServerDeliveryRouteGeometry | null,
 ): {
   bounds: [number, number, number, number];
-  markers: GeoJSON.FeatureCollection<GeoJSON.Point, { label: string }>;
+  markers: GeoJSON.FeatureCollection<
+    GeoJSON.Point,
+    { destinationId: string; label: string; sortKey: number }
+  >;
 } {
-  const destinationPoints = new globalThis.Map<
-    string,
-    {
-      coordinate: [longitude: number, latitude: number];
-      sequences: number[];
-    }
-  >();
-
-  for (const order of orders) {
-    const point = destinationPoints.get(order.destinationId);
-
-    if (point === undefined) {
-      destinationPoints.set(order.destinationId, {
-        coordinate: [order.coordinate.longitude, order.coordinate.latitude],
-        sequences: [order.sequence],
-      });
-      continue;
-    }
-
-    point.sequences.push(order.sequence);
-  }
-
-  const points = [...destinationPoints.values()];
+  const points = buildDeliveryDestinationPoints(orders);
   const visibleCoordinates = [
     ...points.map(({ coordinate }) => coordinate),
     ...(serverRouteGeometry?.coordinates ?? []),
@@ -186,7 +172,11 @@ function buildDeliveryMapModel(
           type: 'Point',
           coordinates: point.coordinate,
         },
-        properties: { label: point.sequences.join('·') },
+        properties: {
+          destinationId: point.destinationId,
+          label: point.label,
+          sortKey: -point.sortOrder,
+        },
       })),
     },
   };

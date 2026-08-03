@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildDeliveryDestinationPoints,
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
   PREVIEW_DELIVERY_ORDERS,
@@ -81,6 +82,33 @@ describe('delivery order plan', () => {
       groups[0]?.orders.map(({ id }) => id),
       [firstOrder.id, PREVIEW_DELIVERY_ORDERS[1]?.id, movedLocationOrder.id],
     );
+  });
+
+  it('builds one numbered map point per canonical destination', () => {
+    const firstOrder = PREVIEW_DELIVERY_ORDERS[0];
+    assert.ok(firstOrder);
+    const duplicateDestinationOrder = {
+      ...firstOrder,
+      coordinate: {
+        latitude: firstOrder.coordinate.latitude + 0.0001,
+        longitude: firstOrder.coordinate.longitude + 0.0001,
+      },
+      id: 'duplicate-destination-order',
+      sequence: 99,
+    };
+
+    const points = buildDeliveryDestinationPoints([
+      ...PREVIEW_DELIVERY_ORDERS,
+      duplicateDestinationOrder,
+    ]);
+
+    assert.equal(points.length, 3);
+    assert.deepEqual(points.map(({ label }) => label), ['1', '2', '3']);
+    assert.equal(points[0]?.destinationId, firstOrder.destinationId);
+    assert.deepEqual(points[0]?.coordinate, [
+      firstOrder.coordinate.longitude,
+      firstOrder.coordinate.latitude,
+    ]);
   });
 
   it('clamps a dragged order to the plan boundary', () => {
