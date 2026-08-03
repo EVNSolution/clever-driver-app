@@ -19,6 +19,7 @@ import {
 import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
+import { DriverSettingsModal } from './DriverSettingsModal';
 import { DeliverySpaceScreen } from './DeliverySpaceScreen';
 
 type DriverWorkspaceTab = 'delivery' | 'map';
@@ -34,6 +35,7 @@ export function DriverWorkspace({
 }: DriverWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
   const [isDeliverySpaceOpen, setIsDeliverySpaceOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -135,16 +137,33 @@ export function DriverWorkspace({
             {driverName} 배송원
           </Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onLogout}
-          style={({ pressed }) => [
-            styles.logoutButton,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.logoutButtonText}>로그아웃</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityLabel="환경설정"
+            accessibilityRole="button"
+            onPress={() => setIsSettingsOpen(true)}
+            style={({ pressed }) => [
+              styles.settingsButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <SymbolView
+              name={{ android: 'settings', ios: 'gearshape.fill', web: 'settings' }}
+              size={18}
+              tintColor="#475467"
+            />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onLogout}
+            style={({ pressed }) => [
+              styles.logoutButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.logoutButtonText}>로그아웃</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.screenArea}>
@@ -189,6 +208,10 @@ export function DriverWorkspace({
           </>
         )}
       </View>
+
+      {isSettingsOpen ? (
+        <DriverSettingsModal onClose={() => setIsSettingsOpen(false)} />
+      ) : null}
 
       <View accessibilityRole="tablist" style={styles.tabBar}>
         <TabButton
@@ -442,6 +465,19 @@ const styles = StyleSheet.create({
     color: '#667085',
     fontSize: 11,
     maxWidth: 220,
+  },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  settingsButton: {
+    alignItems: 'center',
+    backgroundColor: '#f2f4f7',
+    borderRadius: 10,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
   },
   logoutButton: {
     alignItems: 'center',

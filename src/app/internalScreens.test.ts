@@ -308,5 +308,40 @@ describe('authenticated driver screens', () => {
     assert.match(proofModal, /<Image/u);
     assert.match(proofModal, /10 \* 1024 \* 1024/u);
     assert.match(workspace, /uploadDriverProofPhoto/u);
+    const proofClient = readFileSync(
+      join(appDirectory, '../api/dsvDriverProofMedia.ts'),
+      'utf8',
+    );
+    assert.match(proofClient, /import\('expo\/fetch'\)/u);
+    assert.match(proofClient, /import\('expo-file-system'\)/u);
+    assert.match(proofClient, /new File\(uri\)/u);
+    assert.doesNotMatch(proofClient, /as unknown as Blob/u);
+  });
+
+  it('opens permission settings to the left of logout', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const settings = readFileSync(
+      join(appDirectory, '../ui/driver/DriverSettingsModal.tsx'),
+      'utf8',
+    );
+
+    assert.match(workspace, /DriverSettingsModal/u);
+    assert.match(workspace, /accessibilityLabel="환경설정"/u);
+    assert.ok(
+      workspace.indexOf('accessibilityLabel="환경설정"')
+        < workspace.indexOf('<Text style={styles.logoutButtonText}>로그아웃</Text>'),
+    );
+    assert.match(settings, /앱 권한/u);
+    assert.match(settings, /위치/u);
+    assert.match(settings, /카메라/u);
+    assert.match(settings, /사진 앨범/u);
+    assert.match(settings, /PermissionsAndroid\.check/u);
+    assert.match(settings, /LocationManager\.requestPermissions/u);
+    assert.match(settings, /getCameraPermissionsAsync/u);
+    assert.match(settings, /getMediaLibraryPermissionsAsync/u);
+    assert.match(settings, /Linking\.openSettings/u);
   });
 });

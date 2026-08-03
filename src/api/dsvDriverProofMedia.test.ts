@@ -31,14 +31,21 @@ describe('DSV driver proof media API client', () => {
       }), { status: 201 });
     };
 
-    const result = await uploadDriverProofPhoto('route-token', {
-      deliveryStopId: 'stop-1',
-      fileName: 'proof.jpg',
-      mimeType: 'image/jpeg',
-      routePlanId: 'route-1',
-      source: 'library',
-      uri: 'file:///proof.jpg',
-    });
+    const result = await uploadDriverProofPhoto(
+      'route-token',
+      {
+        deliveryStopId: 'stop-1',
+        fileName: 'proof.jpg',
+        mimeType: 'image/jpeg',
+        routePlanId: 'route-1',
+        source: 'library',
+        uri: 'file:///proof.jpg',
+      },
+      {
+        fetch: globalThis.fetch,
+        file: new Blob(['proof'], { type: 'image/jpeg' }),
+      },
+    );
 
     assert.equal(result.mediaId, 'media-1');
     assert.equal(request?.input, 'https://dsv.example.test/driver/proof-media');

@@ -27,21 +27,24 @@ type DriverProofMediaEnvelope = {
   error?: { code: string; message: string } | null;
 };
 
+type DriverProofUploadRuntime = {
+  fetch(input: string, init: RequestInit): Promise<Response>;
+  file: Blob;
+};
+
 export async function uploadDriverProofPhoto(
   accessToken: string,
   input: DriverProofPhotoUpload,
+  runtime?: DriverProofUploadRuntime,
 ): Promise<DriverProofMedia> {
+  const uploadRuntime = runtime ?? await loadDriverProofUploadRuntime(input.uri);
   const body = new FormData();
   body.append('deliveryStopId', input.deliveryStopId);
   body.append('routePlanId', input.routePlanId);
   body.append('source', input.source);
-  body.append('file', {
-    name: input.fileName,
-    type: input.mimeType,
-    uri: input.uri,
-  } as unknown as Blob);
+  body.append('file', uploadRuntime.file, input.fileName);
 
-  const response = await fetch(resolveDsvApiUrl('/driver/proof-media'), {
+  const response = await uploadRuntime.fetch(resolveDsvApiUrl('/driver/proof-media'), {
     body,
     headers: {
       Accept: 'application/json',
@@ -57,4 +60,17 @@ export async function uploadDriverProofPhoto(
   }
 
   return envelope.data;
+}
+
+async function loadDriverProofUploadRuntime(
+  uri: string,
+): Promise<DriverProofUploadRuntime> {
+  const [{ fetch }, { File }] = await Promise.all([
+    import('expo/fetch'),
+    import('expo-file-system'),
+  ]);
+  return {
+    fetch: fetch as DriverProofUploadRuntime['fetch'],
+    file: new File(uri),
+  };
 }
