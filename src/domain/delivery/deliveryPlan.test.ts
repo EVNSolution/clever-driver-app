@@ -120,19 +120,31 @@ describe('delivery order plan', () => {
 
     const summary = buildCurrentDeliverySummary(
       [
-        { ...firstOrder, estimatedArrivalAt: '2026-08-03T01:30:00.000Z' },
+        {
+          ...firstOrder,
+          estimatedArrivalAt: '2026-08-03T01:30:00.000Z',
+          notes: '도착 전 연락',
+          timeWindowEnd: '2026-08-03T03:00:00.000Z',
+          timeWindowStart: '2026-08-03T02:00:00.000Z',
+        },
         secondOrder,
       ],
       firstOrder.id,
     );
 
     assert.deepEqual(summary, {
+      address: firstOrder.address,
       boxCount: firstOrder.shippedBoxes + secondOrder.shippedBoxes,
+      conditionCodes: [firstOrder.conditionCode, secondOrder.conditionCode],
       destinationId: firstOrder.destinationId,
       destinationName: firstOrder.destinationName,
       estimatedArrivalAt: '2026-08-03T01:30:00.000Z',
+      notes: ['도착 전 연락'],
       orderCount: 2,
       deliveryStopId: firstOrder.id,
+      timeWindowEnd: '2026-08-03T03:00:00.000Z',
+      timeWindowOrderCount: 1,
+      timeWindowStart: '2026-08-03T02:00:00.000Z',
     });
   });
 

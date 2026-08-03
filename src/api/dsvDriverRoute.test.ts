@@ -78,13 +78,16 @@ describe('DSV assigned route API client', () => {
                 coordinates: { latitude: 37.51, longitude: 127.01 },
                 deliveryStopId: 'stop-1',
                 destinationId: null,
-                estimatedArrivalAt: '2026-07-31T01:30:00.000Z',
+                customerNote: '10분 전 연락',
+                estimatedArrivalAt: null,
                 orderName: '#0525032088',
                 recipientName: '케이팜',
                 sellerOrderKey: '0525032088',
                 sequence: 1,
                 shippedBoxes: 4,
                 status: 'PENDING',
+                timeWindowEnd: '2026-07-31T03:00:00.000Z',
+                timeWindowStart: '2026-07-31T02:00:00.000Z',
               },
             ],
           },
@@ -109,6 +112,8 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.orders[0]?.shippedBoxes, 4);
     assert.equal(route?.orders[0]?.conditionCode, 'COLD');
     assert.equal(route?.orders[0]?.estimatedArrivalAt, '2026-07-31T01:30:00.000Z');
+    assert.equal(route?.orders[0]?.notes, '10분 전 연락');
+    assert.equal(route?.orders[0]?.timeWindowEnd, '2026-07-31T03:00:00.000Z');
     assert.equal(route?.orders[0]?.status, 'PENDING');
     assert.equal(
       route?.orders[0]?.address,
