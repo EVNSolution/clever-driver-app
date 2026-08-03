@@ -281,4 +281,32 @@ describe('authenticated driver screens', () => {
       /geometry: \{ type: 'LineString', coordinates \}/u,
     );
   });
+
+  it('offers camera and album proof upload after delivery completion', () => {
+    const mapScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryMapScreen.tsx'),
+      'utf8',
+    );
+    const proofModal = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryProofModal.tsx'),
+      'utf8',
+    );
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+
+    assert.match(mapScreen, /DeliveryProofModal/u);
+    assert.match(mapScreen, /setProofDelivery/u);
+    assert.match(mapScreen, /onCompleteDelivery\(summary\.deliveryStopId\)/u);
+    assert.match(proofModal, /배송 증빙 추가/u);
+    assert.match(proofModal, /사진 촬영/u);
+    assert.match(proofModal, /앨범에서 선택/u);
+    assert.match(proofModal, /requestCameraPermissionsAsync/u);
+    assert.match(proofModal, /launchCameraAsync/u);
+    assert.match(proofModal, /launchImageLibraryAsync/u);
+    assert.match(proofModal, /<Image/u);
+    assert.match(proofModal, /10 \* 1024 \* 1024/u);
+    assert.match(workspace, /uploadDriverProofPhoto/u);
+  });
 });

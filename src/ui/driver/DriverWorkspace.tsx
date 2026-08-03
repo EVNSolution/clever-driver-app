@@ -8,6 +8,10 @@ import {
   startDriverDeliveryRoute,
 } from '../../api/dsvDriverEvents';
 import {
+  uploadDriverProofPhoto,
+  type DriverProofPhotoUpload,
+} from '../../api/dsvDriverProofMedia';
+import {
   loadDriverDeliveryRoute,
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
@@ -106,6 +110,19 @@ export function DriverWorkspace({
     setLoadAttempt((attempt) => attempt + 1);
   }
 
+  async function uploadDeliveryProof(
+    deliveryStopId: string,
+    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
+  ) {
+    if (route === null) return;
+
+    await uploadDriverProofPhoto(route.routeAccessToken, {
+      ...photo,
+      deliveryStopId,
+      routePlanId: route.routeId,
+    });
+  }
+
   return (
     <View style={styles.workspace}>
       <View style={styles.appHeader}>
@@ -163,6 +180,7 @@ export function DriverWorkspace({
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onCompleteDelivery={completeDelivery}
                 onStartDelivery={startDelivery}
+                onUploadProof={uploadDeliveryProof}
                 orders={orders}
                 serverRouteGeometry={route.serverRouteGeometry}
                 timezone={route.timezone}

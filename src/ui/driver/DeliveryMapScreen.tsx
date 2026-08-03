@@ -15,6 +15,8 @@ import {
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 import { openDestinationMap } from '../../platform/destinationMap';
+import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
+import { DeliveryProofModal } from './DeliveryProofModal';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
 type DeliveryMapScreenProps = {
@@ -23,6 +25,10 @@ type DeliveryMapScreenProps = {
   nextDeliveryStopId: string | null;
   onCompleteDelivery(deliveryStopId: string): Promise<void>;
   onStartDelivery(): Promise<void>;
+  onUploadProof(
+    deliveryStopId: string,
+    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
+  ): Promise<void>;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
@@ -34,12 +40,17 @@ export function DeliveryMapScreen({
   nextDeliveryStopId,
   onCompleteDelivery,
   onStartDelivery,
+  onUploadProof,
   orders,
   serverRouteGeometry,
   timezone,
 }: DeliveryMapScreenProps) {
   const [isCompleting, setIsCompleting] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [proofDelivery, setProofDelivery] = useState<{
+    deliveryStopId: string;
+    destinationName: string;
+  } | null>(null);
   const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
   const isCompletionDisabled =
     etaStatus === 'PRE_PICKUP' || summary === null || isCompleting || isStarting;
@@ -71,6 +82,12 @@ export function DeliveryMapScreen({
           onPress: () => {
             setIsCompleting(true);
             void onCompleteDelivery(summary.deliveryStopId)
+              .then(() => {
+                setProofDelivery({
+                  deliveryStopId: summary.deliveryStopId,
+                  destinationName: summary.destinationName,
+                });
+              })
               .catch((error: unknown) => {
                 Alert.alert(
                   '배송 완료 실패',
@@ -216,6 +233,16 @@ export function DeliveryMapScreen({
           </Pressable>
         </View>
       </View>
+
+      {proofDelivery === null ? null : (
+        <DeliveryProofModal
+          destinationName={proofDelivery.destinationName}
+          onClose={() => setProofDelivery(null)}
+          onUpload={(photo) => (
+            onUploadProof(proofDelivery.deliveryStopId, photo)
+          )}
+        />
+      )}
     </View>
   );
 }
