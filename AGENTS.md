@@ -76,6 +76,17 @@ control-plane preflight와 명시적인 대상 저장소가 준비된 뒤 진행
 구현하거나 push하지 않는다. 연결된 issue가 없는 임의 작업 브랜치를 만들지
 않는다.
 
+## Android 직접 배포
+
+- Google Drive 배포 파일은 `clever-driver-latest.apk`, 파일 ID는
+  `1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y`로 고정한다.
+- 새 파일이나 버전별 파일명을 만들지 않고 기존 Drive 파일 ID의 APK 내용만 교체한다.
+- 게시 전에 Android `versionCode`를 직전 게시 버전보다 증가시키고 `versionName`을
+  `app.json`과 `android/app/build.gradle`에 동일하게 반영한다.
+- 직접 Drive API를 조합하지 않고 `npm run release:android:drive`만 사용한다. 이 명령은
+  승인된 계정, 폴더, 파일명, 패키지 ID, 버전 증가와 업로드 checksum을 검증한다.
+- DSV 웹의 설치 주소는 `docs/android-drive-release.md`의 고정 URL을 사용한다.
+
 ## 완료 조건
 
 - 의도한 파일만 변경했다.
