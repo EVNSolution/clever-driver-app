@@ -19,7 +19,6 @@ import {
 } from '../../api/dsvDriverAuth';
 import {
   normalizePhoneNumber,
-  normalizeResidentNumberFront,
   validateLoginForm,
   validateRegistrationForm,
   type LoginFormErrors,
@@ -41,7 +40,6 @@ const EMPTY_REGISTRATION_FORM: RegistrationFormValues = {
   password: '',
   passwordConfirmation: '',
   phoneNumber: '',
-  residentNumberFront: '',
 };
 
 type AuthEntryScreenProps = {
@@ -116,7 +114,7 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
         name: registrationForm.name.trim(),
         password: registrationForm.password,
         phone: registrationForm.phoneNumber,
-        residentNumberFront: registrationForm.residentNumberFront,
+        residentNumberFront: null,
       });
       setAuthSession(session);
       setMessage(formatAuthSuccessMessage(session));
@@ -207,23 +205,6 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
                 returnKeyType="next"
                 textContentType="telephoneNumber"
                 value={registrationForm.phoneNumber}
-              />
-              <LabeledInput
-                error={registrationErrors.residentNumberFront}
-                helperText="배송원 연결 확인에만 사용하며 서버에는 원문 대신 지문만 저장합니다."
-                keyboardType="number-pad"
-                label="주민등록번호 앞 7자리"
-                maxLength={7}
-                onChangeText={(value) =>
-                  setRegistrationForm((current) => ({
-                    ...current,
-                    residentNumberFront: normalizeResidentNumberFront(value),
-                  }))
-                }
-                placeholder="생년월일 6자리 + 뒷자리 첫 숫자"
-                returnKeyType="next"
-                secureTextEntry
-                value={registrationForm.residentNumberFront}
               />
               <View style={styles.sectionDivider} />
               <Text style={styles.sectionLabel}>로그인 정보</Text>

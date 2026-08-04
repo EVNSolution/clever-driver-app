@@ -7,7 +7,6 @@ export type RegistrationFormValues = LoginFormValues & {
   name: string;
   passwordConfirmation: string;
   phoneNumber: string;
-  residentNumberFront: string;
 };
 
 export type LoginFormErrors = Partial<Record<keyof LoginFormValues, string>>;
@@ -17,17 +16,12 @@ export type RegistrationFormErrors = Partial<
 
 const KOREAN_MOBILE_PATTERN = /^01\d{8,9}$/u;
 const LOGIN_ID_PATTERN = /^[a-z0-9._-]{4,40}$/u;
-const RESIDENT_NUMBER_FRONT_PATTERN = /^\d{7}$/u;
 const MAX_NAME_LENGTH = 80;
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 128;
 
 export function normalizePhoneNumber(value: string): string {
   return value.replace(/\D/gu, '').slice(0, 11);
-}
-
-export function normalizeResidentNumberFront(value: string): string {
-  return value.replace(/\D/gu, '').slice(0, 7);
 }
 
 export function validateLoginForm(
@@ -88,11 +82,6 @@ export function validateRegistrationForm(
 
   if (!KOREAN_MOBILE_PATTERN.test(values.phoneNumber)) {
     errors.phoneNumber = '휴대전화 번호를 정확히 입력해 주세요.';
-  }
-
-  if (!RESIDENT_NUMBER_FRONT_PATTERN.test(values.residentNumberFront)) {
-    errors.residentNumberFront =
-      '주민등록번호 앞 7자리를 숫자로 입력해 주세요.';
   }
 
   return errors;
