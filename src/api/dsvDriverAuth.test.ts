@@ -105,6 +105,30 @@ describe('DSV driver auth API client', () => {
     assert.equal(invite.phoneLast4, '5678');
   });
 
+  it('accepts a shop invite without pre-created driver information', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      data: {
+        invite: {
+          driverName: '',
+          expiresAt: '2026-08-05T00:00:00.000Z',
+          phoneLast4: '',
+          shopDomain: 'dsv-demo.local',
+        },
+      },
+      error: null,
+    }));
+
+    const invite = await validateDriverSignupInvite('A'.repeat(43));
+
+    assert.deepEqual(invite, {
+      driverName: '',
+      expiresAt: '2026-08-05T00:00:00.000Z',
+      phoneLast4: '',
+      shopDomain: 'dsv-demo.local',
+    });
+  });
+
   it('turns an undeployed invite endpoint response into a stable app error', async () => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
     globalThis.fetch = async () => new Response(JSON.stringify({ statusCode: 404 }));

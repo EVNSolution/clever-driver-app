@@ -41,6 +41,7 @@ export type DriverSignupInvite = {
   driverName: string;
   expiresAt: string;
   phoneLast4: string;
+  shopDomain?: string;
 };
 
 export type LoginDriverAccountRequest = {
@@ -104,6 +105,7 @@ export async function validateDriverSignupInvite(
     || typeof invite.driverName !== 'string'
     || typeof invite.expiresAt !== 'string'
     || typeof invite.phoneLast4 !== 'string'
+    || (invite.shopDomain !== undefined && typeof invite.shopDomain !== 'string')
   ) {
     throw new AuthApiError(
       'INVALID_AUTH_RESPONSE',
