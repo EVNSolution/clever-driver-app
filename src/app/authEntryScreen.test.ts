@@ -19,14 +19,15 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /backgroundColor: '#0b57d0'/u);
   });
 
-  it('offers ID login and the requested registration fields', () => {
+  it('offers the simplified registration fields without resident identity input', () => {
     const source = readFileSync(authScreenPath, 'utf8');
 
     assert.match(source, /label="아이디"/u);
     assert.match(source, /label="비밀번호"/u);
     assert.match(source, /label="이름"/u);
     assert.match(source, /label="휴대전화 번호"/u);
-    assert.match(source, /label="주민등록번호 앞 7자리"/u);
+    assert.doesNotMatch(source, /label="주민등록번호 앞 7자리"/u);
+    assert.match(source, /residentNumberFront: null/u);
     assert.match(source, /label="비밀번호 확인"/u);
   });
 

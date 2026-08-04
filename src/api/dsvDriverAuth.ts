@@ -33,7 +33,7 @@ export type RegisterDriverAccountRequest = {
   password: string;
   name: string;
   phone: string;
-  residentNumberFront: string;
+  residentNumberFront: string | null;
 };
 
 export type LoginDriverAccountRequest = {

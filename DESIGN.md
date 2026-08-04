@@ -43,6 +43,7 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 
 - DSV 배송원: 배정된 배송지와 주문을 빠르게 검토하고 방문 순서를 정한다.
 - DSV 배송원: 결정한 방문 순서를 지도에서 공간적으로 확인한다.
+- DSV 배송원: 주민등록번호 입력 없이 이름과 휴대전화 번호로 계정을 만든다.
 
 ## Information architecture
 
@@ -150,6 +151,8 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 ## Implementation constraints
 
 - Expo SDK 56, React Native 0.85, TypeScript strict를 유지한다.
+- 회원가입 UI는 이름, 휴대전화 번호, 로그인 아이디, 비밀번호와 비밀번호 확인만
+  제공한다. 구버전 서버 계약의 `residentNumberFront`에는 `null`을 전달한다.
 - 지도는 Routes와 같은 `@maplibre/maplibre-react-native` 11.3.4와
   `https://tiles.openfreemap.org/styles/liberty` 스타일을 사용한다.
 - 주문 목록은 경로 범위 토큰으로 승인된 DSV API만 호출하며, 클라이언트가
