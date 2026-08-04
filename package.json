@@ -13,7 +13,8 @@
     "check:workspace": "npm run typecheck && npm run test",
     "build": "npm run build:android && npm run build:ios",
     "build:android": "expo export -p android --output-dir dist/android",
-    "build:ios": "expo export -p ios --output-dir dist/ios"
+    "build:ios": "expo export -p ios --output-dir dist/ios",
+    "release:android:drive": "bash scripts/publish-android-drive-release.sh"
   },
   "dependencies": {
     "@maplibre/maplibre-react-native": "11.3.4",
