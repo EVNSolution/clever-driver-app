@@ -16,6 +16,7 @@ import {
   loginDriverAccount,
   registerDriverAccount,
   type DriverAuthSession,
+  type DriverSignupInvite,
 } from '../../api/dsvDriverAuth';
 import {
   normalizePhoneNumber,
@@ -26,8 +27,6 @@ import {
   type RegistrationFormErrors,
   type RegistrationFormValues,
 } from '../../domain/auth/authForm';
-
-type AuthMode = 'login' | 'registration';
 
 const EMPTY_LOGIN_FORM: LoginFormValues = {
   loginId: '',
@@ -43,15 +42,25 @@ const EMPTY_REGISTRATION_FORM: RegistrationFormValues = {
 };
 
 type AuthEntryScreenProps = {
+  inviteError?: string | null;
   onAuthenticated?(session: DriverAuthSession): Promise<void> | void;
+  onCancelSignup?(): void;
+  signupInvite?: { invite: DriverSignupInvite; token: string } | null;
 };
 
-export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
-  const [mode, setMode] = useState<AuthMode>('login');
+export function AuthEntryScreen({
+  inviteError = null,
+  onAuthenticated,
+  onCancelSignup,
+  signupInvite = null,
+}: AuthEntryScreenProps) {
   const [loginForm, setLoginForm] =
     useState<LoginFormValues>(EMPTY_LOGIN_FORM);
   const [registrationForm, setRegistrationForm] =
-    useState<RegistrationFormValues>(EMPTY_REGISTRATION_FORM);
+    useState<RegistrationFormValues>(() => ({
+      ...EMPTY_REGISTRATION_FORM,
+      name: signupInvite?.invite.driverName ?? '',
+    }));
   const [loginErrors, setLoginErrors] = useState<LoginFormErrors>({});
   const [registrationErrors, setRegistrationErrors] =
     useState<RegistrationFormErrors>({});
@@ -60,17 +69,6 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  function handleModeChange(nextMode: AuthMode) {
-    setMode(nextMode);
-    setLoginForm(EMPTY_LOGIN_FORM);
-    setRegistrationForm(EMPTY_REGISTRATION_FORM);
-    setLoginErrors({});
-    setRegistrationErrors({});
-    setAuthSession(null);
-    setIsSubmitting(false);
-    setMessage(null);
-  }
 
   async function handleLoginSubmit() {
     const errors = validateLoginForm(loginForm);
@@ -98,6 +96,10 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
   }
 
   async function handleRegistrationSubmit() {
+    if (signupInvite === null) {
+      setMessage('유효한 가입 링크를 다시 열어 주세요.');
+      return;
+    }
     const errors = validateRegistrationForm(registrationForm);
     setRegistrationErrors(errors);
     setAuthSession(null);
@@ -115,6 +117,7 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
         password: registrationForm.password,
         phone: registrationForm.phoneNumber,
         residentNumberFront: null,
+        signupInviteToken: signupInvite.token,
       });
       setAuthSession(session);
       setMessage(formatAuthSuccessMessage(session));
@@ -128,7 +131,7 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
     }
   }
 
-  const isRegistration = mode === 'registration';
+  const isRegistration = signupInvite !== null;
 
   return (
     <KeyboardAvoidingView
@@ -150,19 +153,6 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
           </Text>
         </View>
 
-        <View style={styles.modeSelector}>
-          <ModeButton
-            isSelected={!isRegistration}
-            label="로그인"
-            onPress={() => handleModeChange('login')}
-          />
-          <ModeButton
-            isSelected={isRegistration}
-            label="회원가입"
-            onPress={() => handleModeChange('registration')}
-          />
-        </View>
-
         <View style={styles.formCard}>
           <View style={styles.formHeading}>
             <Text style={styles.formTitle}>
@@ -170,7 +160,7 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
             </Text>
             <Text style={styles.formDescription}>
               {isRegistration
-                ? 'DSV 배송원 계정에 필요한 기본 정보를 입력해 주세요.'
+                ? `초대받은 배송원 정보로 가입합니다. 휴대전화 끝 4자리는 ${signupInvite.invite.phoneLast4}입니다.`
                 : '가입한 아이디와 비밀번호를 입력해 주세요.'}
             </Text>
           </View>
@@ -302,6 +292,12 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
             </Text>
           ) : null}
 
+          {!isRegistration && inviteError !== null ? (
+            <Text accessibilityRole="alert" style={styles.formMessage}>
+              {inviteError}
+            </Text>
+          ) : null}
+
           {authSession?.account.connectionStatus === 'LINKED' ? (
             <Text style={styles.linkedDriverText}>
               연결된 배송원 {authSession.account.linkedDrivers.length}명
@@ -319,6 +315,19 @@ export function AuthEntryScreen({ onAuthenticated }: AuthEntryScreenProps) {
                 : handleLoginSubmit
             }
           />
+          {isRegistration ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSubmitting}
+              onPress={onCancelSignup}
+              style={({ pressed }) => [
+                styles.cancelButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.cancelButtonText}>로그인으로 돌아가기</Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -339,38 +348,6 @@ function formatAuthErrorMessage(error: unknown): string {
   }
 
   return 'DSV 인증 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-}
-
-function ModeButton({
-  isSelected,
-  label,
-  onPress,
-}: {
-  isSelected: boolean;
-  label: string;
-  onPress(): void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityState={{ selected: isSelected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.modeButton,
-        isSelected && styles.modeButtonSelected,
-        pressed && styles.buttonPressed,
-      ]}
-    >
-      <Text
-        style={[
-          styles.modeButtonText,
-          isSelected && styles.modeButtonTextSelected,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
 }
 
 function LabeledInput({
@@ -463,32 +440,15 @@ const styles = StyleSheet.create({
     maxWidth: 280,
     textAlign: 'center',
   },
-  modeSelector: {
-    backgroundColor: '#e9edf3',
-    borderRadius: 14,
-    flexDirection: 'row',
-    gap: 4,
-    marginBottom: 18,
-    padding: 4,
-  },
-  modeButton: {
+  cancelButton: {
     alignItems: 'center',
-    borderRadius: 11,
-    flex: 1,
     justifyContent: 'center',
     minHeight: 44,
   },
-  modeButtonSelected: {
-    backgroundColor: '#ffffff',
-  },
-  modeButtonText: {
-    color: '#667085',
-    fontSize: 15,
+  cancelButtonText: {
+    color: '#475467',
+    fontSize: 14,
     fontWeight: '700',
-  },
-  modeButtonTextSelected: {
-    color: '#0b57d0',
-    fontWeight: '800',
   },
   buttonPressed: {
     opacity: 0.72,

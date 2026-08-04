@@ -20,10 +20,11 @@
 
 1. 앱, 호스팅과 API 계약은 `CLEVER Routes`와 분리한다.
 2. 앱 계정은 로그인 아이디와 비밀번호로 인증한다.
-3. 배송원 정보가 없어도 가입할 수 있다.
-4. 가입 기본 입력은 이름, 휴대전화 번호, 로그인 아이디와 비밀번호다.
-5. SMS OTP가 도입되기 전에는 이름과 휴대전화 번호만 입력한 신규 계정을 배송원에
-   자동 연결하지 않고 `UNLINKED`로 생성한다.
+3. 일반 로그인 화면에는 회원가입 진입점을 노출하지 않는다.
+4. DSV 운영자가 특정 배송원에 발급한 유효한 일회용 앱 링크로 앱을 연 경우에만
+   가입 화면을 허용한다.
+5. 가입 기본 입력은 이름, 휴대전화 번호, 로그인 아이디와 비밀번호다. 서버는 링크에
+   묶인 배송원 정보와 이름·전화번호가 정확히 일치할 때만 계정을 생성하고 연결한다.
 6. `residentNumberFront` API 필드는 구버전 호환을 위해 nullable로 유지하되 모바일
    가입 UI에서는 수집하지 않고 `null`을 전달한다.
 7. 한 배송지와 그곳의 모든 물품은 하나의 분할 불가능한 배정 묶음이다.
@@ -44,9 +45,9 @@
 
 각 기능은 DSV API 계약이 승인된 작업 단위에서 순차적으로 구현한다. 승인된
 인증 계약은 `EXPO_PUBLIC_DSV_API_BASE_URL`의
-`/api/dsv/driver/auth/register`와 `/api/dsv/driver/auth/login`으로
-연결한다. 앱은 localhost 또는 `127.0.0.1` 개발 서버를 제외하고 HTTPS
-기본 주소만 허용한다.
+`/api/dsv/driver/auth/signup-invite/validate`, `/api/dsv/driver/auth/register`,
+`/api/dsv/driver/auth/login`으로 연결한다. 앱은 localhost 또는 `127.0.0.1`
+개발 서버를 제외하고 HTTPS 기본 주소만 허용한다.
 
 인증 응답의 access token과 계정 연결 상태는 화면 메모리에만 유지한다.
 30일 refresh token과 만료 시각은 Expo SecureStore에 저장하여 앱 재실행 시

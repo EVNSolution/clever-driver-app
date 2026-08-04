@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
@@ -12,7 +13,9 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   refreshDriverAccountSession,
+  validateDriverSignupInvite,
   type DriverAuthSession,
+  type DriverSignupInvite,
 } from '../api/dsvDriverAuth';
 import {
   AUTO_LOGIN_RETRY_DELAY_MS,
@@ -23,6 +26,7 @@ import {
   readDriverAuthRefreshToken,
   saveDriverAuthSession,
 } from '../auth/driverAuthSessionStore';
+import { readDriverSignupInviteToken } from '../auth/driverSignupInviteLink';
 import { AuthEntryScreen } from '../ui/auth/AuthEntryScreen';
 import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
 
@@ -33,13 +37,71 @@ export function AppRoot() {
   const [autoLoginAttempt, setAutoLoginAttempt] = useState(0);
   const [hasAutoLoginConnectionError, setHasAutoLoginConnectionError] =
     useState(false);
+  const [signupInviteAccess, setSignupInviteAccess] = useState<{
+    invite: DriverSignupInvite;
+    token: string;
+  } | null>(null);
+  const [signupInviteError, setSignupInviteError] = useState<string | null>(null);
+  const [isValidatingSignupInvite, setIsValidatingSignupInvite] = useState(false);
+  const inviteValidationSequence = useRef(0);
 
   const acceptAuthSession = useCallback(async (session: DriverAuthSession) => {
     await saveDriverAuthSession(session);
     setAutoLoginEnabled(true);
     setHasAutoLoginConnectionError(false);
+    setSignupInviteAccess(null);
+    setSignupInviteError(null);
     setAuthSession(session);
   }, []);
+
+  const handleSignupLink = useCallback(async (url: string | null) => {
+    if (url === null || authSession !== null) return;
+    const token = readDriverSignupInviteToken(url);
+    if (token === null) return;
+    const sequence = inviteValidationSequence.current + 1;
+    inviteValidationSequence.current = sequence;
+    setSignupInviteAccess(null);
+    setSignupInviteError(null);
+    setIsValidatingSignupInvite(true);
+    try {
+      const invite = await validateDriverSignupInvite(token);
+      if (inviteValidationSequence.current === sequence) {
+        setSignupInviteAccess({ invite, token });
+      }
+    } catch (error) {
+      if (inviteValidationSequence.current === sequence) {
+        setSignupInviteError(
+          error instanceof Error
+            ? error.message
+            : '가입 링크를 확인하지 못했습니다. 새로운 링크를 요청해 주세요.',
+        );
+      }
+    } finally {
+      if (inviteValidationSequence.current === sequence) {
+        setIsValidatingSignupInvite(false);
+      }
+    }
+  }, [authSession]);
+
+  useEffect(() => {
+    let isActive = true;
+    void Linking.getInitialURL()
+      .then((url) => {
+        if (isActive) void handleSignupLink(url);
+      })
+      .catch(() => {
+        if (isActive) {
+          setSignupInviteError('앱 링크를 확인하지 못했습니다. 링크를 다시 열어 주세요.');
+        }
+      });
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      void handleSignupLink(url);
+    });
+    return () => {
+      isActive = false;
+      subscription.remove();
+    };
+  }, [handleSignupLink]);
 
   const discardAuthSession = useCallback(async () => {
     setAutoLoginEnabled(false);
@@ -151,12 +213,23 @@ export function AppRoot() {
                 <Text style={styles.secondaryButtonText}>아이디로 로그인</Text>
               </Pressable>
             </View>
-          ) : isRestoringSession ? (
+          ) : isRestoringSession || isValidatingSignupInvite ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color="#0b57d0" size="large" />
             </View>
           ) : authSession === null ? (
-            <AuthEntryScreen onAuthenticated={acceptAuthSession} />
+            <AuthEntryScreen
+              inviteError={signupInviteError}
+              key={signupInviteAccess?.token ?? 'login'}
+              onAuthenticated={acceptAuthSession}
+              onCancelSignup={() => {
+                inviteValidationSequence.current += 1;
+                setSignupInviteAccess(null);
+                setSignupInviteError(null);
+                setIsValidatingSignupInvite(false);
+              }}
+              signupInvite={signupInviteAccess}
+            />
           ) : (
             <DriverWorkspace
               authSession={authSession}
