@@ -34,6 +34,13 @@ export type RegisterDriverAccountRequest = {
   name: string;
   phone: string;
   residentNumberFront: string | null;
+  signupInviteToken: string;
+};
+
+export type DriverSignupInvite = {
+  driverName: string;
+  expiresAt: string;
+  phoneLast4: string;
 };
 
 export type LoginDriverAccountRequest = {
@@ -60,6 +67,11 @@ type SuccessEnvelope = {
 
 type AuthEnvelope = ErrorEnvelope | SuccessEnvelope;
 
+type SignupInviteEnvelope = ErrorEnvelope | {
+  data: { invite: DriverSignupInvite };
+  error?: null;
+};
+
 export class AuthApiError extends Error {
   constructor(
     readonly code: string,
@@ -74,6 +86,31 @@ export async function registerDriverAccount(
   request: RegisterDriverAccountRequest,
 ): Promise<DriverAuthSession> {
   return postAuth('/api/dsv/driver/auth/register', request);
+}
+
+export async function validateDriverSignupInvite(
+  token: string,
+): Promise<DriverSignupInvite> {
+  const envelope = await postJson<SignupInviteEnvelope>(
+    '/api/dsv/driver/auth/signup-invite/validate',
+    { token },
+  );
+  if (envelope.data === null) {
+    throw new AuthApiError(envelope.error.code, envelope.error.message);
+  }
+  const invite = envelope.data?.invite;
+  if (
+    invite === undefined
+    || typeof invite.driverName !== 'string'
+    || typeof invite.expiresAt !== 'string'
+    || typeof invite.phoneLast4 !== 'string'
+  ) {
+    throw new AuthApiError(
+      'INVALID_AUTH_RESPONSE',
+      '가입 링크를 확인하지 못했습니다. 서버 배포 상태를 확인해 주세요.',
+    );
+  }
+  return invite;
 }
 
 export async function loginDriverAccount(
@@ -95,6 +132,23 @@ async function postAuth(
     | LoginDriverAccountRequest
     | RefreshDriverAccountRequest,
 ): Promise<DriverAuthSession> {
+  const envelope = await postJson<AuthEnvelope>(path, body);
+
+  if (envelope.data === null) {
+    throw new AuthApiError(envelope.error.code, envelope.error.message);
+  }
+
+  if (envelope.data?.use !== 'dsv_driver_account') {
+    throw new AuthApiError(
+      'INVALID_AUTH_RESPONSE',
+      'DSV 배송원 인증 응답을 확인할 수 없습니다.',
+    );
+  }
+
+  return envelope.data;
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
   let url: string;
   try {
     url = resolveDsvApiUrl(path);
@@ -113,18 +167,5 @@ async function postAuth(
     },
     method: 'POST',
   });
-  const envelope = (await response.json()) as AuthEnvelope;
-
-  if (envelope.data === null) {
-    throw new AuthApiError(envelope.error.code, envelope.error.message);
-  }
-
-  if (envelope.data.use !== 'dsv_driver_account') {
-    throw new AuthApiError(
-      'INVALID_AUTH_RESPONSE',
-      'DSV 배송원 인증 응답을 확인할 수 없습니다.',
-    );
-  }
-
-  return envelope.data;
+  return (await response.json()) as T;
 }

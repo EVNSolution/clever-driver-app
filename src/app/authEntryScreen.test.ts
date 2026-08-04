@@ -19,8 +19,9 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /backgroundColor: '#0b57d0'/u);
   });
 
-  it('offers the simplified registration fields without resident identity input', () => {
+  it('keeps registration behind a validated invite and removes the normal signup route', () => {
     const source = readFileSync(authScreenPath, 'utf8');
+    const appRoot = readFileSync(appRootPath, 'utf8');
 
     assert.match(source, /label="아이디"/u);
     assert.match(source, /label="비밀번호"/u);
@@ -28,7 +29,13 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /label="휴대전화 번호"/u);
     assert.doesNotMatch(source, /label="주민등록번호 앞 7자리"/u);
     assert.match(source, /residentNumberFront: null/u);
+    assert.match(source, /signupInviteToken/u);
     assert.match(source, /label="비밀번호 확인"/u);
+    assert.doesNotMatch(source, /ModeButton/u);
+    assert.doesNotMatch(source, /accessibilityRole="tab"/u);
+    assert.match(appRoot, /Linking\.getInitialURL/u);
+    assert.match(appRoot, /Linking\.addEventListener\('url'/u);
+    assert.match(appRoot, /validateDriverSignupInvite/u);
   });
 
   it('uses the approved DSV authentication client', () => {
