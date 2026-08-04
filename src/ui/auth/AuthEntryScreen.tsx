@@ -132,6 +132,9 @@ export function AuthEntryScreen({
   }
 
   const isRegistration = signupInvite !== null;
+  const hasPreRegisteredDriver = isRegistration
+    && signupInvite.invite.driverName.trim().length > 0
+    && signupInvite.invite.phoneLast4.length === 4;
 
   return (
     <KeyboardAvoidingView
@@ -160,7 +163,9 @@ export function AuthEntryScreen({
             </Text>
             <Text style={styles.formDescription}>
               {isRegistration
-                ? `초대받은 배송원 정보로 가입합니다. 휴대전화 끝 4자리는 ${signupInvite.invite.phoneLast4}입니다.`
+                ? hasPreRegisteredDriver
+                  ? `초대받은 배송원 정보로 가입합니다. 휴대전화 끝 4자리는 ${signupInvite.invite.phoneLast4}입니다.`
+                  : '이름, 휴대전화 번호와 로그인 정보를 직접 입력하면 배송원으로 자동 등록됩니다.'
                 : '가입한 아이디와 비밀번호를 입력해 주세요.'}
             </Text>
           </View>

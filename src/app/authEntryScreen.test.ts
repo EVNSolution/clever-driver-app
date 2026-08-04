@@ -30,6 +30,7 @@ describe('DSV authentication entry screen', () => {
     assert.doesNotMatch(source, /label="주민등록번호 앞 7자리"/u);
     assert.match(source, /residentNumberFront: null/u);
     assert.match(source, /signupInviteToken/u);
+    assert.match(source, /직접 입력하면 배송원으로 자동 등록됩니다/u);
     assert.match(source, /label="비밀번호 확인"/u);
     assert.doesNotMatch(source, /ModeButton/u);
     assert.doesNotMatch(source, /accessibilityRole="tab"/u);
