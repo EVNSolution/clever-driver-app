@@ -58,17 +58,28 @@ REMOTE_NAME="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.
 REMOTE_PARENT="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.parents?.[0] ?? "")' "$REMOTE_JSON")"
 CAN_MODIFY="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(String(value.capabilities?.canModifyContent === true))' "$REMOTE_JSON")"
 PUBLISHED_VERSION_CODE="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.appProperties?.publishedVersionCode ?? "")' "$REMOTE_JSON")"
+PUBLISHED_VERSION_NAME="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.appProperties?.publishedVersionName ?? "")' "$REMOTE_JSON")"
+PUBLISHED_SHA256="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.appProperties?.apkSha256 ?? "")' "$REMOTE_JSON")"
 
 [[ "$REMOTE_ID" == "$DRIVE_FILE_ID" ]] || fail 'fixed Drive file was not found'
 [[ "$REMOTE_NAME" == "$DRIVE_FILE_NAME" ]] || fail "Drive file name must remain $DRIVE_FILE_NAME"
 [[ "$REMOTE_PARENT" == "$DRIVE_FOLDER_ID" ]] || fail 'Drive file is outside the approved release folder'
 [[ "$CAN_MODIFY" == 'true' ]] || fail 'active account cannot modify the Drive release file'
 [[ "$PUBLISHED_VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || fail 'published version metadata is missing or invalid'
-(( VERSION_CODE > PUBLISHED_VERSION_CODE )) \
-  || fail "new versionCode must be greater than published versionCode ${PUBLISHED_VERSION_CODE}"
 
 APK_SIZE="$(stat -f%z "$APK_PATH")"
 APK_SHA256="$(shasum -a 256 "$APK_PATH" | awk '{print $1}')"
+if (( VERSION_CODE < PUBLISHED_VERSION_CODE )); then
+  fail "versionCode cannot be lower than published versionCode ${PUBLISHED_VERSION_CODE}"
+fi
+
+if (( VERSION_CODE == PUBLISHED_VERSION_CODE )); then
+  [[ "$VERSION_NAME" == "$PUBLISHED_VERSION_NAME" ]] \
+    || fail 'published versionCode already has a different versionName'
+  [[ "$APK_SHA256" == "$PUBLISHED_SHA256" ]] \
+    || fail 'published versionCode already has different APK contents'
+  RESULT_JSON="$REMOTE_JSON"
+else
 METADATA_JSON="$(node -e '
   process.stdout.write(JSON.stringify({ appProperties: {
     apkSha256: process.argv[3],
@@ -94,10 +105,11 @@ RESULT_JSON="$(curl -fsS -X PUT "$UPLOAD_URL" \
   -H 'Content-Type: application/vnd.android.package-archive' \
   -H "Content-Length: ${APK_SIZE}" \
   --upload-file "$APK_PATH")"
+fi
 
 RESULT_ID="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.id ?? "")' "$RESULT_JSON")"
 RESULT_NAME="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.name ?? "")' "$RESULT_JSON")"
-RESULT_SHA256="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.sha256Checksum ?? "")' "$RESULT_JSON")"
+RESULT_SHA256="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.sha256Checksum ?? value.appProperties?.apkSha256 ?? "")' "$RESULT_JSON")"
 RESULT_VERSION_CODE="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.appProperties?.publishedVersionCode ?? "")' "$RESULT_JSON")"
 
 [[ "$RESULT_ID" == "$DRIVE_FILE_ID" ]] || fail 'Drive file ID changed unexpectedly'
@@ -108,6 +120,9 @@ RESULT_VERSION_CODE="$(node -e 'const value=JSON.parse(process.argv[1]); process
 DOWNLOAD_STATUS="$(curl -sS -L --range 0-0 -o /dev/null -w '%{http_code}' "$INSTALL_URL")"
 [[ "$DOWNLOAD_STATUS" == '206' || "$DOWNLOAD_STATUS" == '200' ]] \
   || fail "anonymous install URL returned HTTP $DOWNLOAD_STATUS"
+
+bash "$(dirname "$0")/publish-dsv-driver-release-state.sh" \
+  "$VERSION_CODE" "$VERSION_NAME" "$APK_SHA256" "$INSTALL_URL"
 
 printf 'CLEVER Driver Android release published\n'
 printf '  file: %s (%s)\n' "$DRIVE_FILE_NAME" "$DRIVE_FILE_ID"

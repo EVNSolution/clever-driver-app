@@ -29,10 +29,12 @@ describe('Android Google Drive release policy', () => {
     assert.doesNotMatch(publishScript, /-X POST/u);
   });
 
-  it('requires the approved package, owner account, and a newer version code', () => {
+  it('requires the approved package and owner while allowing only an identical release retry', () => {
     assert.match(publishScript, /EXPECTED_ACCOUNT='dlajiin@gmail\.com'/u);
     assert.match(publishScript, /EXPECTED_PACKAGE_ID='com\.evnsolution\.clever\.driver'/u);
-    assert.match(publishScript, /new versionCode must be greater than published versionCode/u);
+    assert.match(publishScript, /versionCode cannot be lower than published versionCode/u);
+    assert.match(publishScript, /published versionCode already has different APK contents/u);
+    assert.match(publishScript, /publish-dsv-driver-release-state\.sh/u);
   });
 
   it('documents the immutable install link and agent rule', () => {
