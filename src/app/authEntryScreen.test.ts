@@ -71,6 +71,16 @@ describe('DSV authentication entry screen', () => {
     assert.match(appRoot, /setAutoLoginEnabled\(false\)/u);
   });
 
+  it('checks the installed app against the server release before restoring login', () => {
+    const appRoot = readFileSync(appRootPath, 'utf8');
+
+    assert.match(appRoot, /fetchDriverAndroidAppRelease/u);
+    assert.match(appRoot, /readInstalledDriverAppVersion/u);
+    assert.match(appRoot, /isAppVersionCheckComplete/u);
+    assert.match(appRoot, /DriverAppUpdateScreen/u);
+    assert.match(appRoot, /Linking\.openURL\(appUpdateState\.release\.installUrl\)/u);
+  });
+
   it('shows concrete linked and unlinked success states in Korean', () => {
     const source = readFileSync(authScreenPath, 'utf8');
 

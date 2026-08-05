@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -11,6 +12,9 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  fetchDriverAndroidAppRelease,
+} from '../api/dsvDriverAppRelease';
 import {
   refreshDriverAccountSession,
   validateDriverSignupInvite,
@@ -27,10 +31,24 @@ import {
   saveDriverAuthSession,
 } from '../auth/driverAuthSessionStore';
 import { readDriverSignupInviteToken } from '../auth/driverSignupInviteLink';
+import {
+  classifyDriverAppUpdate,
+  type DriverAppUpdateState,
+} from '../domain/appUpdate/driverAppUpdate';
+import { readInstalledDriverAppVersion } from '../platform/expo/application/expoAppVersionService';
+import { DriverAppUpdateScreen } from '../ui/appUpdate/DriverAppUpdateScreen';
 import { AuthEntryScreen } from '../ui/auth/AuthEntryScreen';
 import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
 
+const INSTALLED_APP_VERSION = readInstalledDriverAppVersion();
+const INITIAL_APP_UPDATE_STATE: DriverAppUpdateState =
+  Platform.OS === 'android' && INSTALLED_APP_VERSION !== null
+    ? { kind: 'checking' }
+    : { kind: 'unavailable' };
+
 export function AppRoot() {
+  const [appUpdateState, setAppUpdateState] = useState<DriverAppUpdateState>(INITIAL_APP_UPDATE_STATE);
+  const [isOptionalUpdateDismissed, setIsOptionalUpdateDismissed] = useState(false);
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [autoLoginEnabled, setAutoLoginEnabled] = useState(true);
@@ -44,6 +62,28 @@ export function AppRoot() {
   const [signupInviteError, setSignupInviteError] = useState<string | null>(null);
   const [isValidatingSignupInvite, setIsValidatingSignupInvite] = useState(false);
   const inviteValidationSequence = useRef(0);
+  const isAppVersionCheckComplete = appUpdateState.kind !== 'checking';
+
+  useEffect(() => {
+    let isActive = true;
+    if (INSTALLED_APP_VERSION === null || Platform.OS !== 'android') {
+      return () => { isActive = false; };
+    }
+    void fetchDriverAndroidAppRelease()
+      .then((release) => {
+        if (isActive) {
+          setAppUpdateState(classifyDriverAppUpdate({
+            currentPackageId: INSTALLED_APP_VERSION.packageId,
+            currentVersionCode: INSTALLED_APP_VERSION.versionCode,
+            release,
+          }));
+        }
+      })
+      .catch(() => {
+        if (isActive) setAppUpdateState({ kind: 'unavailable' });
+      });
+    return () => { isActive = false; };
+  }, []);
 
   const acceptAuthSession = useCallback(async (session: DriverAuthSession) => {
     await saveDriverAuthSession(session);
@@ -84,6 +124,7 @@ export function AppRoot() {
   }, [authSession]);
 
   useEffect(() => {
+    if (!isAppVersionCheckComplete) return undefined;
     let isActive = true;
     void Linking.getInitialURL()
       .then((url) => {
@@ -101,7 +142,7 @@ export function AppRoot() {
       isActive = false;
       subscription.remove();
     };
-  }, [handleSignupLink]);
+  }, [handleSignupLink, isAppVersionCheckComplete]);
 
   const discardAuthSession = useCallback(async () => {
     setAutoLoginEnabled(false);
@@ -112,7 +153,7 @@ export function AppRoot() {
   }, []);
 
   useEffect(() => {
-    if (!autoLoginEnabled) {
+    if (!autoLoginEnabled || !isAppVersionCheckComplete) {
       return undefined;
     }
 
@@ -152,7 +193,7 @@ export function AppRoot() {
       isActive = false;
       if (retryTimeout !== undefined) clearTimeout(retryTimeout);
     };
-  }, [acceptAuthSession, autoLoginAttempt, autoLoginEnabled]);
+  }, [acceptAuthSession, autoLoginAttempt, autoLoginEnabled, isAppVersionCheckComplete]);
 
   useEffect(() => {
     if (authSession === null) return undefined;
@@ -181,7 +222,20 @@ export function AppRoot() {
       <SafeAreaProvider>
         <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
-          {authSession === null && hasAutoLoginConnectionError ? (
+          {appUpdateState.kind === 'checking' ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator color="#0b57d0" size="large" />
+            </View>
+          ) : (appUpdateState.kind === 'required_update'
+            || (appUpdateState.kind === 'optional_update' && !isOptionalUpdateDismissed)) ? (
+            <DriverAppUpdateScreen
+              currentVersionName={INSTALLED_APP_VERSION?.versionName ?? '-'}
+              isRequired={appUpdateState.kind === 'required_update'}
+              onDismiss={() => setIsOptionalUpdateDismissed(true)}
+              onUpdate={() => { void Linking.openURL(appUpdateState.release.installUrl); }}
+              release={appUpdateState.release}
+            />
+          ) : authSession === null && hasAutoLoginConnectionError ? (
             <View style={styles.recoveryState}>
               <ActivityIndicator color="#0b57d0" size="large" />
               <Text style={styles.recoveryTitle}>
