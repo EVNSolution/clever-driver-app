@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -21,9 +22,11 @@ import { scheduleOnRN } from 'react-native-worklets';
 import {
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
+  resolveDeliveryDestinationProgressState,
   type DeliveryConditionCode,
   type DeliveryDestinationGroup,
   type DeliveryOrder,
+  type DeliveryRouteMarkerState,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 import {
@@ -46,6 +49,7 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 
 type DeliveryScreenProps = {
   deliveryDate: string;
+  nextDeliveryStopId: string | null;
   onOpenDeliverySpace(): void;
   onOrdersChange(orders: DeliveryOrder[]): void;
   orders: DeliveryOrder[];
@@ -54,11 +58,15 @@ type DeliveryScreenProps = {
 
 export function DeliveryScreen({
   deliveryDate,
+  nextDeliveryStopId,
   onOpenDeliverySpace,
   onOrdersChange,
   orders,
   serverRouteGeometry,
 }: DeliveryScreenProps) {
+  const deliveryScrollRef = useRef<ScrollView>(null);
+  const orderListTopRef = useRef(0);
+  const revealedDeliveryStopIdRef = useRef<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draftOrders, setDraftOrders] = useState(orders);
   const totalBoxes = orders.reduce(
@@ -98,9 +106,28 @@ export function DeliveryScreen({
     });
   }
 
+  function revealCurrentDestination(event: LayoutChangeEvent) {
+    if (
+      nextDeliveryStopId === null ||
+      revealedDeliveryStopIdRef.current === nextDeliveryStopId
+    ) {
+      return;
+    }
+
+    revealedDeliveryStopIdRef.current = nextDeliveryStopId;
+    const destinationTop = event.nativeEvent.layout.y;
+    requestAnimationFrame(() => {
+      deliveryScrollRef.current?.scrollTo({
+        animated: false,
+        y: Math.max(0, orderListTopRef.current + destinationTop - 12),
+      });
+    });
+  }
+
   if (isEditing) {
     return (
       <OrderSequenceEditor
+        currentDeliveryStopId={nextDeliveryStopId}
         onCancel={cancelEditing}
         onDone={finishEditing}
         onDrop={handleDrop}
@@ -113,6 +140,7 @@ export function DeliveryScreen({
   return (
     <ScrollView
       contentContainerStyle={styles.deliveryContent}
+      ref={deliveryScrollRef}
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.deliveryHeader}>
@@ -154,15 +182,29 @@ export function DeliveryScreen({
         </View>
       </View>
 
-      <View style={styles.orderList}>
-        {destinationGroups.map((group, index) => (
-          <DestinationGroupRow
-            group={group}
-            index={index}
-            isLast={index === destinationGroups.length - 1}
-            key={group.key}
-          />
-        ))}
+      <View
+        onLayout={(event) => {
+          orderListTopRef.current = event.nativeEvent.layout.y;
+        }}
+        style={styles.orderList}
+      >
+        {destinationGroups.map((group, index) => {
+          const progressState = resolveDeliveryDestinationProgressState(
+            group,
+            nextDeliveryStopId,
+          );
+
+          return (
+            <DestinationGroupRow
+              group={group}
+              index={index}
+              isLast={index === destinationGroups.length - 1}
+              key={`${group.key}:${progressState}`}
+              onCurrentLayout={revealCurrentDestination}
+              progressState={progressState}
+            />
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -184,52 +226,144 @@ function DestinationGroupRow({
   group,
   index,
   isLast,
+  onCurrentLayout,
+  progressState,
 }: {
   group: DeliveryDestinationGroup;
   index: number;
   isLast: boolean;
+  onCurrentLayout(event: LayoutChangeEvent): void;
+  progressState: DeliveryRouteMarkerState;
 }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const isCompleted = progressState === 'completed';
+  const isCurrent = progressState === 'current';
+  const [isExpanded, setIsExpanded] = useState(isCurrent);
 
   return (
-    <View style={!isLast && styles.orderRowDivider}>
+    <View
+      onLayout={isCurrent ? onCurrentLayout : undefined}
+      style={[
+        !isLast && !isCompleted && !isCurrent && styles.orderRowDivider,
+        (isCompleted || isCurrent) && styles.destinationGroupEmphasis,
+        isCompleted && styles.destinationGroupCompleted,
+        isCurrent && styles.destinationGroupCurrent,
+      ]}
+    >
       <Pressable
         accessibilityLabel={`${group.destinationName} 주문 ${group.orderCount}건 ${isExpanded ? '접기' : '펼치기'}`}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
         onPress={() => setIsExpanded((expanded) => !expanded)}
-        style={({ pressed }) => [styles.orderRow, pressed && styles.groupRowPressed]}
+        style={({ pressed }) => [
+          styles.orderRow,
+          pressed && styles.groupRowPressed,
+        ]}
       >
-        <View style={styles.sequenceBadge}>
-          <Text style={styles.sequenceBadgeText}>{index + 1}</Text>
+        <View
+          style={[
+            styles.sequenceBadge,
+            isCompleted && styles.sequenceBadgeCompleted,
+            isCurrent && styles.sequenceBadgeCurrent,
+          ]}
+        >
+          <Text
+            style={[
+              styles.sequenceBadgeText,
+              (isCompleted || isCurrent) && styles.sequenceBadgeTextInverse,
+            ]}
+          >
+            {index + 1}
+          </Text>
         </View>
         <View style={styles.orderCopy}>
-          <Text numberOfLines={1} style={styles.destinationName}>
-            {group.destinationName}
-          </Text>
-          <Text numberOfLines={2} style={styles.address}>
+          <View style={styles.destinationHeading}>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.destinationName,
+                isCompleted && styles.completedPrimaryText,
+              ]}
+            >
+              {group.destinationName}
+            </Text>
+            {isCurrent ? (
+              <View style={styles.currentDeliveryBadge}>
+                <Text style={styles.currentDeliveryBadgeText}>배송 중</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text
+            numberOfLines={2}
+            style={[styles.address, isCompleted && styles.completedSecondaryText]}
+          >
             {group.address}
           </Text>
-          <Text style={styles.groupOrderCount}>주문 {group.orderCount}건</Text>
+          <Text
+            style={[
+              styles.groupOrderCount,
+              isCompleted && styles.completedSecondaryText,
+            ]}
+          >
+            주문 {group.orderCount}건
+          </Text>
         </View>
         <View style={styles.orderRight}>
-          <Text numberOfLines={1} style={styles.groupConditions}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.groupConditions,
+              isCompleted && styles.completedSecondaryText,
+            ]}
+          >
             {group.conditionCodes.join(' · ')}
           </Text>
           <View style={styles.groupBoxLine}>
-            <Text style={styles.boxCount}>{group.boxCount}박스</Text>
-            <Text style={styles.accordionChevron}>{isExpanded ? '▴' : '▾'}</Text>
+            <Text style={[styles.boxCount, isCompleted && styles.completedBoxText]}>
+              {group.boxCount}박스
+            </Text>
+            <Text
+              style={[
+                styles.accordionChevron,
+                isCompleted && styles.completedSecondaryText,
+              ]}
+            >
+              {isExpanded ? '▴' : '▾'}
+            </Text>
           </View>
         </View>
       </Pressable>
 
       {isExpanded ? (
-        <View style={styles.groupOrders}>
+        <View
+          style={[
+            styles.groupOrders,
+            isCompleted && styles.groupOrdersCompleted,
+            isCurrent && styles.groupOrdersCurrent,
+          ]}
+        >
           {group.orders.map((order, orderIndex) => (
             <View key={order.id} style={styles.groupOrderRow}>
-              <Text style={styles.groupOrderLabel}>주문 {orderIndex + 1}</Text>
-              <ConditionBadge conditionCode={order.conditionCode} />
-              <Text style={styles.groupOrderBoxes}>{order.shippedBoxes}박스</Text>
+              <Text
+                style={[
+                  styles.groupOrderLabel,
+                  isCompleted && styles.completedSecondaryText,
+                ]}
+              >
+                주문 {orderIndex + 1}
+              </Text>
+              <ConditionBadge
+                conditionCode={order.conditionCode}
+                highlighted={isCurrent}
+                muted={isCompleted}
+              />
+              <Text
+                style={[
+                  styles.groupOrderBoxes,
+                  isCompleted && styles.completedBoxText,
+                ]}
+              >
+                {order.shippedBoxes}박스
+              </Text>
             </View>
           ))}
         </View>
@@ -240,17 +374,32 @@ function DestinationGroupRow({
 
 function ConditionBadge({
   conditionCode,
+  highlighted = false,
+  muted = false,
 }: {
   conditionCode: DeliveryConditionCode;
+  highlighted?: boolean;
+  muted?: boolean;
 }) {
   const isCold = conditionCode === 'COLD';
 
   return (
-    <View style={[styles.conditionBadge, isCold && styles.conditionBadgeCold]}>
+    <View
+      style={[
+        styles.conditionBadge,
+        isCold && styles.conditionBadgeCold,
+        highlighted && styles.conditionBadgeHighlighted,
+        highlighted && isCold && styles.conditionBadgeColdHighlighted,
+        muted && styles.conditionBadgeMuted,
+      ]}
+    >
       <Text
         style={[
           styles.conditionBadgeText,
           isCold && styles.conditionBadgeTextCold,
+          highlighted && styles.conditionBadgeTextHighlighted,
+          highlighted && isCold && styles.conditionBadgeTextColdHighlighted,
+          muted && styles.conditionBadgeTextMuted,
         ]}
       >
         {conditionCode}
@@ -260,12 +409,14 @@ function ConditionBadge({
 }
 
 function OrderSequenceEditor({
+  currentDeliveryStopId,
   onCancel,
   onDone,
   onDrop,
   orders,
   serverRouteGeometry,
 }: {
+  currentDeliveryStopId: string | null;
   onCancel(): void;
   onDone(): void;
   onDrop(orderId: string, targetIndex: number): void;
@@ -320,6 +471,7 @@ function OrderSequenceEditor({
 
       <View style={styles.editorMapFrame}>
         <DeliveryRouteMap
+          currentDeliveryStopId={currentDeliveryStopId}
           interactionMode="pan-only"
           orders={orders}
           serverRouteGeometry={serverRouteGeometry}
@@ -520,7 +672,7 @@ function DraggableOrderRow({
 
 const styles = StyleSheet.create({
   deliveryContent: {
-    paddingBottom: 24,
+    paddingBottom: 88,
   },
   deliveryHeader: {
     alignItems: 'center',
@@ -602,6 +754,22 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eaecf0',
     borderBottomWidth: 1,
   },
+  destinationGroupCompleted: {
+    backgroundColor: '#f2f4f7',
+    borderColor: '#d0d5dd',
+    borderWidth: 1,
+  },
+  destinationGroupEmphasis: {
+    borderRadius: 10,
+    marginVertical: 3,
+    overflow: 'hidden',
+    paddingHorizontal: 9,
+  },
+  destinationGroupCurrent: {
+    backgroundColor: '#ecfdf3',
+    borderColor: '#12b76a',
+    borderWidth: 1,
+  },
   groupRowPressed: {
     opacity: 0.7,
   },
@@ -614,6 +782,30 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '800',
+  },
+  destinationHeading: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  currentDeliveryBadge: {
+    backgroundColor: '#6ce9a6',
+    borderColor: '#079455',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  currentDeliveryBadgeText: {
+    color: '#05603a',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  completedPrimaryText: {
+    color: '#475467',
+  },
+  completedSecondaryText: {
+    color: '#667085',
   },
   conditionBadge: {
     backgroundColor: '#f2f4f7',
@@ -631,6 +823,27 @@ const styles = StyleSheet.create({
   },
   conditionBadgeTextCold: {
     color: '#0b57d0',
+  },
+  conditionBadgeMuted: {
+    backgroundColor: '#e4e7ec',
+  },
+  conditionBadgeTextMuted: {
+    color: '#667085',
+  },
+  conditionBadgeHighlighted: {
+    backgroundColor: '#d9f99d',
+    borderColor: '#84cc16',
+    borderWidth: 1,
+  },
+  conditionBadgeColdHighlighted: {
+    backgroundColor: '#cffafe',
+    borderColor: '#06b6d4',
+  },
+  conditionBadgeTextHighlighted: {
+    color: '#3f6212',
+  },
+  conditionBadgeTextColdHighlighted: {
+    color: '#0e7490',
   },
   orderRight: {
     alignItems: 'flex-end',
@@ -666,6 +879,14 @@ const styles = StyleSheet.create({
     marginLeft: 82,
     paddingHorizontal: 12,
   },
+  groupOrdersCompleted: {
+    backgroundColor: '#f2f4f7',
+    borderTopColor: '#d0d5dd',
+  },
+  groupOrdersCurrent: {
+    backgroundColor: '#f0fdf4',
+    borderTopColor: '#abefc6',
+  },
   groupOrderRow: {
     alignItems: 'center',
     borderBottomColor: '#eaecf0',
@@ -691,6 +912,9 @@ const styles = StyleSheet.create({
     color: '#027a48',
     fontSize: 12,
     fontWeight: '800',
+  },
+  completedBoxText: {
+    color: '#667085',
   },
   address: {
     color: '#667085',
@@ -833,6 +1057,15 @@ const styles = StyleSheet.create({
     color: '#0b57d0',
     fontSize: 11,
     fontWeight: '900',
+  },
+  sequenceBadgeCompleted: {
+    backgroundColor: '#667085',
+  },
+  sequenceBadgeCurrent: {
+    backgroundColor: '#12b76a',
+  },
+  sequenceBadgeTextInverse: {
+    color: '#ffffff',
   },
   editorOrderCopy: {
     flex: 1,

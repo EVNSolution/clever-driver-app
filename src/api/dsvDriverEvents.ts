@@ -1,7 +1,7 @@
 import { resolveDsvApiUrl } from './dsvApiUrl';
 
 type DriverEventEnvelope = {
-  data: { eventId: string } | null;
+  data: { completedStopCount: number; eventIds: string[] } | { eventId: string } | null;
   error?: { code: string; message: string } | null;
 };
 
@@ -43,16 +43,17 @@ export async function startDriverDeliveryRoute(
   await recordRouteLifecycleEvent(accessToken, routePlanId, 'PICKUP_COMPLETED');
 }
 
-export async function completeDriverDeliveryStop(
+export async function completeDriverDeliveryDestination(
   accessToken: string,
   routePlanId: string,
-  deliveryStopId: string,
+  destinationId: string,
+  deliveryStopIds: string[],
 ): Promise<void> {
-  const response = await fetch(resolveDsvApiUrl('/driver/events'), {
+  const response = await fetch(resolveDsvApiUrl('/driver/destinations/complete'), {
     body: JSON.stringify({
-      clientEventId: `${deliveryStopId}:delivered:${Date.now()}`,
-      deliveryStopId,
-      eventType: 'STOP_DELIVERED',
+      clientEventId: `${destinationId}:delivered:${Date.now()}`,
+      deliveryStopIds,
+      destinationId,
       occurredAt: new Date().toISOString(),
       routePlanId,
     }),
@@ -66,7 +67,7 @@ export async function completeDriverDeliveryStop(
   const envelope = (await response.json()) as DriverEventEnvelope;
   if (!response.ok || envelope.data === null) {
     throw new Error(
-      envelope.error?.message ?? '배송 완료 상태를 저장하지 못했습니다.',
+      envelope.error?.message ?? '배송지의 주문을 한 번에 완료 처리하지 못했습니다.',
     );
   }
 }

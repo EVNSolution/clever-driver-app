@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { DriverAuthSession } from '../../api/dsvDriverAuth';
 import {
-  completeDriverDeliveryStop,
+  completeDriverDeliveryDestination,
   startDriverDeliveryRoute,
 } from '../../api/dsvDriverEvents';
 import {
@@ -90,15 +90,16 @@ export function DriverWorkspace({
     setSelectedRoutePlanId(routePlanId);
   }
 
-  async function completeDelivery(deliveryStopId: string) {
+  async function completeDelivery(destinationId: string, deliveryStopIds: string[]) {
     if (route === null) {
       return;
     }
 
-    await completeDriverDeliveryStop(
+    await completeDriverDeliveryDestination(
       route.routeAccessToken,
       route.routeId,
-      deliveryStopId,
+      destinationId,
+      deliveryStopIds,
     );
     setLoadAttempt((attempt) => attempt + 1);
   }
@@ -186,6 +187,7 @@ export function DriverWorkspace({
                 />
                 <DeliveryScreen
                   deliveryDate={route.deliveryDate}
+                  nextDeliveryStopId={route.nextDeliveryStopId}
                   onOpenDeliverySpace={() => setIsDeliverySpaceOpen(true)}
                   onOrdersChange={setOrders}
                   orders={orders}

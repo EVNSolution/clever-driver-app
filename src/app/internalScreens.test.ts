@@ -355,7 +355,12 @@ describe('authenticated driver screens', () => {
 
     assert.match(mapScreen, /DeliveryProofModal/u);
     assert.match(mapScreen, /setProofDelivery/u);
-    assert.match(mapScreen, /onCompleteDelivery\(summary\.deliveryStopId\)/u);
+    assert.match(
+      mapScreen,
+      /onCompleteDelivery\(summary\.destinationId, summary\.deliveryStopIds\)/u,
+    );
+    assert.match(mapScreen, /주문 \$\{summary\.deliveryStopIds\.length\}건을 모두/u);
+    assert.match(workspace, /completeDriverDeliveryDestination/u);
     assert.match(proofModal, /배송 증빙 추가/u);
     assert.match(proofModal, /사진 촬영/u);
     assert.match(proofModal, /앨범에서 선택/u);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import {
-  completeDriverDeliveryStop,
+  completeDriverDeliveryDestination,
   startDriverDeliveryRoute,
 } from './dsvDriverEvents';
 
@@ -14,7 +14,7 @@ describe('DSV driver events API client', () => {
     delete (globalThis as { fetch?: unknown }).fetch;
   });
 
-  it('records delivery completion for the server-selected stop', async () => {
+  it('records all orders at the server-selected destination in one request', async () => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
     let request: { input: string; init?: RequestInit } | undefined;
     globalThis.fetch = async (input, init) => {
@@ -25,16 +25,23 @@ describe('DSV driver events API client', () => {
       }));
     };
 
-    await completeDriverDeliveryStop('route-token', 'route-1', 'stop-1');
+    await completeDriverDeliveryDestination(
+      'route-token',
+      'route-1',
+      'destination-1',
+      ['stop-1', 'stop-2'],
+    );
 
-    assert.equal(request?.input, 'https://dsv.example.test/driver/events');
+    assert.equal(request?.input, 'https://dsv.example.test/driver/destinations/complete');
     assert.equal(request?.init?.method, 'POST');
     assert.equal(
       (request?.init?.headers as Record<string, string>).Authorization,
       'Bearer route-token',
     );
-    assert.match(request?.init?.body as string, /"eventType":"STOP_DELIVERED"/u);
-    assert.match(request?.init?.body as string, /"deliveryStopId":"stop-1"/u);
+    const body = JSON.parse(request?.init?.body as string) as Record<string, unknown>;
+    assert.equal(body.destinationId, 'destination-1');
+    assert.deepEqual(body.deliveryStopIds, ['stop-1', 'stop-2']);
+    assert.equal('eventType' in body, false);
   });
 
   it('starts the route before recording pickup completion', async () => {

@@ -29,9 +29,16 @@ export type DeliveryCoordinate = {
 export type CurrentDeliverySummary = {
   address: string;
   boxCount: number;
+  orderBoxes: {
+    boxCount: number;
+    conditionCode: DeliveryConditionCode;
+    orderId: string;
+  }[];
   deliveryStopId: string;
+  deliveryStopIds: string[];
   destinationId: string;
   destinationName: string;
+  destinationSequence: number;
   estimatedArrivalAt: string | null;
   conditionCodes: DeliveryConditionCode[];
   notes: string[];
@@ -57,6 +64,17 @@ export type DeliveryDestinationPoint = {
   destinationId: string;
   label: string;
   sortOrder: number;
+};
+
+export type DeliveryRouteMarkerState = 'completed' | 'current' | 'upcoming';
+
+export type DeliveryRouteVisualState = {
+  completedGeometry: ServerDeliveryRouteGeometry | null;
+  currentGeometry: ServerDeliveryRouteGeometry | null;
+  markers: (DeliveryDestinationPoint & {
+    markerState: DeliveryRouteMarkerState;
+  })[];
+  upcomingGeometry: ServerDeliveryRouteGeometry | null;
 };
 
 export type ServerDeliveryRouteGeometry = {
@@ -227,6 +245,146 @@ export function buildDeliveryDestinationPoints(
     }));
 }
 
+export function buildDeliveryRouteVisualState(
+  orders: DeliveryOrder[],
+  serverRouteGeometry: ServerDeliveryRouteGeometry | null,
+  currentDeliveryStopId: string | null,
+): DeliveryRouteVisualState {
+  const points = buildDeliveryDestinationPoints(orders);
+  const currentOrder = orders.find(({ id }) => id === currentDeliveryStopId);
+  const currentDestinationIndex = currentOrder === undefined
+    ? -1
+    : points.findIndex(
+        ({ destinationId }) => destinationId === currentOrder.destinationId,
+      );
+  const routeIsCompleted =
+    orders.length > 0 && orders.every(({ status }) => isTerminalDeliveryStatus(status));
+
+  const markers = points.map((point, index) => ({
+    ...point,
+    markerState: routeIsCompleted || index < currentDestinationIndex
+      ? 'completed' as const
+      : index === currentDestinationIndex
+        ? 'current' as const
+        : 'upcoming' as const,
+  }));
+
+  if (serverRouteGeometry === null) {
+    return {
+      completedGeometry: null,
+      currentGeometry: null,
+      markers,
+      upcomingGeometry: null,
+    };
+  }
+  if (routeIsCompleted) {
+    return {
+      completedGeometry: serverRouteGeometry,
+      currentGeometry: null,
+      markers,
+      upcomingGeometry: serverRouteGeometry,
+    };
+  }
+  if (currentDestinationIndex < 0) {
+    return {
+      completedGeometry: null,
+      currentGeometry: null,
+      markers,
+      upcomingGeometry: serverRouteGeometry,
+    };
+  }
+
+  const routeCoordinates = serverRouteGeometry.coordinates;
+  const previousDestination = points[currentDestinationIndex - 1];
+  const currentDestination = points[currentDestinationIndex];
+  if (currentDestination === undefined || routeCoordinates.length < 2) {
+    return {
+      completedGeometry: null,
+      currentGeometry: null,
+      markers,
+      upcomingGeometry: serverRouteGeometry,
+    };
+  }
+
+  const completedRouteIndex = previousDestination === undefined
+    ? 0
+    : findNearestRouteCoordinateIndex(routeCoordinates, previousDestination.coordinate);
+  const currentRouteIndex = findNearestRouteCoordinateIndex(
+    routeCoordinates,
+    currentDestination.coordinate,
+    completedRouteIndex,
+  );
+
+  return {
+    completedGeometry: completedRouteIndex < 1
+      ? null
+      : lineStringFromServerSlice(routeCoordinates, 0, completedRouteIndex),
+    currentGeometry: currentRouteIndex <= completedRouteIndex
+      ? null
+      : lineStringFromServerSlice(
+          routeCoordinates,
+          completedRouteIndex,
+          currentRouteIndex,
+        ),
+    markers,
+    upcomingGeometry: serverRouteGeometry,
+  };
+}
+
+export function resolveDeliveryDestinationProgressState(
+  group: DeliveryDestinationGroup,
+  currentDeliveryStopId: string | null,
+): DeliveryRouteMarkerState {
+  if (group.orders.some(({ id }) => id === currentDeliveryStopId)) {
+    return 'current';
+  }
+
+  return group.orders.every(({ status }) => isTerminalDeliveryStatus(status))
+    ? 'completed'
+    : 'upcoming';
+}
+
+function lineStringFromServerSlice(
+  coordinates: [longitude: number, latitude: number][],
+  startIndex: number,
+  endIndex: number,
+): ServerDeliveryRouteGeometry {
+  return {
+    coordinates: coordinates.slice(startIndex, endIndex + 1),
+    type: 'LineString',
+  };
+}
+
+function findNearestRouteCoordinateIndex(
+  routeCoordinates: [longitude: number, latitude: number][],
+  target: [longitude: number, latitude: number],
+  startIndex = 0,
+): number {
+  let nearestIndex = Math.max(0, Math.min(startIndex, routeCoordinates.length - 1));
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = nearestIndex; index < routeCoordinates.length; index += 1) {
+    const coordinate = routeCoordinates[index];
+    if (coordinate === undefined) continue;
+    const longitudeDifference = coordinate[0] - target[0];
+    const latitudeDifference = coordinate[1] - target[1];
+    const distance =
+      longitudeDifference * longitudeDifference +
+      latitudeDifference * latitudeDifference;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+
+  return nearestIndex;
+}
+
+function isTerminalDeliveryStatus(status: string | undefined): boolean {
+  return status !== undefined &&
+    ['CANCELLED', 'DELIVERED', 'FAILED', 'SKIPPED'].includes(status);
+}
+
 export function buildCurrentDeliverySummary(
   orders: DeliveryOrder[],
   deliveryStopId: string | null,
@@ -243,6 +401,9 @@ export function buildCurrentDeliverySummary(
   const destinationOrders = orders.filter(
     ({ destinationId }) => destinationId === currentOrder.destinationId,
   );
+  const destinationSequence = buildDeliveryDestinationPoints(orders).find(
+    ({ destinationId }) => destinationId === currentOrder.destinationId,
+  )?.sortOrder ?? 1;
   const constrainedOrders = destinationOrders.filter(
     ({ timeWindowEnd, timeWindowStart }) =>
       timeWindowEnd != null || timeWindowStart != null,
@@ -259,9 +420,18 @@ export function buildCurrentDeliverySummary(
       (total, order) => total + order.shippedBoxes,
       0,
     ),
+    orderBoxes: destinationOrders.map((order) => ({
+      boxCount: order.shippedBoxes,
+      conditionCode: order.conditionCode,
+      orderId: order.id,
+    })),
     deliveryStopId: currentOrder.id,
+    deliveryStopIds: destinationOrders
+      .filter(({ status }) => !isTerminalDeliveryStatus(status))
+      .map(({ id }) => id),
     destinationId: currentOrder.destinationId,
     destinationName: currentOrder.destinationName,
+    destinationSequence,
     conditionCodes: [...new Set(destinationOrders.map(({ conditionCode }) => conditionCode))],
     estimatedArrivalAt: currentOrder.estimatedArrivalAt ?? null,
     notes: [...new Set(destinationOrders.flatMap(({ notes }) => notes ? [notes] : []))],
