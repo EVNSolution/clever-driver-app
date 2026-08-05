@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -23,7 +24,7 @@ type DeliveryMapScreenProps = {
   depotCoordinate: DeliveryCoordinate | null;
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   nextDeliveryStopId: string | null;
-  onCompleteDelivery(deliveryStopId: string): Promise<void>;
+  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<void>;
   onStartDelivery(): Promise<void>;
   onUploadProof(
     deliveryStopId: string,
@@ -81,7 +82,7 @@ export function DeliveryMapScreen({
         {
           onPress: () => {
             setIsCompleting(true);
-            void onCompleteDelivery(summary.deliveryStopId)
+            void onCompleteDelivery(summary.destinationId, summary.deliveryStopIds)
               .then(() => {
                 setProofDelivery({
                   deliveryStopId: summary.deliveryStopId,
@@ -103,7 +104,7 @@ export function DeliveryMapScreen({
           tone: 'primary',
         },
       ],
-      message: `${summary.destinationName} 배송을 완료 처리할까요?`,
+      message: `${summary.destinationName}의 주문 ${summary.deliveryStopIds.length}건을 모두 배송 완료 처리할까요?`,
       title: '배송 완료',
       tone: 'success',
     });
@@ -144,6 +145,7 @@ export function DeliveryMapScreen({
     <View style={styles.screen}>
       <View style={styles.mapArea}>
         <DeliveryRouteMap
+          currentDeliveryStopId={nextDeliveryStopId}
           depotCoordinate={depotCoordinate}
           interactionMode="explore"
           orders={orders}
@@ -180,35 +182,69 @@ export function DeliveryMapScreen({
         ) : null}
       </View>
 
-      <View style={styles.deliveryPanel}>
-        <Text style={styles.panelLabel}>지금 가는 배송지</Text>
-        <View style={styles.destinationRow}>
-          <Text numberOfLines={1} style={styles.destinationName}>
-            {summary?.destinationName ?? '배송 시작 전입니다'}
-          </Text>
-          {summary === null ? null : (
-            <Text numberOfLines={2} style={styles.destinationAddress}>
-              {summary.address}
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.metrics}>
-          <DeliveryMetric label="주문 수" value={`${summary?.orderCount ?? 0}건`} />
-          <View style={styles.metricDivider} />
-          <DeliveryMetric label="박스 수" value={`${summary?.boxCount ?? 0}개`} />
-          <View style={styles.metricDivider} />
-          <DeliveryMetric
-            label="ETA"
-            value={formatEta(
-              summary?.estimatedArrivalAt ?? null,
-              timezone,
-              etaStatus,
+      <View style={styles.detailsArea}>
+        <ScrollView
+          contentContainerStyle={styles.deliveryPanelContent}
+          showsVerticalScrollIndicator={false}
+          style={styles.deliveryPanel}
+        >
+          <Text style={styles.panelLabel}>지금 가는 배송지</Text>
+          <View style={styles.destinationRow}>
+            {summary === null ? null : (
+              <View style={styles.destinationSequenceBadge}>
+                <Text style={styles.destinationSequenceText}>
+                  {summary.destinationSequence}
+                </Text>
+              </View>
             )}
-          />
-        </View>
+            <Text numberOfLines={1} style={styles.destinationName}>
+              {summary?.destinationName ?? '배송 시작 전입니다'}
+            </Text>
+            {summary === null ? null : (
+              <Text numberOfLines={2} style={styles.destinationAddress}>
+                {summary.address}
+              </Text>
+            )}
+          </View>
 
-        <View style={styles.actionButtons}>
+          <View style={styles.metrics}>
+            <DeliveryMetric label="주문 수" value={`${summary?.orderCount ?? 0}건`} />
+            <View style={styles.metricDivider} />
+            <DeliveryMetric label="박스 수" value={`${summary?.boxCount ?? 0}개`} />
+            <View style={styles.metricDivider} />
+            <DeliveryMetric
+              label="ETA"
+              value={formatEta(
+                summary?.estimatedArrivalAt ?? null,
+                timezone,
+                etaStatus,
+              )}
+            />
+          </View>
+
+          {summary === null ? null : (
+            <View style={styles.conditionSection}>
+              <Text style={styles.conditionSectionTitle}>주문 정보</Text>
+              <View style={styles.conditionList}>
+                {summary.orderBoxes.map(({ boxCount, conditionCode, orderId }) => (
+                  <View key={orderId} style={styles.conditionRow}>
+                    <View style={[
+                      styles.conditionDot,
+                      conditionDotStyle(conditionCode),
+                    ]} />
+                    <Text style={styles.conditionLabel}>
+                      {formatConditionLabel(conditionCode)}
+                    </Text>
+                    <Text style={styles.conditionBoxCount}>{boxCount}박스</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </ScrollView>
+
+        <View style={styles.actionFooter}>
+          <View style={styles.actionButtons}>
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: summary === null }}
@@ -239,6 +275,7 @@ export function DeliveryMapScreen({
               <Text style={styles.completeButtonText}>배송 완료</Text>
             )}
           </Pressable>
+          </View>
         </View>
       </View>
 
@@ -349,6 +386,23 @@ function formatSpecialCondition(conditionCode: string): string | null {
   return null;
 }
 
+function formatConditionLabel(conditionCode: string): string {
+  const normalized = conditionCode.trim().toUpperCase();
+  if (normalized === 'COLD' || normalized === 'CHILLED') return 'Cold';
+  if (normalized === 'FROZEN') return 'Frozen';
+  if (normalized === 'AMBIENT') return 'Ambient';
+  return conditionCode;
+}
+
+function conditionDotStyle(conditionCode: string) {
+  const normalized = conditionCode.trim().toUpperCase();
+  if (normalized === 'COLD' || normalized === 'CHILLED') {
+    return styles.conditionDotCold;
+  }
+  if (normalized === 'FROZEN') return styles.conditionDotFrozen;
+  return styles.conditionDotAmbient;
+}
+
 const styles = StyleSheet.create({
   screen: {
     backgroundColor: '#ffffff',
@@ -359,7 +413,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   mapArea: {
-    flex: 1,
+    height: '56%',
     position: 'relative',
   },
   startOverlay: {
@@ -398,12 +452,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: 2,
   },
-  deliveryPanel: {
+  detailsArea: {
     backgroundColor: '#ffffff',
     borderTopColor: '#e5e7eb',
     borderTopWidth: 1,
     elevation: 8,
-    paddingBottom: 12,
+    flex: 1,
+  },
+  deliveryPanel: {
+    flex: 1,
+  },
+  deliveryPanelContent: {
+    paddingBottom: 14,
     paddingHorizontal: 18,
     paddingTop: 12,
   },
@@ -438,7 +498,7 @@ const styles = StyleSheet.create({
     color: '#101828',
     fontSize: 18,
     fontWeight: '900',
-    flex: 0.42,
+    flex: 0.38,
   },
   destinationRow: {
     alignItems: 'center',
@@ -446,12 +506,25 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 2,
   },
+  destinationSequenceBadge: {
+    alignItems: 'center',
+    backgroundColor: '#0b57d0',
+    borderRadius: 11,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  destinationSequenceText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
   destinationAddress: {
     color: '#667085',
     fontSize: 11,
     fontWeight: '600',
     lineHeight: 16,
-    flex: 0.58,
+    flex: 0.62,
     textAlign: 'right',
   },
   metrics: {
@@ -479,6 +552,63 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     textAlign: 'center',
+  },
+  conditionSection: {
+    gap: 7,
+  },
+  conditionSectionTitle: {
+    color: '#667085',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  conditionList: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  conditionRow: {
+    alignItems: 'center',
+    borderBottomColor: '#e2e8f0',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  conditionDot: {
+    borderRadius: 4,
+    height: 8,
+    marginRight: 9,
+    width: 8,
+  },
+  conditionDotAmbient: {
+    backgroundColor: '#f59e0b',
+  },
+  conditionDotCold: {
+    backgroundColor: '#0ea5e9',
+  },
+  conditionDotFrozen: {
+    backgroundColor: '#6366f1',
+  },
+  conditionLabel: {
+    color: '#344054',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  conditionBoxCount: {
+    color: '#101828',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  actionFooter: {
+    backgroundColor: '#ffffff',
+    borderTopColor: '#e5e7eb',
+    borderTopWidth: 1,
+    paddingBottom: 10,
+    paddingHorizontal: 18,
+    paddingTop: 10,
   },
   actionButtons: {
     flexDirection: 'row',

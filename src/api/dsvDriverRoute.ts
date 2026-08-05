@@ -5,6 +5,8 @@ import type {
 } from '../domain/delivery/deliveryPlan';
 import { resolveDsvApiUrl } from './dsvApiUrl';
 
+const DSV_DEFAULT_TIMEZONE = 'Asia/Seoul';
+
 type RouteChoice = {
   companyGuidance: { deliveryDate: string; routeName: string };
   driverAccess: { accessToken: string };
@@ -153,9 +155,15 @@ export async function loadDriverDeliveryRoute(
     routePlanId: routeChoice.routePlanId,
     routeAccessToken: routeChoice.routeAccessToken,
     serverRouteGeometry: readServerRouteGeometry(route.routeGeometry),
-    timezone: route.timezone ?? 'Asia/Seoul',
+    timezone: normalizeDsvTimezone(route.timezone),
     availableRoutes: routeChoices,
   };
+}
+
+function normalizeDsvTimezone(timezone: string | undefined): string {
+  return timezone === undefined || timezone === 'UTC'
+    ? DSV_DEFAULT_TIMEZONE
+    : timezone;
 }
 
 export async function loadDriverDeliveryRouteChoices(

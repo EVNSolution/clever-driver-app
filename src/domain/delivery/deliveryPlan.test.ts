@@ -4,9 +4,11 @@ import { describe, it } from 'node:test';
 import {
   buildCurrentDeliverySummary,
   buildDeliveryDestinationPoints,
+  buildDeliveryRouteVisualState,
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
   PREVIEW_DELIVERY_ORDERS,
+  resolveDeliveryDestinationProgressState,
 } from './deliveryPlan';
 
 describe('delivery order plan', () => {
@@ -112,11 +114,81 @@ describe('delivery order plan', () => {
     ]);
   });
 
+  it('colors only server route slices and destination markers by delivery progress', () => {
+    const orders = PREVIEW_DELIVERY_ORDERS.map((order) => ({
+      ...order,
+      status: order.destinationId === PREVIEW_DELIVERY_ORDERS[0]?.destinationId
+        ? 'DELIVERED'
+        : 'READY',
+    }));
+    const routeGeometry = {
+      coordinates: [
+        [126.7, 37.4],
+        [126.8, 37.5],
+        [126.814917, 37.574466],
+        [126.9, 37.58],
+        [127.087846, 37.586337],
+        [127.2, 37.6],
+      ] as [number, number][],
+      type: 'LineString' as const,
+    };
+    const currentOrder = orders.find(
+      ({ destinationId }) => destinationId === 'preview-destination-daeju',
+    );
+    assert.ok(currentOrder);
+
+    const visualState = buildDeliveryRouteVisualState(
+      orders,
+      routeGeometry,
+      currentOrder.id,
+    );
+
+    assert.deepEqual(
+      visualState.markers.map(({ markerState }) => markerState),
+      ['completed', 'completed', 'current'],
+    );
+    assert.deepEqual(visualState.completedGeometry?.coordinates, [
+      routeGeometry.coordinates[0],
+      routeGeometry.coordinates[1],
+      routeGeometry.coordinates[2],
+    ]);
+    assert.deepEqual(visualState.currentGeometry?.coordinates, [
+      routeGeometry.coordinates[2],
+      routeGeometry.coordinates[3],
+      routeGeometry.coordinates[4],
+    ]);
+    assert.equal(visualState.upcomingGeometry, routeGeometry);
+  });
+
+  it('classifies grouped delivery rows from completed orders and the active stop', () => {
+    const orders = PREVIEW_DELIVERY_ORDERS.map((order, index) => ({
+      ...order,
+      status: index < 2 ? 'DELIVERED' : 'READY',
+    }));
+    const groups = groupDeliveryOrdersByDestination(orders);
+    const activeOrder = groups[1]?.orders[0];
+    assert.ok(activeOrder);
+
+    assert.deepEqual(
+      groups.map((group) =>
+        resolveDeliveryDestinationProgressState(group, activeOrder.id),
+      ),
+      ['completed', 'current', 'upcoming'],
+    );
+  });
+
   it('summarizes the server-selected next stop destination', () => {
     const firstOrder = PREVIEW_DELIVERY_ORDERS[0];
     const secondOrder = PREVIEW_DELIVERY_ORDERS[1];
     assert.ok(firstOrder);
     assert.ok(secondOrder);
+    const thirdOrder = {
+      ...secondOrder,
+      id: 'preview-order-2018330225',
+      sellerOrderKey: '2018330225',
+      sequence: 3,
+      shippedBoxes: 1,
+    };
 
     const summary = buildCurrentDeliverySummary(
       [
@@ -128,20 +200,40 @@ describe('delivery order plan', () => {
           timeWindowStart: '2026-08-03T02:00:00.000Z',
         },
         secondOrder,
+        thirdOrder,
       ],
       firstOrder.id,
     );
 
     assert.deepEqual(summary, {
       address: firstOrder.address,
-      boxCount: firstOrder.shippedBoxes + secondOrder.shippedBoxes,
+      boxCount: firstOrder.shippedBoxes + secondOrder.shippedBoxes + thirdOrder.shippedBoxes,
+      orderBoxes: [
+        {
+          boxCount: firstOrder.shippedBoxes,
+          conditionCode: firstOrder.conditionCode,
+          orderId: firstOrder.id,
+        },
+        {
+          boxCount: secondOrder.shippedBoxes,
+          conditionCode: secondOrder.conditionCode,
+          orderId: secondOrder.id,
+        },
+        {
+          boxCount: thirdOrder.shippedBoxes,
+          conditionCode: thirdOrder.conditionCode,
+          orderId: thirdOrder.id,
+        },
+      ],
       conditionCodes: [firstOrder.conditionCode, secondOrder.conditionCode],
       destinationId: firstOrder.destinationId,
       destinationName: firstOrder.destinationName,
+      destinationSequence: 1,
       estimatedArrivalAt: '2026-08-03T01:30:00.000Z',
       notes: ['도착 전 연락'],
-      orderCount: 2,
+      orderCount: 3,
       deliveryStopId: firstOrder.id,
+      deliveryStopIds: [firstOrder.id, secondOrder.id, thirdOrder.id],
       timeWindowEnd: '2026-08-03T03:00:00.000Z',
       timeWindowOrderCount: 1,
       timeWindowStart: '2026-08-03T02:00:00.000Z',

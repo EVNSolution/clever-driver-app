@@ -65,6 +65,7 @@ describe('DSV assigned route API client', () => {
             id: 'route-116',
             name: '#116',
             routeGeometry: serverGeometry,
+            timezone: 'UTC',
             stops: [
               {
                 address: {
@@ -125,6 +126,7 @@ describe('DSV assigned route API client', () => {
       longitude: 126.7369,
     });
     assert.equal(route?.nextDeliveryStopId, 'stop-1');
+    assert.equal(route?.timezone, 'Asia/Seoul');
   });
 
   it('loads the route selected by date instead of always using the latest route', async () => {

@@ -19,14 +19,16 @@ import {
 } from 'react-native';
 
 import {
-  buildDeliveryDestinationPoints,
+  buildDeliveryRouteVisualState,
   type DeliveryCoordinate,
   type DeliveryOrder,
+  type DeliveryRouteMarkerState,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 
 const DESTINATION_PIN_IMAGE = require('../../../assets/map/destination-pin.png') as number;
 const DEPOT_PIN_IMAGE = require('../../../assets/map/depot-pin.png') as number;
+const COMPLETED_MAP_COLOR = '#98a2b3';
 
 const DESTINATION_MARKER_LAYOUT = {
   'icon-allow-overlap': true,
@@ -47,6 +49,14 @@ const DESTINATION_MARKER_LAYOUT = {
 } satisfies SymbolLayerSpecification['layout'];
 
 const DESTINATION_MARKER_PAINT = {
+  'icon-color': [
+    'case',
+    ['==', ['get', 'markerState'], 'current'], '#12b76a',
+    ['==', ['get', 'markerState'], 'completed'], COMPLETED_MAP_COLOR,
+    '#0b57d0',
+  ],
+  'icon-halo-color': '#ffffff',
+  'icon-halo-width': 1,
   'text-color': '#ffffff',
   'text-halo-color': 'rgba(0, 0, 0, 0.32)',
   'text-halo-width': 0.6,
@@ -67,6 +77,7 @@ const MAP_PADDING = { bottom: 44, left: 34, right: 34, top: 44 } as const;
 const FALLBACK_BOUNDS = [126.91, 37.48, 127.16, 37.66] as const;
 
 type DeliveryRouteMapProps = {
+  currentDeliveryStopId?: string | null;
   depotCoordinate?: DeliveryCoordinate | null;
   interactionMode: 'explore' | 'pan-only';
   orders: DeliveryOrder[];
@@ -78,6 +89,7 @@ type MapLoadState = 'loading' | 'ready' | 'error';
 type LocationPermission = 'idle' | 'requesting' | 'granted' | 'denied';
 
 export function DeliveryRouteMap({
+  currentDeliveryStopId = null,
   depotCoordinate = null,
   interactionMode,
   orders,
@@ -89,8 +101,13 @@ export function DeliveryRouteMap({
   const [locationPermission, setLocationPermission] =
     useState<LocationPermission>(canExplore ? 'requesting' : 'idle');
   const mapModel = useMemo(
-    () => buildDeliveryMapModel(orders, serverRouteGeometry, depotCoordinate),
-    [depotCoordinate, orders, serverRouteGeometry],
+    () => buildDeliveryMapModel(
+      orders,
+      serverRouteGeometry,
+      depotCoordinate,
+      currentDeliveryStopId,
+    ),
+    [currentDeliveryStopId, depotCoordinate, orders, serverRouteGeometry],
   );
 
   useEffect(() => {
@@ -134,23 +151,62 @@ export function DeliveryRouteMap({
         <Images
           images={{
             'delivery-depot-pin-image': DEPOT_PIN_IMAGE,
-            'delivery-destination-pin-image': DESTINATION_PIN_IMAGE,
+            'delivery-destination-pin-image': {
+              sdf: true,
+              source: DESTINATION_PIN_IMAGE,
+            },
           }}
         />
-        {serverRouteGeometry !== null ? (
+        {mapModel.upcomingGeometry !== null ? (
           <GeoJSONSource
-            data={serverRouteGeometry}
+            data={mapModel.upcomingGeometry}
             id="delivery-server-route-source"
           >
             <Layer
               id="delivery-server-route-line"
               layout={{ 'line-cap': 'round', 'line-join': 'round' }}
               paint={{
-                'line-color': '#079455',
+                'line-color': '#0b57d0',
                 'line-opacity': 0.9,
                 'line-width': 4,
               }}
               source="delivery-server-route-source"
+              type="line"
+            />
+          </GeoJSONSource>
+        ) : null}
+        {mapModel.completedGeometry !== null ? (
+          <GeoJSONSource
+            data={mapModel.completedGeometry}
+            id="delivery-completed-route-source"
+          >
+            <Layer
+              id="delivery-completed-route-line"
+              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              paint={{
+                'line-color': COMPLETED_MAP_COLOR,
+                'line-opacity': 0.72,
+                'line-width': 4,
+              }}
+              source="delivery-completed-route-source"
+              type="line"
+            />
+          </GeoJSONSource>
+        ) : null}
+        {mapModel.currentGeometry !== null ? (
+          <GeoJSONSource
+            data={mapModel.currentGeometry}
+            id="delivery-current-route-source"
+          >
+            <Layer
+              id="delivery-current-route-line"
+              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              paint={{
+                'line-color': '#12b76a',
+                'line-opacity': 1,
+                'line-width': 4.5,
+              }}
+              source="delivery-current-route-source"
               type="line"
             />
           </GeoJSONSource>
@@ -217,15 +273,29 @@ function buildDeliveryMapModel(
   orders: DeliveryOrder[],
   serverRouteGeometry: ServerDeliveryRouteGeometry | null,
   depotCoordinate: DeliveryCoordinate | null,
+  currentDeliveryStopId: string | null,
 ): {
   bounds: [number, number, number, number];
+  completedGeometry: ServerDeliveryRouteGeometry | null;
+  currentGeometry: ServerDeliveryRouteGeometry | null;
   depot: GeoJSON.Feature<GeoJSON.Point> | null;
   markers: GeoJSON.FeatureCollection<
     GeoJSON.Point,
-    { destinationId: string; label: string; sortKey: number }
+    {
+      destinationId: string;
+      label: string;
+      markerState: DeliveryRouteMarkerState;
+      sortKey: number;
+    }
   >;
+  upcomingGeometry: ServerDeliveryRouteGeometry | null;
 } {
-  const points = buildDeliveryDestinationPoints(orders);
+  const visualState = buildDeliveryRouteVisualState(
+    orders,
+    serverRouteGeometry,
+    currentDeliveryStopId,
+  );
+  const points = visualState.markers;
   const visibleCoordinates = [
     ...(depotCoordinate === null
       ? []
@@ -240,6 +310,8 @@ function buildDeliveryMapModel(
 
   return {
     bounds,
+    completedGeometry: visualState.completedGeometry,
+    currentGeometry: visualState.currentGeometry,
     depot:
       depotCoordinate === null
         ? null
@@ -262,10 +334,12 @@ function buildDeliveryMapModel(
         properties: {
           destinationId: point.destinationId,
           label: point.label,
+          markerState: point.markerState,
           sortKey: -point.sortOrder,
         },
       })),
     },
+    upcomingGeometry: visualState.upcomingGeometry,
   };
 }
 
