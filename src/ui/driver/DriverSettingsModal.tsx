@@ -14,6 +14,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { fetchDriverAndroidAppRelease } from '../../api/dsvDriverAppRelease';
+import type { DriverAppRelease } from '../../domain/appUpdate/driverAppUpdate';
+import {
+  readInstalledDriverAppVersion,
+  type InstalledDriverAppVersion,
+} from '../../platform/expo/application/expoAppVersionService';
 import { useAppDialog } from './AppDialog';
 
 type PermissionKey = 'camera' | 'location' | 'photos';
@@ -31,6 +37,11 @@ type DriverSettingsModalProps = {
   onClose(): void;
 };
 
+type VersionCheckState =
+  | { kind: 'checking'; installed: InstalledDriverAppVersion | null }
+  | { kind: 'ready'; installed: InstalledDriverAppVersion; release: DriverAppRelease }
+  | { kind: 'unavailable'; installed: InstalledDriverAppVersion | null };
+
 export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
   const { dialog, showDialog } = useAppDialog();
   const insets = useSafeAreaInsets();
@@ -41,16 +52,50 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
   });
   const [requestingPermission, setRequestingPermission] =
     useState<PermissionKey | null>(null);
+  const [versionCheck, setVersionCheck] = useState<VersionCheckState>({
+    installed: readInstalledDriverAppVersion(),
+    kind: 'checking',
+  });
 
   useEffect(() => {
     void readPermissionSnapshot().then(setPermissions).catch(() => undefined);
+    void checkAppVersion();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void readPermissionSnapshot().then(setPermissions).catch(() => undefined);
+        void checkAppVersion();
       }
     });
     return () => subscription.remove();
   }, []);
+
+  async function checkAppVersion() {
+    const installed = readInstalledDriverAppVersion();
+    setVersionCheck({ installed, kind: 'checking' });
+    if (installed === null || Platform.OS !== 'android') {
+      setVersionCheck({ installed, kind: 'unavailable' });
+      return;
+    }
+    try {
+      const release = await fetchDriverAndroidAppRelease();
+      setVersionCheck({ installed, kind: 'ready', release });
+    } catch {
+      setVersionCheck({ installed, kind: 'unavailable' });
+    }
+  }
+
+  async function openUpdateLink() {
+    if (versionCheck.kind !== 'ready') return;
+    try {
+      await Linking.openURL(versionCheck.release.installUrl);
+    } catch {
+      showDialog({
+        message: '설치 링크를 열지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        title: '업데이트 링크 오류',
+        tone: 'danger',
+      });
+    }
+  }
 
   async function openAppSettings() {
     try {
@@ -178,11 +223,96 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
           >
             <Text style={styles.systemSettingsText}>기기 설정에서 권한 관리</Text>
           </Pressable>
+
+          <View style={styles.updateSection}>
+            <View style={styles.updateHeader}>
+              <Text style={styles.updateTitle}>업데이트 확인</Text>
+              <VersionStatus state={versionCheck} />
+            </View>
+            <View style={styles.versionList}>
+              <VersionRow
+                label="최신 버전"
+                value={versionCheck.kind === 'ready'
+                  ? formatVersion(
+                    versionCheck.release.latestVersionName,
+                    versionCheck.release.latestVersionCode,
+                  )
+                  : versionCheck.kind === 'checking' ? '확인 중' : '확인 불가'}
+              />
+              <VersionRow
+                label="기기 버전"
+                value={versionCheck.installed === null
+                  ? '확인 불가'
+                  : formatVersion(
+                    versionCheck.installed.versionName,
+                    versionCheck.installed.versionCode,
+                  )}
+              />
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={versionCheck.kind === 'checking'}
+              onPress={() => {
+                if (isUpdateAvailable(versionCheck)) void openUpdateLink();
+                else void checkAppVersion();
+              }}
+              style={({ pressed }) => [
+                styles.updateButton,
+                isUpdateAvailable(versionCheck) && styles.updateButtonAvailable,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={[
+                styles.updateButtonText,
+                isUpdateAvailable(versionCheck) && styles.updateButtonTextAvailable,
+              ]}>
+                {versionCheck.kind === 'checking'
+                  ? '버전 확인 중'
+                  : isUpdateAvailable(versionCheck) ? '업데이트 링크 열기' : '버전 다시 확인'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
       {dialog}
     </Modal>
   );
+}
+
+function VersionStatus({ state }: { state: VersionCheckState }) {
+  const updateAvailable = isUpdateAvailable(state);
+  const label = state.kind === 'checking'
+    ? '확인 중'
+    : state.kind === 'unavailable'
+      ? '확인 불가'
+      : updateAvailable ? '업데이트 필요' : '최신 버전';
+  return (
+    <Text style={[
+      styles.updateStatus,
+      state.kind === 'ready' && !updateAvailable && styles.updateStatusCurrent,
+      updateAvailable && styles.updateStatusAvailable,
+    ]}>
+      {label}
+    </Text>
+  );
+}
+
+function VersionRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.versionRow}>
+      <Text style={styles.versionLabel}>{label}</Text>
+      <Text style={styles.versionValue}>{value}</Text>
+    </View>
+  );
+}
+
+function isUpdateAvailable(state: VersionCheckState): boolean {
+  return state.kind === 'ready'
+    && state.installed.versionCode < state.release.latestVersionCode;
+}
+
+function formatVersion(versionName: string, versionCode: number): string {
+  return `${versionName} (${versionCode})`;
 }
 
 function PermissionRow({
@@ -388,6 +518,76 @@ const styles = StyleSheet.create({
     color: '#344054',
     fontSize: 13,
     fontWeight: '900',
+  },
+  updateSection: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e4e7ec',
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 18,
+    padding: 14,
+  },
+  updateHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  updateTitle: {
+    color: '#101828',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  updateStatus: {
+    color: '#667085',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  updateStatusAvailable: {
+    color: '#b42318',
+  },
+  updateStatusCurrent: {
+    color: '#027a48',
+  },
+  versionList: {
+    gap: 8,
+    marginTop: 14,
+  },
+  versionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  versionLabel: {
+    color: '#667085',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  versionValue: {
+    color: '#101828',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  updateButton: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderColor: '#d0d5dd',
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginTop: 14,
+    minHeight: 42,
+  },
+  updateButtonAvailable: {
+    backgroundColor: '#0b57d0',
+    borderColor: '#0b57d0',
+  },
+  updateButtonText: {
+    color: '#344054',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  updateButtonTextAvailable: {
+    color: '#ffffff',
   },
   buttonPressed: {
     opacity: 0.75,
