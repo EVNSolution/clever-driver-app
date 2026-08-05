@@ -94,12 +94,43 @@ describe('authenticated driver screens', () => {
       'utf8',
     );
 
-    assert.match(source, /const \[isExpanded, setIsExpanded\] = useState\(false\)/u);
+    assert.match(source, /const \[isExpanded, setIsExpanded\] = useState\(isCurrent\)/u);
     assert.match(source, /accessibilityState=\{\{ expanded: isExpanded \}\}/u);
     assert.match(source, /group\.orders\.map/u);
     assert.match(source, /주문 \{orderIndex \+ 1\}/u);
     assert.match(source, /order\.conditionCode/u);
     assert.match(source, /order\.shippedBoxes/u);
+  });
+
+  it('mutes completed delivery groups and opens the active destination', () => {
+    const source = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+
+    assert.match(source, /resolveDeliveryDestinationProgressState/u);
+    assert.match(source, /styles\.destinationGroupCompleted/u);
+    assert.match(source, /styles\.destinationGroupEmphasis/u);
+    assert.match(
+      source,
+      /!isLast && !isCompleted && !isCurrent && styles\.orderRowDivider/u,
+    );
+    assert.match(source, /styles\.destinationGroupCurrent/u);
+    assert.match(source, /styles\.currentDeliveryBadge/u);
+    assert.match(source, /highlighted=\{isCurrent\}/u);
+    assert.match(source, /styles\.conditionBadgeHighlighted/u);
+    assert.match(source, /styles\.conditionBadgeColdHighlighted/u);
+    assert.match(source, />배송 중</u);
+    assert.match(source, /key=\{`\$\{group\.key\}:\$\{progressState\}`\}/u);
+    assert.match(workspace, /nextDeliveryStopId=\{route\.nextDeliveryStopId\}/u);
+    assert.match(source, /destinationGroupEmphasis:[\s\S]*paddingHorizontal: 9/u);
+    assert.match(source, /completedPrimaryText:[\s\S]*color: '#475467'/u);
+    assert.match(source, /paddingBottom: 88/u);
+    assert.match(source, /scrollTo\(\{[\s\S]*destinationTop/u);
   });
 
   it('uses matching action-button geometry and visual summary separators', () => {
@@ -218,6 +249,11 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /지금 가는 배송지/u);
     assert.match(screenSource, /주문 수/u);
     assert.match(screenSource, /박스 수/u);
+    assert.match(screenSource, /주문 정보/u);
+    assert.match(screenSource, /summary\.orderBoxes/u);
+    assert.match(screenSource, /summary\.destinationSequence/u);
+    assert.match(screenSource, /<ScrollView/u);
+    assert.match(screenSource, /styles\.actionFooter/u);
     assert.match(screenSource, /ETA/u);
     assert.match(screenSource, /배송 완료/u);
     assert.match(screenSource, /etaStatus === 'PRE_PICKUP'/u);
@@ -273,13 +309,34 @@ describe('authenticated driver screens', () => {
       'utf8',
     );
 
-    assert.match(source, /serverRouteGeometry !== null/u);
-    assert.match(source, /data=\{serverRouteGeometry\}/u);
+    assert.match(source, /buildDeliveryRouteVisualState/u);
+    assert.match(source, /data=\{mapModel\.upcomingGeometry\}/u);
     assert.doesNotMatch(screenSource, /서버 경로/u);
     assert.doesNotMatch(
       source,
       /geometry: \{ type: 'LineString', coordinates \}/u,
     );
+  });
+
+  it('uses the Demo progress colors for server route slices and markers', () => {
+    const source = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryRouteMap.tsx'),
+      'utf8',
+    );
+    const screenSource = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryMapScreen.tsx'),
+      'utf8',
+    );
+
+    assert.match(source, /id="delivery-completed-route-line"/u);
+    assert.match(source, /id="delivery-current-route-line"/u);
+    assert.match(source, /const COMPLETED_MAP_COLOR = '#98a2b3'/u);
+    assert.match(source, /'line-color': COMPLETED_MAP_COLOR/u);
+    assert.match(source, /'line-opacity': 0\.72/u);
+    assert.match(source, /'line-color': '#12b76a'/u);
+    assert.match(source, /'line-color': '#0b57d0'/u);
+    assert.match(source, /\['get', 'markerState'\]/u);
+    assert.match(screenSource, /currentDeliveryStopId=\{nextDeliveryStopId\}/u);
   });
 
   it('offers camera and album proof upload after delivery completion', () => {
@@ -343,6 +400,11 @@ describe('authenticated driver screens', () => {
     assert.match(settings, /getCameraPermissionsAsync/u);
     assert.match(settings, /getMediaLibraryPermissionsAsync/u);
     assert.match(settings, /Linking\.openSettings/u);
+    assert.match(settings, /업데이트 확인/u);
+    assert.match(settings, /최신 버전/u);
+    assert.match(settings, /기기 버전/u);
+    assert.match(settings, /fetchDriverAndroidAppRelease/u);
+    assert.match(settings, /readInstalledDriverAppVersion/u);
   });
 
   it('uses the CLEVER dialog instead of Android alert dialogs', () => {
