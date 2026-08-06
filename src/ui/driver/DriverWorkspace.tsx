@@ -16,6 +16,7 @@ import {
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
 } from '../../api/dsvDriverRoute';
+import { resolveDeliveryActivityForUpdate } from '../../domain/appUpdate/driverAppUpdate';
 import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
@@ -26,11 +27,13 @@ type DriverWorkspaceTab = 'delivery' | 'map';
 
 type DriverWorkspaceProps = {
   authSession: DriverAuthSession;
+  onDeliveryActivityChange(isActive: boolean | null): void;
   onLogout(): void;
 };
 
 export function DriverWorkspace({
   authSession,
+  onDeliveryActivityChange,
   onLogout,
 }: DriverWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
@@ -45,6 +48,16 @@ export function DriverWorkspace({
   );
   const driverName =
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
+
+  useEffect(() => {
+    onDeliveryActivityChange(resolveDeliveryActivityForUpdate({
+      loadState,
+      nextDeliveryStopId: route?.nextDeliveryStopId ?? null,
+      pickupCompletedAt: route?.pickupCompletedAt ?? null,
+    }));
+  }, [loadState, onDeliveryActivityChange, route]);
+
+  useEffect(() => () => onDeliveryActivityChange(null), [onDeliveryActivityChange]);
 
   useEffect(() => {
     let isActive = true;

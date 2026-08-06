@@ -60,6 +60,7 @@ describe('DSV assigned route API client', () => {
                 deliveryStopId: 'stop-1',
                 estimatedArrivalAt: '2026-07-31T01:30:00.000Z',
               },
+              pickupCompletedAt: '2026-07-31T00:15:00.000Z',
               status: 'READY',
             },
             id: 'route-116',
@@ -126,6 +127,7 @@ describe('DSV assigned route API client', () => {
       longitude: 126.7369,
     });
     assert.equal(route?.nextDeliveryStopId, 'stop-1');
+    assert.equal(route?.pickupCompletedAt, '2026-07-31T00:15:00.000Z');
     assert.equal(route?.timezone, 'Asia/Seoul');
   });
 

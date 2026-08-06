@@ -73,6 +73,7 @@ export type DriverDeliveryRoute = {
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   nextDeliveryStopId: string | null;
   orders: DeliveryOrder[];
+  pickupCompletedAt: string | null;
   routeId: string;
   routeName: string;
   routePlanId: string;
@@ -150,6 +151,7 @@ export async function loadDriverDeliveryRoute(
         ? etaSnapshot.nextStopEta.estimatedArrivalAt
         : null,
     )),
+    pickupCompletedAt: etaSnapshot?.pickupCompletedAt ?? null,
     routeId: route.id,
     routeName: route.name,
     routePlanId: routeChoice.routePlanId,

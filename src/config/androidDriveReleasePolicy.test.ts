@@ -37,6 +37,27 @@ describe('Android Google Drive release policy', () => {
     assert.match(publishScript, /publish-dsv-driver-release-state\.sh/u);
   });
 
+  it('defaults to a non-mutating preflight and requires an explicit execute flag', () => {
+    assert.match(publishScript, /EXECUTE='false'/u);
+    assert.match(publishScript, /--execute/u);
+    assert.match(publishScript, /Dry run only\. Re-run with --execute to publish\./u);
+  });
+
+  it('accepts releases only from a clean synchronized integration branch', () => {
+    assert.match(publishScript, /release source branch must be dev or main/u);
+    assert.match(publishScript, /release source worktree must be clean/u);
+    assert.match(publishScript, /release source HEAD must match origin/u);
+  });
+
+  it('checks production state before publishing and verifies the full public APK checksum', () => {
+    assert.match(publishScript, /production release state lookup failed/u);
+    assert.match(publishScript, /api\/dsv\/driver\/app-release\/android/u);
+    assert.match(publishScript, /curl -fsSL "\$INSTALL_URL" --output "\$DOWNLOADED_APK"/u);
+    assert.match(publishScript, /anonymous download checksum does not match the published APK/u);
+    assert.match(publishScript, /release API must be \$EXPECTED_API_BASE_URL/u);
+    assert.match(publishScript, /minimum versionCode cannot be lower than production minimum/u);
+  });
+
   it('documents the immutable install link and agent rule', () => {
     assert.match(
       policy,

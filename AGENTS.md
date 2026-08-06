@@ -85,6 +85,8 @@ control-plane preflight와 명시적인 대상 저장소가 준비된 뒤 진행
   `app.json`과 `android/app/build.gradle`에 동일하게 반영한다.
 - 직접 Drive API를 조합하지 않고 `npm run release:android:drive`만 사용한다. 이 명령은
   승인된 계정, 폴더, 파일명, 패키지 ID, 버전 증가와 업로드 checksum을 검증한다.
+- 위 명령은 기본 dry-run이며 실제 게시할 때만
+  `npm run release:android:drive -- --execute`를 사용한다.
 - DSV 웹의 설치 주소는 `docs/android-drive-release.md`의 고정 URL을 사용한다.
 
 ## 완료 조건
