@@ -12,6 +12,7 @@ import {
   type DriverProofPhotoUpload,
 } from '../../api/dsvDriverProofMedia';
 import {
+  DriverRouteApiError,
   loadDriverDeliveryRoute,
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
@@ -45,6 +46,7 @@ export function DriverWorkspace({
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [selectedRoutePlanId, setSelectedRoutePlanId] = useState<string>();
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string>();
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'empty' | 'error'>(
     'loading',
   );
@@ -74,15 +76,19 @@ export function DriverWorkspace({
 
       setRoute(nextRoute);
       setOrders(nextRoute?.orders ?? []);
+      setLoadErrorMessage(undefined);
       setSelectedRoutePlanId(nextRoute?.routePlanId);
       setLoadState(nextRoute === null ? 'empty' : 'ready');
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (!isActive) {
         return;
       }
 
       setRoute(null);
       setOrders([]);
+      setLoadErrorMessage(
+        error instanceof DriverRouteApiError ? error.message : undefined,
+      );
       setLoadState('error');
     });
 
@@ -184,7 +190,11 @@ export function DriverWorkspace({
 
       <View style={styles.screenArea}>
         {loadState !== 'ready' || route === null ? (
-          <RouteLoadState onRetry={retryRouteLoad} state={loadState} />
+          <RouteLoadState
+            message={loadErrorMessage}
+            onRetry={retryRouteLoad}
+            state={loadState}
+          />
         ) : (
           <>
             {isDeliverySpaceOpen ? (
@@ -359,9 +369,11 @@ function RouteDateSelector({
 }
 
 function RouteLoadState({
+  message,
   onRetry,
   state,
 }: {
+  message?: string;
   onRetry(): void;
   state: 'loading' | 'ready' | 'empty' | 'error';
 }) {
@@ -374,7 +386,7 @@ function RouteLoadState({
           ? '배송 정보를 불러오는 중입니다.'
           : state === 'empty'
             ? '배정된 배송이 없습니다.'
-            : '배송 정보를 불러오지 못했습니다.'}
+            : message ?? '배송 정보를 불러오지 못했습니다.'}
       </Text>
       {!isLoading ? (
         <Pressable

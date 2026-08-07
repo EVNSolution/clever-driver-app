@@ -122,7 +122,21 @@ export async function loadDriverDeliveryRoute(
     throwEnvelopeError(assignedEnvelope.error);
   }
   if (assignedEnvelope.data.status === 'NO_ASSIGNED_ROUTE') {
-    return null;
+    return {
+      availableRoutes: routeChoices,
+      deliveryDate: routeChoice.deliveryDate,
+      depotCoordinate: null,
+      etaStatus: 'PRE_PICKUP',
+      nextDeliveryStopId: null,
+      orders: [],
+      pickupCompletedAt: null,
+      routeAccessToken: routeChoice.routeAccessToken,
+      routeId: routeChoice.routePlanId,
+      routeName: routeChoice.routeName,
+      routePlanId: routeChoice.routePlanId,
+      serverRouteGeometry: null,
+      timezone: DSV_DEFAULT_TIMEZONE,
+    };
   }
 
   const route = assignedEnvelope.data.route;
@@ -179,6 +193,12 @@ export async function loadDriverDeliveryRouteChoices(
 
   if (lookupEnvelope.data === null) {
     throwEnvelopeError(lookupEnvelope.error);
+  }
+  if (lookupEnvelope.data.status === 'VEHICLE_REQUIRED') {
+    throw new DriverRouteApiError(
+      'VEHICLE_REQUIRED',
+      '등록된 차량이 있어야 배송과 공용 주문을 확인할 수 있습니다.',
+    );
   }
   if (lookupEnvelope.data.status !== 'ROUTES_FOUND') {
     throw new DriverRouteApiError(

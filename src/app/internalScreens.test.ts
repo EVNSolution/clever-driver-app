@@ -31,6 +31,14 @@ describe('authenticated driver screens', () => {
       join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
       'utf8',
     );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const routeClient = readFileSync(
+      join(appDirectory, '../api/dsvDriverRoute.ts'),
+      'utf8',
+    );
 
     assert.match(source, /RouteDateSelector/u);
     assert.match(source, /availableRoutes/u);
@@ -43,6 +51,9 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /\n\s*horizontal\n/u);
     assert.doesNotMatch(source, /routes\.length < 2/u);
     assert.doesNotMatch(source, /2026-07-31.*배송 선택/u);
+    assert.match(routeClient, /등록된 차량이 있어야/u);
+    assert.match(deliveryScreen, /이 배차에 배정된 배송이 없습니다/u);
+    assert.match(deliveryScreen, /주문 목록에서 공용 배송을 확인할 수 있습니다/u);
   });
 
   it('opens one delivery Space page for whole-destination release and first-claim pickup', () => {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import {
+  DriverRouteApiError,
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
 } from './dsvDriverRoute';
@@ -232,6 +233,53 @@ describe('DSV assigned route API client', () => {
     ]);
     assert.equal(routeChoices[0]?.routeContext, 'newer-context');
     assert.equal(routeChoices[0]?.routeName, '#116');
+  });
+
+  it('preserves an empty vehicle-backed route so shared orders remain reachable', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let call = 0;
+    globalThis.fetch = async () => {
+      call += 1;
+      return new Response(JSON.stringify(call === 1 ? {
+        data: {
+          status: 'ROUTES_FOUND',
+          routes: [{
+            companyGuidance: { deliveryDate: '2026-08-07', routeName: '#205' },
+            driverAccess: { accessToken: 'empty-route-token' },
+            routeAccess: { routeContext: 'route-205', routePlanId: 'route-205' },
+          }],
+        },
+        error: null,
+      } : {
+        data: { status: 'NO_ASSIGNED_ROUTE' },
+        error: null,
+      }));
+    };
+
+    const route = await loadDriverDeliveryRoute('account-token');
+
+    assert.equal(route?.deliveryDate, '2026-08-07');
+    assert.equal(route?.routeName, '#205');
+    assert.equal(route?.routePlanId, 'route-205');
+    assert.equal(route?.routeAccessToken, 'empty-route-token');
+    assert.deepEqual(route?.orders, []);
+    assert.equal(route?.availableRoutes.length, 1);
+  });
+
+  it('surfaces the registered vehicle requirement from route access', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      data: { status: 'VEHICLE_REQUIRED' },
+      error: null,
+    }));
+
+    await assert.rejects(
+      () => loadDriverDeliveryRoute('account-token'),
+      (error: unknown) =>
+        error instanceof DriverRouteApiError &&
+        error.code === 'VEHICLE_REQUIRED' &&
+        /등록된 차량/u.test(error.message),
+    );
   });
 
   it('returns null when the linked account has no active route', async () => {

@@ -170,10 +170,13 @@ export function DeliveryScreen({
           <Pressable
             accessibilityLabel="배송 순서 편집"
             accessibilityRole="button"
+            accessibilityState={{ disabled: orders.length === 0 }}
+            disabled={orders.length === 0}
             onPress={startEditing}
             style={({ pressed }) => [
               styles.headerActionButton,
               styles.editButton,
+              orders.length === 0 && styles.editButtonDisabled,
               pressed && styles.buttonPressed,
             ]}
           >
@@ -188,6 +191,14 @@ export function DeliveryScreen({
         }}
         style={styles.orderList}
       >
+        {destinationGroups.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateTitle}>이 배차에 배정된 배송이 없습니다.</Text>
+            <Text style={styles.emptyStateText}>
+              주문 목록에서 공용 배송을 확인할 수 있습니다.
+            </Text>
+          </View>
+        ) : null}
         {destinationGroups.map((group, index) => {
           const progressState = resolveDeliveryDestinationProgressState(
             group,
@@ -717,6 +728,9 @@ const styles = StyleSheet.create({
   editButton: {
     backgroundColor: '#0b57d0',
   },
+  editButtonDisabled: {
+    backgroundColor: '#98a2b3',
+  },
   editButtonText: {
     color: '#ffffff',
     fontSize: 13,
@@ -743,6 +757,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderTopWidth: 1,
     paddingHorizontal: 18,
+  },
+  emptyState: {
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 18,
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    color: '#667085',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  emptyStateTitle: {
+    color: '#344054',
+    fontSize: 15,
+    fontWeight: '800',
   },
   orderRow: {
     alignItems: 'center',
