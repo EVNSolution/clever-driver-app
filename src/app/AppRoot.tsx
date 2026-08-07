@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -299,8 +300,9 @@ export function AppRoot() {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea}>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
           {appUpdateState.kind === 'checking' ? (
             <View style={styles.loadingState}>
@@ -376,8 +378,9 @@ export function AppRoot() {
               refreshRequestKey={notificationRefreshKey}
             />
           )}
-        </SafeAreaView>
-      </SafeAreaProvider>
+          </SafeAreaView>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

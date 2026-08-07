@@ -1,15 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState, type Ref } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
   type TextInputProps,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
   AuthApiError,
@@ -69,6 +67,11 @@ export function AuthEntryScreen({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const loginPasswordInputRef = useRef<TextInput>(null);
+  const phoneInputRef = useRef<TextInput>(null);
+  const registrationLoginIdInputRef = useRef<TextInput>(null);
+  const registrationPasswordInputRef = useRef<TextInput>(null);
+  const registrationPasswordConfirmationInputRef = useRef<TextInput>(null);
 
   async function handleLoginSubmit() {
     const errors = validateLoginForm(loginForm);
@@ -137,26 +140,23 @@ export function AuthEntryScreen({
     && signupInvite.invite.phoneLast4.length === 4;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.keyboardArea}
+    <KeyboardAwareScrollView
+      bottomOffset={8}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.brandPanel}>
-          <Text style={styles.brandName}>
-            <Text style={styles.brandBlue}>Clever</Text>{' '}
-            <Text style={styles.brandGreen}>Driver</Text>
-          </Text>
-          <Text style={styles.brandTagline}>
-            DSV 배송 업무를 더 단순하고 빠르게.
-          </Text>
-        </View>
+      <View style={styles.brandPanel}>
+        <Text style={styles.brandName}>
+          <Text style={styles.brandBlue}>Clever</Text>{' '}
+          <Text style={styles.brandGreen}>Driver</Text>
+        </Text>
+        <Text style={styles.brandTagline}>
+          DSV 배송 업무를 더 단순하고 빠르게.
+        </Text>
+      </View>
 
-        <View style={styles.formCard}>
+      <View style={styles.formCard}>
           <View style={styles.formHeading}>
             <Text style={styles.formTitle}>
               {isRegistration ? '배송원 계정 만들기' : '배송원 로그인'}
@@ -179,6 +179,7 @@ export function AuthEntryScreen({
                 onChangeText={(name) =>
                   setRegistrationForm((current) => ({ ...current, name }))
                 }
+                onSubmitEditing={() => phoneInputRef.current?.focus()}
                 placeholder="실명을 입력해 주세요"
                 returnKeyType="next"
                 textContentType="name"
@@ -190,11 +191,15 @@ export function AuthEntryScreen({
                 keyboardType="phone-pad"
                 label="휴대전화 번호"
                 maxLength={11}
+                inputRef={phoneInputRef}
                 onChangeText={(value) =>
                   setRegistrationForm((current) => ({
                     ...current,
                     phoneNumber: normalizePhoneNumber(value),
                   }))
+                }
+                onSubmitEditing={() =>
+                  registrationLoginIdInputRef.current?.focus()
                 }
                 placeholder="01012345678"
                 returnKeyType="next"
@@ -207,12 +212,16 @@ export function AuthEntryScreen({
                 autoCapitalize="none"
                 autoComplete="username-new"
                 error={registrationErrors.loginId}
+                inputRef={registrationLoginIdInputRef}
                 label="아이디"
                 onChangeText={(loginId) =>
                   setRegistrationForm((current) => ({
                     ...current,
                     loginId: loginId.toLowerCase(),
                   }))
+                }
+                onSubmitEditing={() =>
+                  registrationPasswordInputRef.current?.focus()
                 }
                 placeholder="사용할 아이디를 입력해 주세요"
                 returnKeyType="next"
@@ -223,12 +232,16 @@ export function AuthEntryScreen({
                 autoCapitalize="none"
                 autoComplete="password-new"
                 error={registrationErrors.password}
+                inputRef={registrationPasswordInputRef}
                 label="비밀번호"
                 onChangeText={(password) =>
                   setRegistrationForm((current) => ({
                     ...current,
                     password,
                   }))
+                }
+                onSubmitEditing={() =>
+                  registrationPasswordConfirmationInputRef.current?.focus()
                 }
                 placeholder="사용할 비밀번호를 입력해 주세요"
                 returnKeyType="next"
@@ -240,6 +253,7 @@ export function AuthEntryScreen({
                 autoCapitalize="none"
                 autoComplete="password-new"
                 error={registrationErrors.passwordConfirmation}
+                inputRef={registrationPasswordConfirmationInputRef}
                 label="비밀번호 확인"
                 onChangeText={(passwordConfirmation) =>
                   setRegistrationForm((current) => ({
@@ -268,6 +282,7 @@ export function AuthEntryScreen({
                     loginId: loginId.toLowerCase(),
                   }))
                 }
+                onSubmitEditing={() => loginPasswordInputRef.current?.focus()}
                 placeholder="아이디를 입력해 주세요"
                 returnKeyType="next"
                 textContentType="username"
@@ -277,6 +292,7 @@ export function AuthEntryScreen({
                 autoCapitalize="none"
                 autoComplete="current-password"
                 error={loginErrors.password}
+                inputRef={loginPasswordInputRef}
                 label="비밀번호"
                 onChangeText={(password) =>
                   setLoginForm((current) => ({ ...current, password }))
@@ -333,9 +349,8 @@ export function AuthEntryScreen({
               <Text style={styles.cancelButtonText}>로그인으로 돌아가기</Text>
             </Pressable>
           ) : null}
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -358,11 +373,13 @@ function formatAuthErrorMessage(error: unknown): string {
 function LabeledInput({
   error,
   helperText,
+  inputRef,
   label,
   ...inputProps
 }: TextInputProps & {
   error?: string;
   helperText?: string;
+  inputRef?: Ref<TextInput>;
   label: string;
 }) {
   return (
@@ -372,6 +389,7 @@ function LabeledInput({
         <TextInput
           autoCorrect={false}
           placeholderTextColor="#8a94a6"
+          ref={inputRef}
           style={styles.input}
           {...inputProps}
         />
@@ -411,9 +429,6 @@ function PrimaryButton({
 }
 
 const styles = StyleSheet.create({
-  keyboardArea: {
-    flex: 1,
-  },
   container: {
     backgroundColor: '#f7f9fc',
     flexGrow: 1,

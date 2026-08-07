@@ -46,6 +46,18 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /registerDriverAccount/u);
   });
 
+  it('keeps focused authentication fields visible above the native keyboard', () => {
+    const source = readFileSync(authScreenPath, 'utf8');
+    const appRoot = readFileSync(appRootPath, 'utf8');
+
+    assert.match(appRoot, /KeyboardProvider/u);
+    assert.match(source, /KeyboardAwareScrollView/u);
+    assert.match(source, /bottomOffset=\{8\}/u);
+    assert.match(source, /keyboardShouldPersistTaps="handled"/u);
+    assert.match(source, /onSubmitEditing=\{\(\) => phoneInputRef\.current\?\.focus\(\)\}/u);
+    assert.doesNotMatch(source, /KeyboardAvoidingView/u);
+  });
+
   it('restores and refreshes login through SecureStore without saving credentials', () => {
     const appRoot = readFileSync(appRootPath, 'utf8');
     const sessionStore = readFileSync(sessionStorePath, 'utf8');
