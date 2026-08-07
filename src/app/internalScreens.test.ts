@@ -144,13 +144,15 @@ describe('authenticated driver screens', () => {
     assert.match(source, /scrollTo\(\{[\s\S]*destinationTop/u);
   });
 
-  it('uses matching action-button geometry and visual summary separators', () => {
+  it('uses matching action-button geometry, typography, and visual summary separators', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
     );
 
     assert.equal(source.match(/styles\.headerActionButton/gu)?.length, 2);
+    assert.equal(source.match(/styles\.headerActionText/gu)?.length, 2);
+    assert.match(source, /headerActionText:[\s\S]*fontSize: 13,[\s\S]*fontWeight: '800'/u);
     assert.match(source, /styles\.summaryItems/u);
     assert.match(source, /styles\.summaryDivider/u);
     assert.doesNotMatch(source, /주문 \{orders\.length\}건 · 배송지/u);

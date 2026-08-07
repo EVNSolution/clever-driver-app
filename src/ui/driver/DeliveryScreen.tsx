@@ -165,7 +165,9 @@ export function DeliveryScreen({
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={styles.spaceButtonText}>주문 목록</Text>
+            <Text style={[styles.headerActionText, styles.spaceButtonText]}>
+              주문 목록
+            </Text>
           </Pressable>
           <Pressable
             accessibilityLabel="배송 순서 편집"
@@ -180,7 +182,9 @@ export function DeliveryScreen({
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={styles.editButtonText}>순서 편집</Text>
+            <Text style={[styles.headerActionText, styles.editButtonText]}>
+              순서 편집
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -733,6 +737,8 @@ const styles = StyleSheet.create({
   },
   editButtonText: {
     color: '#ffffff',
+  },
+  headerActionText: {
     fontSize: 13,
     fontWeight: '800',
   },
@@ -747,8 +753,6 @@ const styles = StyleSheet.create({
   },
   spaceButtonText: {
     color: '#0b57d0',
-    fontSize: 11,
-    fontWeight: '900',
   },
   orderList: {
     backgroundColor: '#ffffff',
