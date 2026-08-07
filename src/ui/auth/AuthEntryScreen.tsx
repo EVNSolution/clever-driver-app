@@ -7,7 +7,10 @@ import {
   View,
   type TextInputProps,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import {
+  KeyboardAwareScrollView,
+  KeyboardToolbar,
+} from 'react-native-keyboard-controller';
 
 import {
   AuthApiError,
@@ -140,12 +143,14 @@ export function AuthEntryScreen({
     && signupInvite.invite.phoneLast4.length === 4;
 
   return (
-    <KeyboardAwareScrollView
-      bottomOffset={8}
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
+    <>
+      <KeyboardToolbar.Group style={styles.keyboardArea}>
+        <KeyboardAwareScrollView
+          bottomOffset={50}
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
       <View style={styles.brandPanel}>
         <Text style={styles.brandName}>
           <Text style={styles.brandBlue}>Clever</Text>{' '}
@@ -349,8 +354,15 @@ export function AuthEntryScreen({
               <Text style={styles.cancelButtonText}>로그인으로 돌아가기</Text>
             </Pressable>
           ) : null}
-      </View>
-    </KeyboardAwareScrollView>
+        </View>
+        </KeyboardAwareScrollView>
+      </KeyboardToolbar.Group>
+      <KeyboardToolbar>
+        <KeyboardToolbar.Prev />
+        <KeyboardToolbar.Next />
+        <KeyboardToolbar.Done text="완료" />
+      </KeyboardToolbar>
+    </>
   );
 }
 
@@ -429,6 +441,9 @@ function PrimaryButton({
 }
 
 const styles = StyleSheet.create({
+  keyboardArea: {
+    flex: 1,
+  },
   container: {
     backgroundColor: '#f7f9fc',
     flexGrow: 1,

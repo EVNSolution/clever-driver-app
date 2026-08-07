@@ -52,9 +52,14 @@ describe('DSV authentication entry screen', () => {
 
     assert.match(appRoot, /KeyboardProvider/u);
     assert.match(source, /KeyboardAwareScrollView/u);
-    assert.match(source, /bottomOffset=\{8\}/u);
+    assert.match(source, /bottomOffset=\{50\}/u);
     assert.match(source, /keyboardShouldPersistTaps="handled"/u);
     assert.match(source, /onSubmitEditing=\{\(\) => phoneInputRef\.current\?\.focus\(\)\}/u);
+    assert.match(source, /KeyboardToolbar\.Group/u);
+    assert.match(
+      source,
+      /<KeyboardToolbar\.Prev \/>[\s\S]*<KeyboardToolbar\.Next \/>[\s\S]*<KeyboardToolbar\.Done text="완료" \/>/u,
+    );
     assert.doesNotMatch(source, /KeyboardAvoidingView/u);
   });
 
