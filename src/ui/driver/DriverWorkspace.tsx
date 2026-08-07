@@ -29,12 +29,14 @@ type DriverWorkspaceProps = {
   authSession: DriverAuthSession;
   onDeliveryActivityChange(isActive: boolean | null): void;
   onLogout(): void;
+  refreshRequestKey: number;
 };
 
 export function DriverWorkspace({
   authSession,
   onDeliveryActivityChange,
   onLogout,
+  refreshRequestKey,
 }: DriverWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
   const [isDeliverySpaceOpen, setIsDeliverySpaceOpen] = useState(false);
@@ -87,7 +89,7 @@ export function DriverWorkspace({
     return () => {
       isActive = false;
     };
-  }, [authSession.accessToken, loadAttempt, selectedRoutePlanId]);
+  }, [authSession.accessToken, loadAttempt, refreshRequestKey, selectedRoutePlanId]);
 
   function retryRouteLoad() {
     setLoadState('loading');

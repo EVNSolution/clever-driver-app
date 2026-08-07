@@ -40,6 +40,11 @@ import {
   type DriverAppUpdateState,
 } from '../domain/appUpdate/driverAppUpdate';
 import { readInstalledDriverAppVersion } from '../platform/expo/application/expoAppVersionService';
+import {
+  registerExpoDriverPushNotifications,
+  revokeExpoDriverPushNotifications,
+  subscribeToExpoDriverPushNotifications,
+} from '../platform/expo/notifications/expoDriverNotificationService';
 import { DriverAppUpdateScreen } from '../ui/appUpdate/DriverAppUpdateScreen';
 import { AuthEntryScreen } from '../ui/auth/AuthEntryScreen';
 import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
@@ -56,6 +61,7 @@ export function AppRoot() {
   const [appUpdateState, setAppUpdateState] = useState<DriverAppUpdateState>(INITIAL_APP_UPDATE_STATE);
   const [dismissedOptionalVersionCode, setDismissedOptionalVersionCode] = useState<number | null>(null);
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
+  const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
   const [isDeliveryActive, setIsDeliveryActive] = useState<boolean | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [autoLoginEnabled, setAutoLoginEnabled] = useState(true);
@@ -196,6 +202,26 @@ export function AppRoot() {
     setAuthSession(null);
     await clearDriverAuthSession();
   }, []);
+
+  const logout = useCallback(async () => {
+    if (authSession !== null) {
+      try {
+        await revokeExpoDriverPushNotifications(authSession.accessToken);
+      } catch {
+        // Logout must remain available when the push-token endpoint is unavailable.
+      }
+    }
+    await discardAuthSession();
+  }, [authSession, discardAuthSession]);
+
+  useEffect(() => {
+    if (authSession === null) return undefined;
+    void registerExpoDriverPushNotifications(authSession.accessToken).catch(() => undefined);
+    return subscribeToExpoDriverPushNotifications(
+      authSession.accessToken,
+      () => setNotificationRefreshKey((key) => key + 1),
+    );
+  }, [authSession]);
 
   useEffect(() => {
     if (!autoLoginEnabled) {
@@ -346,7 +372,8 @@ export function AppRoot() {
             <DriverWorkspace
               authSession={authSession}
               onDeliveryActivityChange={setIsDeliveryActive}
-              onLogout={discardAuthSession}
+              onLogout={logout}
+              refreshRequestKey={notificationRefreshKey}
             />
           )}
         </SafeAreaView>
