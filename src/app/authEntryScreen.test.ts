@@ -46,6 +46,23 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /registerDriverAccount/u);
   });
 
+  it('keeps focused authentication fields visible above the native keyboard', () => {
+    const source = readFileSync(authScreenPath, 'utf8');
+    const appRoot = readFileSync(appRootPath, 'utf8');
+
+    assert.match(appRoot, /KeyboardProvider/u);
+    assert.match(source, /KeyboardAwareScrollView/u);
+    assert.match(source, /bottomOffset=\{50\}/u);
+    assert.match(source, /keyboardShouldPersistTaps="handled"/u);
+    assert.match(source, /onSubmitEditing=\{\(\) => phoneInputRef\.current\?\.focus\(\)\}/u);
+    assert.match(source, /KeyboardToolbar\.Group/u);
+    assert.match(
+      source,
+      /<KeyboardToolbar\.Prev \/>[\s\S]*<KeyboardToolbar\.Next \/>[\s\S]*<KeyboardToolbar\.Done text="완료" \/>/u,
+    );
+    assert.doesNotMatch(source, /KeyboardAvoidingView/u);
+  });
+
   it('restores and refreshes login through SecureStore without saving credentials', () => {
     const appRoot = readFileSync(appRootPath, 'utf8');
     const sessionStore = readFileSync(sessionStorePath, 'utf8');
@@ -71,12 +88,21 @@ describe('DSV authentication entry screen', () => {
     assert.match(appRoot, /setAutoLoginEnabled\(false\)/u);
   });
 
-  it('checks the installed app against the server release before restoring login', () => {
+  it('rechecks the installed app without interrupting an active delivery', () => {
     const appRoot = readFileSync(appRootPath, 'utf8');
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
 
     assert.match(appRoot, /fetchDriverAndroidAppRelease/u);
     assert.match(appRoot, /readInstalledDriverAppVersion/u);
-    assert.match(appRoot, /isAppVersionCheckComplete/u);
+    assert.match(appRoot, /AppState\.addEventListener\('change'/u);
+    assert.match(appRoot, /shouldPresentDriverAppUpdate/u);
+    assert.match(appRoot, /onDeliveryActivityChange=\{setIsDeliveryActive\}/u);
+    assert.match(workspace, /resolveDeliveryActivityForUpdate/u);
+    assert.match(appRoot, /APP_UPDATE_FAILURE_RETRY_INTERVAL_MS/u);
+    assert.match(appRoot, /retainDriverAppUpdateAfterLookupFailure/u);
     assert.match(appRoot, /DriverAppUpdateScreen/u);
     assert.match(appRoot, /Linking\.openURL\(appUpdateState\.release\.installUrl\)/u);
   });

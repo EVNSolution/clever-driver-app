@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  AppState,
   Platform,
   Pressable,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -33,9 +35,17 @@ import {
 import { readDriverSignupInviteToken } from '../auth/driverSignupInviteLink';
 import {
   classifyDriverAppUpdate,
+  retainDriverAppUpdateAfterLookupFailure,
+  shouldPresentDriverAppUpdate,
+  shouldRecheckDriverAppUpdate,
   type DriverAppUpdateState,
 } from '../domain/appUpdate/driverAppUpdate';
 import { readInstalledDriverAppVersion } from '../platform/expo/application/expoAppVersionService';
+import {
+  registerExpoDriverPushNotifications,
+  revokeExpoDriverPushNotifications,
+  subscribeToExpoDriverPushNotifications,
+} from '../platform/expo/notifications/expoDriverNotificationService';
 import { DriverAppUpdateScreen } from '../ui/appUpdate/DriverAppUpdateScreen';
 import { AuthEntryScreen } from '../ui/auth/AuthEntryScreen';
 import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
@@ -45,11 +55,15 @@ const INITIAL_APP_UPDATE_STATE: DriverAppUpdateState =
   Platform.OS === 'android' && INSTALLED_APP_VERSION !== null
     ? { kind: 'checking' }
     : { kind: 'unavailable' };
+const APP_UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const APP_UPDATE_FAILURE_RETRY_INTERVAL_MS = 5 * 60 * 1_000;
 
 export function AppRoot() {
   const [appUpdateState, setAppUpdateState] = useState<DriverAppUpdateState>(INITIAL_APP_UPDATE_STATE);
-  const [isOptionalUpdateDismissed, setIsOptionalUpdateDismissed] = useState(false);
+  const [dismissedOptionalVersionCode, setDismissedOptionalVersionCode] = useState<number | null>(null);
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
+  const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
+  const [isDeliveryActive, setIsDeliveryActive] = useState<boolean | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [autoLoginEnabled, setAutoLoginEnabled] = useState(true);
   const [autoLoginAttempt, setAutoLoginAttempt] = useState(0);
@@ -62,28 +76,68 @@ export function AppRoot() {
   const [signupInviteError, setSignupInviteError] = useState<string | null>(null);
   const [isValidatingSignupInvite, setIsValidatingSignupInvite] = useState(false);
   const inviteValidationSequence = useRef(0);
-  const isAppVersionCheckComplete = appUpdateState.kind !== 'checking';
+  const appUpdateCheckInFlight = useRef(false);
+  const lastAppUpdateCheckAt = useRef<number | null>(null);
+  const lastAppUpdateCheckSucceeded = useRef(false);
+  const isMounted = useRef(true);
+
+  const checkForAppUpdate = useCallback(async (force = false) => {
+    if (INSTALLED_APP_VERSION === null || Platform.OS !== 'android') {
+      return;
+    }
+    const now = Date.now();
+    if (
+      appUpdateCheckInFlight.current
+      || !shouldRecheckDriverAppUpdate({
+        force,
+        intervalMs: lastAppUpdateCheckSucceeded.current
+          ? APP_UPDATE_RECHECK_INTERVAL_MS
+          : APP_UPDATE_FAILURE_RETRY_INTERVAL_MS,
+        lastCheckedAt: lastAppUpdateCheckAt.current,
+        now,
+      })
+    ) {
+      return;
+    }
+    appUpdateCheckInFlight.current = true;
+    try {
+      const release = await fetchDriverAndroidAppRelease();
+      if (isMounted.current) {
+        setAppUpdateState(classifyDriverAppUpdate({
+          currentPackageId: INSTALLED_APP_VERSION.packageId,
+          currentVersionCode: INSTALLED_APP_VERSION.versionCode,
+          release,
+        }));
+      }
+      lastAppUpdateCheckSucceeded.current = true;
+    } catch {
+      lastAppUpdateCheckSucceeded.current = false;
+      if (isMounted.current) {
+        setAppUpdateState(retainDriverAppUpdateAfterLookupFailure);
+      }
+    } finally {
+      lastAppUpdateCheckAt.current = Date.now();
+      appUpdateCheckInFlight.current = false;
+    }
+  }, []);
 
   useEffect(() => {
-    let isActive = true;
-    if (INSTALLED_APP_VERSION === null || Platform.OS !== 'android') {
-      return () => { isActive = false; };
-    }
-    void fetchDriverAndroidAppRelease()
-      .then((release) => {
-        if (isActive) {
-          setAppUpdateState(classifyDriverAppUpdate({
-            currentPackageId: INSTALLED_APP_VERSION.packageId,
-            currentVersionCode: INSTALLED_APP_VERSION.versionCode,
-            release,
-          }));
-        }
-      })
-      .catch(() => {
-        if (isActive) setAppUpdateState({ kind: 'unavailable' });
-      });
-    return () => { isActive = false; };
-  }, []);
+    isMounted.current = true;
+    const initialCheck = setTimeout(() => {
+      void checkForAppUpdate(true);
+    }, 0);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void checkForAppUpdate();
+        setNotificationRefreshKey((key) => key + 1);
+      }
+    });
+    return () => {
+      isMounted.current = false;
+      clearTimeout(initialCheck);
+      subscription.remove();
+    };
+  }, [checkForAppUpdate]);
 
   const acceptAuthSession = useCallback(async (session: DriverAuthSession) => {
     await saveDriverAuthSession(session);
@@ -91,6 +145,7 @@ export function AppRoot() {
     setHasAutoLoginConnectionError(false);
     setSignupInviteAccess(null);
     setSignupInviteError(null);
+    setIsDeliveryActive(null);
     setAuthSession(session);
   }, []);
 
@@ -124,7 +179,6 @@ export function AppRoot() {
   }, [authSession]);
 
   useEffect(() => {
-    if (!isAppVersionCheckComplete) return undefined;
     let isActive = true;
     void Linking.getInitialURL()
       .then((url) => {
@@ -142,18 +196,39 @@ export function AppRoot() {
       isActive = false;
       subscription.remove();
     };
-  }, [handleSignupLink, isAppVersionCheckComplete]);
+  }, [handleSignupLink]);
 
   const discardAuthSession = useCallback(async () => {
     setAutoLoginEnabled(false);
     setHasAutoLoginConnectionError(false);
     setIsRestoringSession(false);
+    setIsDeliveryActive(null);
     setAuthSession(null);
     await clearDriverAuthSession();
   }, []);
 
+  const logout = useCallback(async () => {
+    if (authSession !== null) {
+      try {
+        await revokeExpoDriverPushNotifications(authSession.accessToken);
+      } catch {
+        // Logout must remain available when the push-token endpoint is unavailable.
+      }
+    }
+    await discardAuthSession();
+  }, [authSession, discardAuthSession]);
+
   useEffect(() => {
-    if (!autoLoginEnabled || !isAppVersionCheckComplete) {
+    if (authSession === null) return undefined;
+    void registerExpoDriverPushNotifications(authSession.accessToken).catch(() => undefined);
+    return subscribeToExpoDriverPushNotifications(
+      authSession.accessToken,
+      () => setNotificationRefreshKey((key) => key + 1),
+    );
+  }, [authSession]);
+
+  useEffect(() => {
+    if (!autoLoginEnabled) {
       return undefined;
     }
 
@@ -193,7 +268,7 @@ export function AppRoot() {
       isActive = false;
       if (retryTimeout !== undefined) clearTimeout(retryTimeout);
     };
-  }, [acceptAuthSession, autoLoginAttempt, autoLoginEnabled, isAppVersionCheckComplete]);
+  }, [acceptAuthSession, autoLoginAttempt, autoLoginEnabled]);
 
   useEffect(() => {
     if (authSession === null) return undefined;
@@ -217,21 +292,35 @@ export function AppRoot() {
     return () => clearTimeout(timeout);
   }, [acceptAuthSession, authSession, discardAuthSession]);
 
+  const canPresentAppUpdate = authSession === null
+    ? !isRestoringSession
+    : isDeliveryActive !== null;
+  const shouldShowAppUpdate = canPresentAppUpdate && shouldPresentDriverAppUpdate({
+    dismissedOptionalVersionCode,
+    isDeliveryActive: isDeliveryActive === true,
+    state: appUpdateState,
+  });
+
   return (
     <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea}>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
           {appUpdateState.kind === 'checking' ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color="#0b57d0" size="large" />
             </View>
-          ) : (appUpdateState.kind === 'required_update'
-            || (appUpdateState.kind === 'optional_update' && !isOptionalUpdateDismissed)) ? (
+          ) : shouldShowAppUpdate && (
+            appUpdateState.kind === 'required_update'
+            || appUpdateState.kind === 'optional_update'
+          ) ? (
             <DriverAppUpdateScreen
               currentVersionName={INSTALLED_APP_VERSION?.versionName ?? '-'}
               isRequired={appUpdateState.kind === 'required_update'}
-              onDismiss={() => setIsOptionalUpdateDismissed(true)}
+              onDismiss={() => {
+                setDismissedOptionalVersionCode(appUpdateState.release.latestVersionCode);
+              }}
               onUpdate={() => { void Linking.openURL(appUpdateState.release.installUrl); }}
               release={appUpdateState.release}
             />
@@ -287,11 +376,14 @@ export function AppRoot() {
           ) : (
             <DriverWorkspace
               authSession={authSession}
-              onLogout={discardAuthSession}
+              onDeliveryActivityChange={setIsDeliveryActive}
+              onLogout={logout}
+              refreshRequestKey={notificationRefreshKey}
             />
           )}
-        </SafeAreaView>
-      </SafeAreaProvider>
+          </SafeAreaView>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

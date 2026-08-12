@@ -33,6 +33,47 @@ export function classifyDriverAppUpdate(input: {
   return { kind: 'up_to_date', release: input.release };
 }
 
+export function shouldPresentDriverAppUpdate(input: {
+  dismissedOptionalVersionCode: number | null;
+  isDeliveryActive: boolean;
+  state: DriverAppUpdateState;
+}): boolean {
+  if (input.isDeliveryActive) return false;
+  if (input.state.kind === 'required_update') return true;
+  if (input.state.kind !== 'optional_update') return false;
+  return input.dismissedOptionalVersionCode !== input.state.release.latestVersionCode;
+}
+
+export function shouldRecheckDriverAppUpdate(input: {
+  force?: boolean;
+  intervalMs: number;
+  lastCheckedAt: number | null;
+  now: number;
+}): boolean {
+  return input.force === true
+    || input.lastCheckedAt === null
+    || input.now - input.lastCheckedAt >= input.intervalMs;
+}
+
+export function retainDriverAppUpdateAfterLookupFailure(
+  currentState: DriverAppUpdateState,
+): DriverAppUpdateState {
+  return currentState.kind === 'checking'
+    ? { kind: 'unavailable' }
+    : currentState;
+}
+
+export function resolveDeliveryActivityForUpdate(input: {
+  loadState: 'loading' | 'ready' | 'empty' | 'error';
+  nextDeliveryStopId: string | null;
+  pickupCompletedAt: string | null;
+}): boolean | null {
+  if (input.loadState === 'loading' || input.loadState === 'error') return null;
+  return input.loadState === 'ready'
+    && input.pickupCompletedAt !== null
+    && input.nextDeliveryStopId !== null;
+}
+
 export function readDriverAppRelease(value: unknown): DriverAppRelease {
   if (!isRecord(value)) throw new Error('Invalid driver app release response');
   const release = value as Partial<DriverAppRelease>;

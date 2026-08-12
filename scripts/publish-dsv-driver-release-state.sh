@@ -6,7 +6,8 @@ AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 APP_DIR="${DSV_SERVER_APP_DIR:-/srv/clever-route-server}"
 SERVICE_TAG_KEY="${DSV_SERVER_SSM_TAG_KEY:-Service}"
 SERVICE_TAG_VALUE="${DSV_SERVER_SSM_TAG_VALUE:-clever-delivery-server}"
-API_BASE_URL="${DSV_API_BASE_URL:-https://clever-route-api.cleversystem.ai}"
+EXPECTED_API_BASE_URL='https://clever-route-api.cleversystem.ai'
+API_BASE_URL="${DSV_API_BASE_URL:-$EXPECTED_API_BASE_URL}"
 VERSION_CODE="${1:-}"
 VERSION_NAME="${2:-}"
 APK_SHA256="${3:-}"
@@ -21,6 +22,9 @@ fail() {
 for command in aws curl node python3; do
   command -v "$command" >/dev/null 2>&1 || fail "$command is required"
 done
+
+[[ "${API_BASE_URL%/}" == "$EXPECTED_API_BASE_URL" ]] \
+  || fail "release API must be $EXPECTED_API_BASE_URL"
 
 [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || fail 'versionCode must be a positive integer'
 [[ "$VERSION_NAME" =~ ^[0-9A-Za-z][0-9A-Za-z._+-]*$ ]] || fail 'versionName contains unsupported characters'

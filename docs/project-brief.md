@@ -45,10 +45,10 @@
 - 동시 확보 충돌 안내
 
 각 기능은 DSV API 계약이 승인된 작업 단위에서 순차적으로 구현한다. 승인된
-인증 계약은 `EXPO_PUBLIC_DSV_API_BASE_URL`의
+인증 계약은 기본 운영 주소 `https://clever-route-api.cleversystem.ai`의
 `/api/dsv/driver/auth/signup-invite/validate`, `/api/dsv/driver/auth/register`,
 `/api/dsv/driver/auth/login`으로 연결한다. 앱은 localhost 또는 `127.0.0.1`
-개발 서버를 제외하고 HTTPS 기본 주소만 허용한다.
+개발을 위한 `EXPO_PUBLIC_DSV_API_BASE_URL` 재정의를 제외하고 HTTPS 주소만 허용한다.
 
 인증 응답의 access token과 계정 연결 상태는 화면 메모리에만 유지한다.
 30일 refresh token과 만료 시각은 Expo SecureStore에 저장하여 앱 재실행 시
@@ -92,7 +92,9 @@
 
 주문 목록은 같은 경로 범위 토큰으로 `/driver/delivery-space`를 조회하고,
 배송지 ID와 서버 버전만 반납·확보 명령에 전달한다. 배송원·고객사·경로 범위는
-토큰에서만 결정하며 앱 요청 본문으로 덮어쓰지 않는다.
+토큰에서만 결정하며 앱 요청 본문으로 덮어쓰지 않는다. 차량이 연결된 빈 배차도
+날짜·배차 선택 대상으로 유지하여 공용 배송에 접근할 수 있게 하며, 차량이 없는
+배차는 서버가 `VEHICLE_REQUIRED`로 차단한다.
 
 ## 정본 경계
 
@@ -104,5 +106,5 @@
 
 - 기기 변경과 계정 복구
 - 배송 시작 이후 반납·확보 가능 여부
-- 차량, 온도와 적재 조건에 따른 확보 자격
+- 온도와 적재 조건에 따른 확보 자격
 - 관리자 예외 처리와 감사 기록

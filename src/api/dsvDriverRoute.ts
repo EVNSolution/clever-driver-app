@@ -30,9 +30,22 @@ type AssignedRouteStop = {
   coordinates: { latitude: number | null; longitude: number | null };
   deliveryStopId: string;
   destinationId: string | null;
+  driverMessages?: {
+    body: string;
+    createdAt: string;
+    messageId: string;
+    readAt: string | null;
+  }[];
   estimatedArrivalAt?: string | null;
   customerNote?: string | null;
   orderName: string;
+  pendingTimeConstraintChange?: {
+    pendingChangeId: string;
+    requestedAt: string;
+    status: 'PENDING_ACK';
+    timeWindow: { end: string; start: string } | null;
+    type: 'TIME_CONSTRAINT_CHANGE';
+  } | null;
   recipientName: string | null;
   sellerOrderKey: string | null;
   sequence: number;
@@ -73,6 +86,7 @@ export type DriverDeliveryRoute = {
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   nextDeliveryStopId: string | null;
   orders: DeliveryOrder[];
+  pickupCompletedAt: string | null;
   routeId: string;
   routeName: string;
   routePlanId: string;
@@ -121,7 +135,21 @@ export async function loadDriverDeliveryRoute(
     throwEnvelopeError(assignedEnvelope.error);
   }
   if (assignedEnvelope.data.status === 'NO_ASSIGNED_ROUTE') {
-    return null;
+    return {
+      availableRoutes: routeChoices,
+      deliveryDate: routeChoice.deliveryDate,
+      depotCoordinate: null,
+      etaStatus: 'PRE_PICKUP',
+      nextDeliveryStopId: null,
+      orders: [],
+      pickupCompletedAt: null,
+      routeAccessToken: routeChoice.routeAccessToken,
+      routeId: routeChoice.routePlanId,
+      routeName: routeChoice.routeName,
+      routePlanId: routeChoice.routePlanId,
+      serverRouteGeometry: null,
+      timezone: DSV_DEFAULT_TIMEZONE,
+    };
   }
 
   const route = assignedEnvelope.data.route;
@@ -150,6 +178,7 @@ export async function loadDriverDeliveryRoute(
         ? etaSnapshot.nextStopEta.estimatedArrivalAt
         : null,
     )),
+    pickupCompletedAt: etaSnapshot?.pickupCompletedAt ?? null,
     routeId: route.id,
     routeName: route.name,
     routePlanId: routeChoice.routePlanId,
@@ -258,10 +287,12 @@ function mapAssignedRouteStop(
     customerCode: '',
     destinationId: stop.destinationId ?? stop.deliveryStopId,
     destinationName: stop.recipientName?.trim() || stop.orderName,
+    driverMessages: stop.driverMessages ?? [],
     estimatedArrivalAt:
       stop.estimatedArrivalAt ?? snapshotEstimatedArrivalAt ?? null,
     id: stop.deliveryStopId,
     notes: stop.customerNote?.trim() || null,
+    pendingTimeConstraintChange: stop.pendingTimeConstraintChange ?? null,
     sellerOrderKey: stop.sellerOrderKey,
     sequence: stop.sequence,
     shippedBoxes: stop.shippedBoxes as number,

@@ -19,6 +19,17 @@ export type DeliveryOrder = {
     latitude: number;
     longitude: number;
   };
+  driverMessages?: {
+    body: string;
+    createdAt: string;
+    messageId: string;
+    readAt: string | null;
+  }[];
+  pendingTimeConstraintChange?: {
+    pendingChangeId: string;
+    requestedAt: string;
+    timeWindow: { end: string; start: string } | null;
+  } | null;
 };
 
 export type DeliveryCoordinate = {

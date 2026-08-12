@@ -3,7 +3,7 @@
     "name": "CLEVER Driver",
     "slug": "clever-driver-app",
     "scheme": "clever-driver",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -16,7 +16,9 @@
     },
     "android": {
       "package": "com.evnsolution.clever.driver",
-      "versionCode": 4,
+      "predictiveBackGestureEnabled": true,
+      "versionCode": 5,
+      "googleServicesFile": "./.private/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#C7D833"
       },
@@ -32,6 +34,12 @@
     "plugins": [
       "expo-secure-store",
       "expo-status-bar",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "route-updates"
+        }
+      ],
       [
         "expo-image-picker",
         {

@@ -60,6 +60,7 @@ describe('DSV assigned route API client', () => {
                 deliveryStopId: 'stop-1',
                 estimatedArrivalAt: '2026-07-31T01:30:00.000Z',
               },
+              pickupCompletedAt: '2026-07-31T00:15:00.000Z',
               status: 'READY',
             },
             id: 'route-116',
@@ -80,12 +81,28 @@ describe('DSV assigned route API client', () => {
                 deliveryStopId: 'stop-1',
                 destinationId: null,
                 customerNote: '10분 전 연락',
+                driverMessages: [{
+                  body: '후문 경비실에 먼저 연락해 주세요.',
+                  createdAt: '2026-07-31T00:30:00.000Z',
+                  messageId: 'message-1',
+                  readAt: null,
+                }],
                 estimatedArrivalAt: null,
                 orderName: '#0525032088',
                 recipientName: '케이팜',
                 sellerOrderKey: '0525032088',
                 sequence: 1,
-                shippedBoxes: 4,
+                pendingTimeConstraintChange: {
+                  pendingChangeId: 'change-1',
+                  requestedAt: '2026-07-31T00:40:00.000Z',
+                  status: 'PENDING_ACK',
+                  timeWindow: {
+                    end: '2026-07-31T04:00:00.000Z',
+                    start: '2026-07-31T03:00:00.000Z',
+                  },
+                  type: 'TIME_CONSTRAINT_CHANGE',
+                },
+                shippedBoxes: 0,
                 status: 'PENDING',
                 timeWindowEnd: '2026-07-31T03:00:00.000Z',
                 timeWindowStart: '2026-07-31T02:00:00.000Z',
@@ -110,12 +127,17 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.orders[0]?.destinationName, '케이팜');
     assert.equal(route?.orders[0]?.destinationId, 'stop-1');
     assert.equal(route?.orders[0]?.sellerOrderKey, '0525032088');
-    assert.equal(route?.orders[0]?.shippedBoxes, 4);
+    assert.equal(route?.orders[0]?.shippedBoxes, 0);
     assert.equal(route?.orders[0]?.conditionCode, 'COLD');
     assert.equal(route?.orders[0]?.estimatedArrivalAt, '2026-07-31T01:30:00.000Z');
     assert.equal(route?.orders[0]?.notes, '10분 전 연락');
     assert.equal(route?.orders[0]?.timeWindowEnd, '2026-07-31T03:00:00.000Z');
     assert.equal(route?.orders[0]?.status, 'PENDING');
+    assert.equal(route?.orders[0]?.driverMessages?.[0]?.messageId, 'message-1');
+    assert.equal(
+      route?.orders[0]?.pendingTimeConstraintChange?.timeWindow?.start,
+      '2026-07-31T03:00:00.000Z',
+    );
     assert.equal(
       route?.orders[0]?.address,
       '서울시 강남구 테헤란로 1 2층 (역삼동, 빌딩)',
@@ -126,6 +148,7 @@ describe('DSV assigned route API client', () => {
       longitude: 126.7369,
     });
     assert.equal(route?.nextDeliveryStopId, 'stop-1');
+    assert.equal(route?.pickupCompletedAt, '2026-07-31T00:15:00.000Z');
     assert.equal(route?.timezone, 'Asia/Seoul');
   });
 
@@ -230,6 +253,37 @@ describe('DSV assigned route API client', () => {
     ]);
     assert.equal(routeChoices[0]?.routeContext, 'newer-context');
     assert.equal(routeChoices[0]?.routeName, '#116');
+  });
+
+  it('preserves an empty vehicle-backed route so shared orders remain reachable', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let call = 0;
+    globalThis.fetch = async () => {
+      call += 1;
+      return new Response(JSON.stringify(call === 1 ? {
+        data: {
+          status: 'ROUTES_FOUND',
+          routes: [{
+            companyGuidance: { deliveryDate: '2026-08-07', routeName: '#205' },
+            driverAccess: { accessToken: 'empty-route-token' },
+            routeAccess: { routeContext: 'route-205', routePlanId: 'route-205' },
+          }],
+        },
+        error: null,
+      } : {
+        data: { status: 'NO_ASSIGNED_ROUTE' },
+        error: null,
+      }));
+    };
+
+    const route = await loadDriverDeliveryRoute('account-token');
+
+    assert.equal(route?.deliveryDate, '2026-08-07');
+    assert.equal(route?.routeName, '#205');
+    assert.equal(route?.routePlanId, 'route-205');
+    assert.equal(route?.routeAccessToken, 'empty-route-token');
+    assert.deepEqual(route?.orders, []);
+    assert.equal(route?.availableRoutes.length, 1);
   });
 
   it('returns null when the linked account has no active route', async () => {

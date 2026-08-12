@@ -26,9 +26,43 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /label="배송 순서"/u);
   });
 
+  it('returns through child screens and requires two back presses to exit from root tabs', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const appConfig = readFileSync(join(projectRoot, 'app.json'), 'utf8');
+
+    assert.match(
+      workspace,
+      /BackHandler\.addEventListener\([\s\S]*?'hardwareBackPress'/u,
+    );
+    assert.match(workspace, /BackHandler\.exitApp\(\)/u);
+    assert.match(workspace, /ToastAndroid\.show/u);
+    assert.match(workspace, /앱을 종료하려면 뒤로가기를 한 번 더 누르세요\./u);
+    assert.match(workspace, /isDeliverySpaceOpen/u);
+    assert.match(workspace, /isSequenceEditing/u);
+    assert.match(workspace, /backSubscription\.remove\(\)/u);
+    assert.match(deliveryScreen, /isEditing: boolean/u);
+    assert.match(deliveryScreen, /onEditingChange\(isEditing: boolean\): void/u);
+    assert.match(appConfig, /"predictiveBackGestureEnabled": true/u);
+  });
+
   it('selects delivery dates from server route choices', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const routeClient = readFileSync(
+      join(appDirectory, '../api/dsvDriverRoute.ts'),
       'utf8',
     );
 
@@ -43,6 +77,9 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /\n\s*horizontal\n/u);
     assert.doesNotMatch(source, /routes\.length < 2/u);
     assert.doesNotMatch(source, /2026-07-31.*배송 선택/u);
+    assert.doesNotMatch(routeClient, /등록된 차량이 있어야/u);
+    assert.match(deliveryScreen, /이 배차에 배정된 배송이 없습니다/u);
+    assert.match(deliveryScreen, /주문 목록에서 공용 배송을 확인할 수 있습니다/u);
   });
 
   it('opens one delivery Space page for whole-destination release and first-claim pickup', () => {
@@ -102,6 +139,24 @@ describe('authenticated driver screens', () => {
     assert.match(source, /order\.shippedBoxes/u);
   });
 
+  it('shows driver messages and pending time changes inside the existing order details', () => {
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+
+    assert.match(deliveryScreen, /배송원 메모/u);
+    assert.match(deliveryScreen, /시간 변경 확인/u);
+    assert.match(deliveryScreen, /onReadDriverMessage/u);
+    assert.match(deliveryScreen, /onAcknowledgeTimeConstraint/u);
+    assert.match(workspace, /markDriverOrderMessageRead/u);
+    assert.match(workspace, /acknowledgeDriverTimeConstraint/u);
+  });
+
   it('mutes completed delivery groups and opens the active destination', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
@@ -133,13 +188,15 @@ describe('authenticated driver screens', () => {
     assert.match(source, /scrollTo\(\{[\s\S]*destinationTop/u);
   });
 
-  it('uses matching action-button geometry and visual summary separators', () => {
+  it('uses matching action-button geometry, typography, and visual summary separators', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
     );
 
     assert.equal(source.match(/styles\.headerActionButton/gu)?.length, 2);
+    assert.equal(source.match(/styles\.headerActionText/gu)?.length, 2);
+    assert.match(source, /headerActionText:[\s\S]*fontSize: 13,[\s\S]*fontWeight: '800'/u);
     assert.match(source, /styles\.summaryItems/u);
     assert.match(source, /styles\.summaryDivider/u);
     assert.doesNotMatch(source, /주문 \{orders\.length\}건 · 배송지/u);
@@ -408,6 +465,8 @@ describe('authenticated driver screens', () => {
     assert.match(settings, /업데이트 확인/u);
     assert.match(settings, /최신 버전/u);
     assert.match(settings, /기기 버전/u);
+    assert.doesNotMatch(settings, /formatVersion/u);
+    assert.doesNotMatch(settings, /\(\$\{versionCode\}\)/u);
     assert.match(settings, /fetchDriverAndroidAppRelease/u);
     assert.match(settings, /readInstalledDriverAppVersion/u);
   });
@@ -418,6 +477,7 @@ describe('authenticated driver screens', () => {
       'utf8',
     );
     const dialogOwners = [
+      'DeliveryScreen.tsx',
       'DeliveryMapScreen.tsx',
       'DeliveryProofModal.tsx',
       'DeliverySpaceScreen.tsx',

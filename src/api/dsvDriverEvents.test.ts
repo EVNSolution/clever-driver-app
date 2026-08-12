@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import {
+  acknowledgeDriverTimeConstraint,
   completeDriverDeliveryDestination,
+  markDriverOrderMessageRead,
   startDriverDeliveryRoute,
 } from './dsvDriverEvents';
 
@@ -75,5 +77,43 @@ describe('DSV driver events API client', () => {
     }
     const pickupBody = JSON.parse(requests[1]?.init?.body as string) as Record<string, unknown>;
     assert.match(pickupBody.clientEventId as string, /^route-1:pickup:/u);
+  });
+
+  it('acknowledges a stop time change through the existing event endpoint', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let request: { input: string; init?: RequestInit } | undefined;
+    globalThis.fetch = async (input, init) => {
+      request = { input: input.toString(), init };
+      return new Response(JSON.stringify({ data: { eventId: 'event-1' }, error: null }));
+    };
+
+    await acknowledgeDriverTimeConstraint('route-token', 'route-1', 'stop-1');
+
+    assert.equal(request?.input, 'https://dsv.example.test/driver/events');
+    const body = JSON.parse(request?.init?.body as string) as Record<string, unknown>;
+    assert.equal(body.eventType, 'TIME_CONSTRAINT_ACKNOWLEDGED');
+    assert.equal(body.routePlanId, 'route-1');
+    assert.equal(body.deliveryStopId, 'stop-1');
+  });
+
+  it('marks a visible driver message read with the route token', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let request: { input: string; init?: RequestInit } | undefined;
+    globalThis.fetch = async (input, init) => {
+      request = { input: input.toString(), init };
+      return new Response(JSON.stringify({ data: { messageId: 'message-1' }, error: null }));
+    };
+
+    await markDriverOrderMessageRead('route-token', 'message-1');
+
+    assert.equal(
+      request?.input,
+      'https://dsv.example.test/driver/order-messages/message-1/read',
+    );
+    assert.equal(request?.init?.method, 'POST');
+    assert.equal(
+      (request?.init?.headers as Record<string, string>).Authorization,
+      'Bearer route-token',
+    );
   });
 });

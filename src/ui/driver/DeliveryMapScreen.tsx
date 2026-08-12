@@ -157,7 +157,7 @@ export function DeliveryMapScreen({
           <DeliveryAttentionBanner summary={summary} timezone={timezone} />
         )}
 
-        {etaStatus === 'PRE_PICKUP' ? (
+        {etaStatus === 'PRE_PICKUP' && orders.length > 0 ? (
           <View pointerEvents="box-none" style={styles.startOverlay}>
             <Pressable
               accessibilityRole="button"
