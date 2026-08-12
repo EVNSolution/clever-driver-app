@@ -1,11 +1,9 @@
 const API_BASE_URL_ENV = 'EXPO_PUBLIC_DSV_API_BASE_URL';
+const PRODUCTION_API_BASE_URL = 'https://clever-route-api.cleversystem.ai';
 
 export function resolveDsvApiUrl(path: string): string {
-  const rawBaseUrl = process.env.EXPO_PUBLIC_DSV_API_BASE_URL;
-
-  if (rawBaseUrl === undefined || rawBaseUrl.trim().length === 0) {
-    throw new Error(`${API_BASE_URL_ENV} 환경 변수를 설정해 주세요.`);
-  }
+  const rawBaseUrl =
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL?.trim() || PRODUCTION_API_BASE_URL;
 
   let baseUrl: URL;
   try {

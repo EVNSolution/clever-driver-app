@@ -8,6 +8,7 @@ import {
   registerDriverAccount,
   validateDriverSignupInvite,
 } from './dsvDriverAuth';
+import { resolveDsvApiUrl } from './dsvApiUrl';
 
 const ORIGINAL_BASE_URL = process.env.EXPO_PUBLIC_DSV_API_BASE_URL;
 
@@ -191,7 +192,7 @@ describe('DSV driver auth API client', () => {
     assert.deepEqual(requestBody, { refreshToken: 'refresh-token' });
   });
 
-  it('rejects missing, insecure, or non-local API base URLs before sending credentials', async () => {
+  it('defaults to production and rejects insecure non-local API base URLs', async () => {
     const fetchCalls: string[] = [];
     globalThis.fetch = async () => {
       fetchCalls.push('called');
@@ -199,9 +200,9 @@ describe('DSV driver auth API client', () => {
     };
 
     delete process.env.EXPO_PUBLIC_DSV_API_BASE_URL;
-    await assert.rejects(
-      () => loginDriverAccount({ loginId: 'driver01', password: 'password123' }),
-      /EXPO_PUBLIC_DSV_API_BASE_URL/,
+    assert.equal(
+      resolveDsvApiUrl('/api/dsv/driver/auth/login'),
+      'https://clever-route-api.cleversystem.ai/api/dsv/driver/auth/login',
     );
 
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'http://dsv.example.test';
