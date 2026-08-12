@@ -1,10 +1,21 @@
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  BackHandler,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  View,
+} from 'react-native';
 
 import type { DriverAuthSession } from '../../api/dsvDriverAuth';
 import {
+  acknowledgeDriverTimeConstraint,
   completeDriverDeliveryDestination,
+  markDriverOrderMessageRead,
   startDriverDeliveryRoute,
 } from '../../api/dsvDriverEvents';
 import {
@@ -19,6 +30,7 @@ import {
 } from '../../api/dsvDriverRoute';
 import { resolveDeliveryActivityForUpdate } from '../../domain/appUpdate/driverAppUpdate';
 import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
+import { resolveAndroidBackAction } from '../../domain/navigation/androidBackNavigation';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
 import { DriverSettingsModal } from './DriverSettingsModal';
@@ -41,6 +53,7 @@ export function DriverWorkspace({
 }: DriverWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
   const [isDeliverySpaceOpen, setIsDeliverySpaceOpen] = useState(false);
+  const [isSequenceEditing, setIsSequenceEditing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
@@ -50,6 +63,7 @@ export function DriverWorkspace({
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'empty' | 'error'>(
     'loading',
   );
+  const lastRootBackAtRef = useRef<number | null>(null);
   const driverName =
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
 
@@ -64,6 +78,44 @@ export function DriverWorkspace({
   useEffect(() => () => onDeliveryActivityChange(null), [onDeliveryActivityChange]);
 
   useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const backSubscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        const now = Date.now();
+        const action = resolveAndroidBackAction({
+          isDeliverySpaceOpen,
+          isSequenceEditing,
+          lastRootBackAt: lastRootBackAtRef.current,
+          now,
+        });
+
+        if (action === 'close-delivery-space') {
+          lastRootBackAtRef.current = null;
+          setIsDeliverySpaceOpen(false);
+        } else if (action === 'close-sequence-editor') {
+          lastRootBackAtRef.current = null;
+          setIsSequenceEditing(false);
+        } else if (action === 'exit-app') {
+          lastRootBackAtRef.current = null;
+          BackHandler.exitApp();
+        } else {
+          lastRootBackAtRef.current = now;
+          ToastAndroid.show(
+            '앱을 종료하려면 뒤로가기를 한 번 더 누르세요.',
+            ToastAndroid.SHORT,
+          );
+        }
+
+        return true;
+      },
+    );
+
+    return () => backSubscription.remove();
+  }, [isDeliverySpaceOpen, isSequenceEditing]);
+
+  useEffect(() => {
     let isActive = true;
 
     void loadDriverDeliveryRoute(
@@ -76,6 +128,7 @@ export function DriverWorkspace({
 
       setRoute(nextRoute);
       setOrders(nextRoute?.orders ?? []);
+      setIsSequenceEditing(false);
       setLoadErrorMessage(undefined);
       setSelectedRoutePlanId(nextRoute?.routePlanId);
       setLoadState(nextRoute === null ? 'empty' : 'ready');
@@ -108,7 +161,28 @@ export function DriverWorkspace({
     }
 
     setLoadState('loading');
+    setIsSequenceEditing(false);
     setSelectedRoutePlanId(routePlanId);
+  }
+
+  function resetRootBackPress() {
+    lastRootBackAtRef.current = null;
+  }
+
+  function changeSequenceEditing(isEditing: boolean) {
+    resetRootBackPress();
+    setIsSequenceEditing(isEditing);
+  }
+
+  function openDeliverySpace() {
+    resetRootBackPress();
+    setIsSequenceEditing(false);
+    setIsDeliverySpaceOpen(true);
+  }
+
+  function closeDeliverySpace() {
+    resetRootBackPress();
+    setIsDeliverySpaceOpen(false);
   }
 
   async function completeDelivery(destinationId: string, deliveryStopIds: string[]) {
@@ -131,6 +205,24 @@ export function DriverWorkspace({
     }
 
     await startDriverDeliveryRoute(route.routeAccessToken, route.routeId);
+    setLoadAttempt((attempt) => attempt + 1);
+  }
+
+  async function acknowledgeTimeConstraint(deliveryStopId: string) {
+    if (route === null) return;
+
+    await acknowledgeDriverTimeConstraint(
+      route.routeAccessToken,
+      route.routeId,
+      deliveryStopId,
+    );
+    setLoadAttempt((attempt) => attempt + 1);
+  }
+
+  async function readDriverMessage(messageId: string) {
+    if (route === null) return;
+
+    await markDriverOrderMessageRead(route.routeAccessToken, messageId);
     setLoadAttempt((attempt) => attempt + 1);
   }
 
@@ -163,7 +255,10 @@ export function DriverWorkspace({
           <Pressable
             accessibilityLabel="환경설정"
             accessibilityRole="button"
-            onPress={() => setIsSettingsOpen(true)}
+            onPress={() => {
+              resetRootBackPress();
+              setIsSettingsOpen(true);
+            }}
             style={({ pressed }) => [
               styles.settingsButton,
               pressed && styles.buttonPressed,
@@ -201,7 +296,7 @@ export function DriverWorkspace({
               <DeliverySpaceScreen
                 accessToken={route.routeAccessToken}
                 onAssignmentsChanged={() => setLoadAttempt((attempt) => attempt + 1)}
-                onBack={() => setIsDeliverySpaceOpen(false)}
+                onBack={closeDeliverySpace}
               />
             ) : activeTab === 'delivery' ? (
               <>
@@ -212,11 +307,16 @@ export function DriverWorkspace({
                 />
                 <DeliveryScreen
                   deliveryDate={route.deliveryDate}
+                  isEditing={isSequenceEditing}
                   nextDeliveryStopId={route.nextDeliveryStopId}
-                  onOpenDeliverySpace={() => setIsDeliverySpaceOpen(true)}
+                  onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
+                  onEditingChange={changeSequenceEditing}
+                  onOpenDeliverySpace={openDeliverySpace}
                   onOrdersChange={setOrders}
+                  onReadDriverMessage={readDriverMessage}
                   orders={orders}
                   serverRouteGeometry={route.serverRouteGeometry}
+                  timezone={route.timezone}
                 />
               </>
             ) : (
@@ -237,7 +337,12 @@ export function DriverWorkspace({
       </View>
 
       {isSettingsOpen ? (
-        <DriverSettingsModal onClose={() => setIsSettingsOpen(false)} />
+        <DriverSettingsModal
+          onClose={() => {
+            resetRootBackPress();
+            setIsSettingsOpen(false);
+          }}
+        />
       ) : null}
 
       <View accessibilityRole="tablist" style={styles.tabBar}>
@@ -246,8 +351,10 @@ export function DriverWorkspace({
           isSelected={activeTab === 'delivery'}
           label="배송"
           onPress={() => {
+            resetRootBackPress();
             setActiveTab('delivery');
             setIsDeliverySpaceOpen(false);
+            setIsSequenceEditing(false);
           }}
         />
         <TabButton
@@ -262,8 +369,10 @@ export function DriverWorkspace({
           isSelected={activeTab === 'map'}
           label="지도"
           onPress={() => {
+            resetRootBackPress();
             setActiveTab('map');
             setIsDeliverySpaceOpen(false);
+            setIsSequenceEditing(false);
           }}
         />
       </View>

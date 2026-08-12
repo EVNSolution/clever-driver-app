@@ -11,6 +11,8 @@ CLEVER Driver의 직접 설치 APK는 Google Drive의 파일 하나를 계속 �
 - 파일명: `clever-driver-latest.apk`
 - 파일 ID: `1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y`
 - Android 패키지: `com.evnsolution.clever.driver`
+- APK 서명 인증서 SHA-256:
+  `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`
 - 고정 설치 URL:
   `https://drive.usercontent.google.com/download?id=1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y&export=download&confirm=t`
 
@@ -31,7 +33,11 @@ APK와 운영 상태를 점검한다. 실제 변경은 `--execute`를 명시한 
 운영 API 주소는 `https://clever-route-api.cleversystem.ai`로 고정하며 다른 환경의
 `DSV_API_BASE_URL`이 설정되어 있으면 게시를 중단한다.
 
-게시 명령은 APK에서 패키지 ID와 버전을 직접 읽는다. Drive 파일의 비공개
+게시 명령은 APK에서 패키지 ID, 버전과 서명 인증서를 직접 읽는다. 위 인증서가 아닌
+APK는 기존 설치본을 업데이트할 수 없으므로 게시하지 않는다. 서명 인증서를 교체하려면
+기존 앱 제거가 필요한 별도 마이그레이션으로 다룬다.
+
+Drive 파일의 비공개
 `appProperties.publishedVersionCode`보다 새 APK의 `versionCode`가 클 때만 기존 파일
 내용을 교체한다. 같은 버전과 checksum의 재실행은 Drive 업로드를 생략하고 서버 릴리스
 상태 동기화부터 안전하게 재시도한다. 업로드 후 Drive SHA-256과 로컬 APK SHA-256이

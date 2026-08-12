@@ -233,20 +233,14 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
               <VersionRow
                 label="최신 버전"
                 value={versionCheck.kind === 'ready'
-                  ? formatVersion(
-                    versionCheck.release.latestVersionName,
-                    versionCheck.release.latestVersionCode,
-                  )
+                  ? versionCheck.release.latestVersionName
                   : versionCheck.kind === 'checking' ? '확인 중' : '확인 불가'}
               />
               <VersionRow
                 label="기기 버전"
                 value={versionCheck.installed === null
                   ? '확인 불가'
-                  : formatVersion(
-                    versionCheck.installed.versionName,
-                    versionCheck.installed.versionCode,
-                  )}
+                  : versionCheck.installed.versionName}
               />
             </View>
             <Pressable
@@ -309,10 +303,6 @@ function VersionRow({ label, value }: { label: string; value: string }) {
 function isUpdateAvailable(state: VersionCheckState): boolean {
   return state.kind === 'ready'
     && state.installed.versionCode < state.release.latestVersionCode;
-}
-
-function formatVersion(versionName: string, versionCode: number): string {
-  return `${versionName} (${versionCode})`;
 }
 
 function PermissionRow({

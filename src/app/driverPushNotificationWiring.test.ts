@@ -31,4 +31,13 @@ describe('Driver push notification lifecycle wiring', () => {
       /authSession\.accessToken, loadAttempt, refreshRequestKey, selectedRoutePlanId/u,
     );
   });
+
+  it('refreshes the authenticated route whenever the app becomes active', () => {
+    const source = readFileSync(join(appDirectory, 'AppRoot.tsx'), 'utf8');
+
+    assert.match(
+      source,
+      /if \(state === 'active'\) \{[\s\S]{0,240}setNotificationRefreshKey/u,
+    );
+  });
 });

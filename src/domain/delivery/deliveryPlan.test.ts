@@ -87,6 +87,17 @@ describe('delivery order plan', () => {
     );
   });
 
+  it('keeps a consolidated zero-box order in its destination group', () => {
+    const firstOrder = PREVIEW_DELIVERY_ORDERS[0];
+    assert.ok(firstOrder);
+    const zeroBoxOrder = { ...firstOrder, shippedBoxes: 0 };
+
+    const [group] = groupDeliveryOrdersByDestination([zeroBoxOrder]);
+
+    assert.equal(group?.orderCount, 1);
+    assert.equal(group?.boxCount, 0);
+  });
+
   it('builds one numbered map point per canonical destination', () => {
     const firstOrder = PREVIEW_DELIVERY_ORDERS[0];
     assert.ok(firstOrder);

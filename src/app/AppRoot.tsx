@@ -127,7 +127,10 @@ export function AppRoot() {
       void checkForAppUpdate(true);
     }, 0);
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void checkForAppUpdate();
+      if (state === 'active') {
+        void checkForAppUpdate();
+        setNotificationRefreshKey((key) => key + 1);
+      }
     });
     return () => {
       isMounted.current = false;

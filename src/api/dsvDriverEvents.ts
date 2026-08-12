@@ -5,17 +5,24 @@ type DriverEventEnvelope = {
   error?: { code: string; message: string } | null;
 };
 
-type RouteLifecycleEventType = 'PICKUP_COMPLETED' | 'ROUTE_STARTED';
+type RouteLifecycleEventType =
+  | 'PICKUP_COMPLETED'
+  | 'ROUTE_STARTED'
+  | 'TIME_CONSTRAINT_ACKNOWLEDGED';
 
 async function recordRouteLifecycleEvent(
   accessToken: string,
   routePlanId: string,
   eventType: RouteLifecycleEventType,
+  deliveryStopId?: string,
 ): Promise<void> {
-  const eventName = eventType === 'ROUTE_STARTED' ? 'started' : 'pickup';
+  const eventName = eventType === 'ROUTE_STARTED'
+    ? 'started'
+    : eventType === 'PICKUP_COMPLETED' ? 'pickup' : `time:${deliveryStopId}`;
   const response = await fetch(resolveDsvApiUrl('/driver/events'), {
     body: JSON.stringify({
       clientEventId: `${routePlanId}:${eventName}:${Date.now()}`,
+      ...(deliveryStopId === undefined ? {} : { deliveryStopId }),
       eventType,
       occurredAt: new Date().toISOString(),
       routePlanId,
@@ -32,6 +39,38 @@ async function recordRouteLifecycleEvent(
     throw new Error(
       envelope.error?.message ?? '배송 시작 상태를 저장하지 못했습니다.',
     );
+  }
+}
+
+export async function acknowledgeDriverTimeConstraint(
+  accessToken: string,
+  routePlanId: string,
+  deliveryStopId: string,
+): Promise<void> {
+  await recordRouteLifecycleEvent(
+    accessToken,
+    routePlanId,
+    'TIME_CONSTRAINT_ACKNOWLEDGED',
+    deliveryStopId,
+  );
+}
+
+export async function markDriverOrderMessageRead(
+  accessToken: string,
+  messageId: string,
+): Promise<void> {
+  const response = await fetch(resolveDsvApiUrl(
+    `/driver/order-messages/${encodeURIComponent(messageId)}/read`,
+  ), {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    method: 'POST',
+  });
+  const envelope = (await response.json()) as DriverEventEnvelope;
+  if (!response.ok || envelope.data === null) {
+    throw new Error(envelope.error?.message ?? '배송원 메모를 확인 처리하지 못했습니다.');
   }
 }
 

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import {
-  DriverRouteApiError,
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
 } from './dsvDriverRoute';
@@ -82,12 +81,28 @@ describe('DSV assigned route API client', () => {
                 deliveryStopId: 'stop-1',
                 destinationId: null,
                 customerNote: '10분 전 연락',
+                driverMessages: [{
+                  body: '후문 경비실에 먼저 연락해 주세요.',
+                  createdAt: '2026-07-31T00:30:00.000Z',
+                  messageId: 'message-1',
+                  readAt: null,
+                }],
                 estimatedArrivalAt: null,
                 orderName: '#0525032088',
                 recipientName: '케이팜',
                 sellerOrderKey: '0525032088',
                 sequence: 1,
-                shippedBoxes: 4,
+                pendingTimeConstraintChange: {
+                  pendingChangeId: 'change-1',
+                  requestedAt: '2026-07-31T00:40:00.000Z',
+                  status: 'PENDING_ACK',
+                  timeWindow: {
+                    end: '2026-07-31T04:00:00.000Z',
+                    start: '2026-07-31T03:00:00.000Z',
+                  },
+                  type: 'TIME_CONSTRAINT_CHANGE',
+                },
+                shippedBoxes: 0,
                 status: 'PENDING',
                 timeWindowEnd: '2026-07-31T03:00:00.000Z',
                 timeWindowStart: '2026-07-31T02:00:00.000Z',
@@ -112,12 +127,17 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.orders[0]?.destinationName, '케이팜');
     assert.equal(route?.orders[0]?.destinationId, 'stop-1');
     assert.equal(route?.orders[0]?.sellerOrderKey, '0525032088');
-    assert.equal(route?.orders[0]?.shippedBoxes, 4);
+    assert.equal(route?.orders[0]?.shippedBoxes, 0);
     assert.equal(route?.orders[0]?.conditionCode, 'COLD');
     assert.equal(route?.orders[0]?.estimatedArrivalAt, '2026-07-31T01:30:00.000Z');
     assert.equal(route?.orders[0]?.notes, '10분 전 연락');
     assert.equal(route?.orders[0]?.timeWindowEnd, '2026-07-31T03:00:00.000Z');
     assert.equal(route?.orders[0]?.status, 'PENDING');
+    assert.equal(route?.orders[0]?.driverMessages?.[0]?.messageId, 'message-1');
+    assert.equal(
+      route?.orders[0]?.pendingTimeConstraintChange?.timeWindow?.start,
+      '2026-07-31T03:00:00.000Z',
+    );
     assert.equal(
       route?.orders[0]?.address,
       '서울시 강남구 테헤란로 1 2층 (역삼동, 빌딩)',
@@ -264,22 +284,6 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.routeAccessToken, 'empty-route-token');
     assert.deepEqual(route?.orders, []);
     assert.equal(route?.availableRoutes.length, 1);
-  });
-
-  it('surfaces the registered vehicle requirement from route access', async () => {
-    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
-    globalThis.fetch = async () => new Response(JSON.stringify({
-      data: { status: 'VEHICLE_REQUIRED' },
-      error: null,
-    }));
-
-    await assert.rejects(
-      () => loadDriverDeliveryRoute('account-token'),
-      (error: unknown) =>
-        error instanceof DriverRouteApiError &&
-        error.code === 'VEHICLE_REQUIRED' &&
-        /등록된 차량/u.test(error.message),
-    );
   });
 
   it('returns null when the linked account has no active route', async () => {

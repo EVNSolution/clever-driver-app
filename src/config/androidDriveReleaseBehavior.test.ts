@@ -60,6 +60,9 @@ case "$2" in
   *) exit 2 ;;
 esac
 `);
+    writeExecutable(join(mockBin, 'apksigner'), `#!/usr/bin/env bash
+printf 'Signer #1 certificate SHA-256 digest: %s\n' "\${TEST_SIGNER_SHA256:-fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c}"
+`);
     writeExecutable(join(mockBin, 'gcloud'), `#!/usr/bin/env bash
 case "$*" in
   'config get-value account') printf 'dlajiin@gmail.com' ;;
@@ -160,6 +163,18 @@ esac
     );
     assert.notEqual(loweredMinimumResult.status, 0);
     assert.match(loweredMinimumResult.stderr, /cannot be lower than production minimum 7/u);
+
+    const unexpectedSignerResult = spawnSync(
+      'bash',
+      [publishScript, '--apk', apkPath],
+      {
+        cwd: repository,
+        encoding: 'utf8',
+        env: { ...baseEnvironment, TEST_SIGNER_SHA256: 'invalid' },
+      },
+    );
+    assert.notEqual(unexpectedSignerResult.status, 0);
+    assert.match(unexpectedSignerResult.stderr, /unexpected APK signer certificate/u);
   });
 });
 

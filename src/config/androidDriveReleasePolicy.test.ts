@@ -32,6 +32,11 @@ describe('Android Google Drive release policy', () => {
   it('requires the approved package and owner while allowing only an identical release retry', () => {
     assert.match(publishScript, /EXPECTED_ACCOUNT='dlajiin@gmail\.com'/u);
     assert.match(publishScript, /EXPECTED_PACKAGE_ID='com\.evnsolution\.clever\.driver'/u);
+    assert.match(
+      publishScript,
+      /EXPECTED_SIGNER_SHA256='fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c'/u,
+    );
+    assert.match(publishScript, /unexpected APK signer certificate/u);
     assert.match(publishScript, /versionCode cannot be lower than published versionCode/u);
     assert.match(publishScript, /published versionCode already has different APK contents/u);
     assert.match(publishScript, /publish-dsv-driver-release-state\.sh/u);

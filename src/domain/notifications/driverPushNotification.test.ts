@@ -4,13 +4,13 @@ import { describe, it } from 'node:test';
 import { parseDriverPushNotification } from './driverPushNotification';
 
 describe('Driver push notification payload', () => {
-  it('accepts a route change using identifiers only', () => {
+  it('accepts any route change with the server route identifier', () => {
     assert.deepEqual(parseDriverPushNotification('notification-1', {
-      changeRequestId: 'change-1',
       destinationAddress: 'must not escape',
+      orderMessageId: 'message-1',
+      routePlanId: 'route-1',
       type: 'driver_route_changed',
     }), {
-      changeRequestId: 'change-1',
       kind: 'route_changed',
       notificationId: 'notification-1',
     });
@@ -35,7 +35,7 @@ describe('Driver push notification payload', () => {
       type: 'driver_bundle_handoff',
     }), null);
     assert.equal(parseDriverPushNotification('notification-4', {
-      changeRequestId: 123,
+      routePlanId: 123,
       type: 'driver_route_changed',
     }), null);
     assert.equal(parseDriverPushNotification('notification-5', {

@@ -35,6 +35,7 @@ import {
   resolveDeliveryOrderDragTarget,
   type DeliveryOrderPositions,
 } from '../../domain/delivery/sortableOrder';
+import { useAppDialog } from './AppDialog';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
 const EDITOR_ORDER_ROW_HEIGHT = 72;
@@ -49,26 +50,37 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 
 type DeliveryScreenProps = {
   deliveryDate: string;
+  isEditing: boolean;
   nextDeliveryStopId: string | null;
+  onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
+  onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
   onOrdersChange(orders: DeliveryOrder[]): void;
+  onReadDriverMessage(messageId: string): Promise<void>;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
+  timezone: string;
 };
 
 export function DeliveryScreen({
   deliveryDate,
+  isEditing,
   nextDeliveryStopId,
+  onAcknowledgeTimeConstraint,
+  onEditingChange,
   onOpenDeliverySpace,
   onOrdersChange,
+  onReadDriverMessage,
   orders,
   serverRouteGeometry,
+  timezone,
 }: DeliveryScreenProps) {
+  const { dialog, showDialog } = useAppDialog();
   const deliveryScrollRef = useRef<ScrollView>(null);
   const orderListTopRef = useRef(0);
   const revealedDeliveryStopIdRef = useRef<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [draftOrders, setDraftOrders] = useState(orders);
+  const [isOrderActionPending, setIsOrderActionPending] = useState(false);
   const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
@@ -77,17 +89,17 @@ export function DeliveryScreen({
 
   function startEditing() {
     setDraftOrders(orders);
-    setIsEditing(true);
+    onEditingChange(true);
   }
 
   function cancelEditing() {
     setDraftOrders(orders);
-    setIsEditing(false);
+    onEditingChange(false);
   }
 
   function finishEditing() {
     onOrdersChange(draftOrders);
-    setIsEditing(false);
+    onEditingChange(false);
   }
 
   function handleDrop(orderId: string, targetIndex: number) {
@@ -124,6 +136,21 @@ export function DeliveryScreen({
     });
   }
 
+  async function runOrderAction(action: () => Promise<void>) {
+    setIsOrderActionPending(true);
+    try {
+      await action();
+    } catch (error) {
+      showDialog({
+        message: error instanceof Error ? error.message : '다시 시도해 주세요.',
+        title: '확인하지 못했습니다',
+        tone: 'warning',
+      });
+    } finally {
+      setIsOrderActionPending(false);
+    }
+  }
+
   if (isEditing) {
     return (
       <OrderSequenceEditor
@@ -138,11 +165,12 @@ export function DeliveryScreen({
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.deliveryContent}
-      ref={deliveryScrollRef}
-      showsVerticalScrollIndicator={false}
-    >
+    <>
+      <ScrollView
+        contentContainerStyle={styles.deliveryContent}
+        ref={deliveryScrollRef}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.deliveryHeader}>
         <View style={styles.deliveryHeadingCopy}>
           <Text style={styles.title}>{formatDeliveryDate(deliveryDate)} 배송</Text>
@@ -215,13 +243,23 @@ export function DeliveryScreen({
               index={index}
               isLast={index === destinationGroups.length - 1}
               key={`${group.key}:${progressState}`}
+              isOrderActionPending={isOrderActionPending}
+              onAcknowledgeTimeConstraint={(deliveryStopId) => runOrderAction(
+                () => onAcknowledgeTimeConstraint(deliveryStopId),
+              )}
               onCurrentLayout={revealCurrentDestination}
+              onReadDriverMessage={(messageId) => runOrderAction(
+                () => onReadDriverMessage(messageId),
+              )}
               progressState={progressState}
+              timezone={timezone}
             />
           );
         })}
       </View>
-    </ScrollView>
+      </ScrollView>
+      {dialog}
+    </>
   );
 }
 
@@ -240,15 +278,23 @@ function formatDeliveryDate(deliveryDate: string): string {
 function DestinationGroupRow({
   group,
   index,
+  isOrderActionPending,
   isLast,
+  onAcknowledgeTimeConstraint,
   onCurrentLayout,
+  onReadDriverMessage,
   progressState,
+  timezone,
 }: {
   group: DeliveryDestinationGroup;
   index: number;
+  isOrderActionPending: boolean;
   isLast: boolean;
+  onAcknowledgeTimeConstraint(deliveryStopId: string): void;
   onCurrentLayout(event: LayoutChangeEvent): void;
+  onReadDriverMessage(messageId: string): void;
   progressState: DeliveryRouteMarkerState;
+  timezone: string;
 }) {
   const isCompleted = progressState === 'completed';
   const isCurrent = progressState === 'current';
@@ -357,34 +403,109 @@ function DestinationGroupRow({
           ]}
         >
           {group.orders.map((order, orderIndex) => (
-            <View key={order.id} style={styles.groupOrderRow}>
-              <Text
-                style={[
-                  styles.groupOrderLabel,
-                  isCompleted && styles.completedSecondaryText,
-                ]}
-              >
-                주문 {orderIndex + 1}
-              </Text>
-              <ConditionBadge
-                conditionCode={order.conditionCode}
-                highlighted={isCurrent}
-                muted={isCompleted}
-              />
-              <Text
-                style={[
-                  styles.groupOrderBoxes,
-                  isCompleted && styles.completedBoxText,
-                ]}
-              >
-                {order.shippedBoxes}박스
-              </Text>
+            <View key={order.id} style={styles.groupOrderItem}>
+              <View style={styles.groupOrderRow}>
+                <Text
+                  style={[
+                    styles.groupOrderLabel,
+                    isCompleted && styles.completedSecondaryText,
+                  ]}
+                >
+                  주문 {orderIndex + 1}
+                </Text>
+                <ConditionBadge
+                  conditionCode={order.conditionCode}
+                  highlighted={isCurrent}
+                  muted={isCompleted}
+                />
+                <Text
+                  style={[
+                    styles.groupOrderBoxes,
+                    isCompleted && styles.completedBoxText,
+                  ]}
+                >
+                  {order.shippedBoxes}박스
+                </Text>
+              </View>
+
+              {order.driverMessages?.map((message) => (
+                <View key={message.messageId} style={styles.orderNotice}>
+                  <Text style={styles.orderNoticeLabel}>배송원 메모</Text>
+                  <Text style={styles.orderNoticeText}>{message.body}</Text>
+                  {message.readAt === null ? (
+                    <OrderNoticeButton
+                      disabled={isOrderActionPending}
+                      label="메모 확인"
+                      onPress={() => onReadDriverMessage(message.messageId)}
+                    />
+                  ) : (
+                    <Text style={styles.orderNoticeRead}>확인됨</Text>
+                  )}
+                </View>
+              ))}
+
+              {order.pendingTimeConstraintChange ? (
+                <View style={styles.orderNotice}>
+                  <Text style={styles.orderNoticeLabel}>배송 시간 변경</Text>
+                  <Text style={styles.orderNoticeText}>
+                    {formatTimeWindow(
+                      order.pendingTimeConstraintChange.timeWindow,
+                      timezone,
+                    )}
+                  </Text>
+                  <OrderNoticeButton
+                    disabled={isOrderActionPending}
+                    label="시간 변경 확인"
+                    onPress={() => onAcknowledgeTimeConstraint(order.id)}
+                  />
+                </View>
+              ) : null}
             </View>
           ))}
         </View>
       ) : null}
     </View>
   );
+}
+
+function OrderNoticeButton({
+  disabled,
+  label,
+  onPress,
+}: {
+  disabled: boolean;
+  label: string;
+  onPress(): void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.orderNoticeButton,
+        disabled && styles.orderNoticeButtonDisabled,
+        pressed && styles.buttonPressed,
+      ]}
+    >
+      <Text style={styles.orderNoticeButtonText}>{disabled ? '처리 중' : label}</Text>
+    </Pressable>
+  );
+}
+
+function formatTimeWindow(
+  timeWindow: { end: string; start: string } | null,
+  timezone: string,
+): string {
+  if (timeWindow === null) return '지정 시간 없음';
+  const formatter = new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    timeZone: timezone,
+  });
+  return `${formatter.format(new Date(timeWindow.start))}–${formatter.format(new Date(timeWindow.end))}`;
 }
 
 function ConditionBadge({
@@ -929,6 +1050,11 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 44,
   },
+  groupOrderItem: {
+    borderBottomColor: '#eaecf0',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 8,
+  },
   groupOrderLabel: {
     color: '#344054',
     flex: 1,
@@ -941,6 +1067,47 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     minWidth: 42,
     textAlign: 'right',
+  },
+  orderNotice: {
+    backgroundColor: '#ffffff',
+    borderColor: '#d0d5dd',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 5,
+    marginBottom: 6,
+    padding: 9,
+  },
+  orderNoticeLabel: {
+    color: '#344054',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  orderNoticeText: {
+    color: '#475467',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  orderNoticeRead: {
+    color: '#667085',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  orderNoticeButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#0b57d0',
+    borderRadius: 7,
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  orderNoticeButtonDisabled: {
+    backgroundColor: '#98a2b3',
+  },
+  orderNoticeButtonText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
   },
   boxCount: {
     color: '#027a48',

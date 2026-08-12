@@ -30,9 +30,22 @@ type AssignedRouteStop = {
   coordinates: { latitude: number | null; longitude: number | null };
   deliveryStopId: string;
   destinationId: string | null;
+  driverMessages?: {
+    body: string;
+    createdAt: string;
+    messageId: string;
+    readAt: string | null;
+  }[];
   estimatedArrivalAt?: string | null;
   customerNote?: string | null;
   orderName: string;
+  pendingTimeConstraintChange?: {
+    pendingChangeId: string;
+    requestedAt: string;
+    status: 'PENDING_ACK';
+    timeWindow: { end: string; start: string } | null;
+    type: 'TIME_CONSTRAINT_CHANGE';
+  } | null;
   recipientName: string | null;
   sellerOrderKey: string | null;
   sequence: number;
@@ -194,12 +207,6 @@ export async function loadDriverDeliveryRouteChoices(
   if (lookupEnvelope.data === null) {
     throwEnvelopeError(lookupEnvelope.error);
   }
-  if (lookupEnvelope.data.status === 'VEHICLE_REQUIRED') {
-    throw new DriverRouteApiError(
-      'VEHICLE_REQUIRED',
-      '등록된 차량이 있어야 배송과 공용 주문을 확인할 수 있습니다.',
-    );
-  }
   if (lookupEnvelope.data.status !== 'ROUTES_FOUND') {
     throw new DriverRouteApiError(
       'ROUTE_NOT_AVAILABLE',
@@ -280,10 +287,12 @@ function mapAssignedRouteStop(
     customerCode: '',
     destinationId: stop.destinationId ?? stop.deliveryStopId,
     destinationName: stop.recipientName?.trim() || stop.orderName,
+    driverMessages: stop.driverMessages ?? [],
     estimatedArrivalAt:
       stop.estimatedArrivalAt ?? snapshotEstimatedArrivalAt ?? null,
     id: stop.deliveryStopId,
     notes: stop.customerNote?.trim() || null,
+    pendingTimeConstraintChange: stop.pendingTimeConstraintChange ?? null,
     sellerOrderKey: stop.sellerOrderKey,
     sequence: stop.sequence,
     shippedBoxes: stop.shippedBoxes as number,

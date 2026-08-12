@@ -1,6 +1,5 @@
 export type DriverPushNotification =
   | {
-      changeRequestId: string;
       kind: 'route_changed';
       notificationId: string;
     }
@@ -27,9 +26,8 @@ export function parseDriverPushNotification(
   notificationId: string,
   data: Record<string, unknown>,
 ): DriverPushNotification | null {
-  if (data.type === 'driver_route_changed' && isNonEmptyString(data.changeRequestId)) {
+  if (data.type === 'driver_route_changed' && isNonEmptyString(data.routePlanId)) {
     return {
-      changeRequestId: data.changeRequestId,
       kind: 'route_changed',
       notificationId,
     };

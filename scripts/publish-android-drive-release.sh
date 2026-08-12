@@ -5,6 +5,7 @@ set -euo pipefail
 EXPECTED_ACCOUNT='dlajiin@gmail.com'
 EXPECTED_API_BASE_URL='https://clever-route-api.cleversystem.ai'
 EXPECTED_PACKAGE_ID='com.evnsolution.clever.driver'
+EXPECTED_SIGNER_SHA256='fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c'
 DRIVE_FOLDER_ID='1VybPlbJcNiCb-FvC1zQf4QjAYe_2aSZR'
 DRIVE_FILE_ID='1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y'
 DRIVE_FILE_NAME='clever-driver-latest.apk'
@@ -69,6 +70,17 @@ else
   fail 'apkanalyzer is required; add Android SDK cmdline-tools to PATH'
 fi
 
+if command -v apksigner >/dev/null 2>&1; then
+  APK_SIGNER="$(command -v apksigner)"
+elif [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+  APK_SIGNER="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner -perm -111 2>/dev/null | sort | tail -1)"
+elif [[ -n "${ANDROID_HOME:-}" ]]; then
+  APK_SIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner -perm -111 2>/dev/null | sort | tail -1)"
+else
+  APK_SIGNER=''
+fi
+[[ -n "$APK_SIGNER" ]] || fail 'apksigner is required; install Android SDK build-tools'
+
 [[ -f "$APK_PATH" ]] || fail "APK not found: $APK_PATH"
 
 SOURCE_BRANCH="$(git branch --show-current)"
@@ -89,9 +101,13 @@ ACTIVE_ACCOUNT="$(gcloud config get-value account 2>/dev/null)"
 PACKAGE_ID="$($APK_ANALYZER manifest application-id "$APK_PATH")"
 VERSION_CODE="$($APK_ANALYZER manifest version-code "$APK_PATH")"
 VERSION_NAME="$($APK_ANALYZER manifest version-name "$APK_PATH")"
+SIGNER_SHA256="$($APK_SIGNER verify --print-certs "$APK_PATH" \
+  | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print tolower($2); exit}')"
 [[ "$PACKAGE_ID" == "$EXPECTED_PACKAGE_ID" ]] || fail "unexpected Android package: $PACKAGE_ID"
 [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || fail "invalid APK versionCode: $VERSION_CODE"
 [[ -n "$VERSION_NAME" ]] || fail 'APK versionName is empty'
+[[ "$SIGNER_SHA256" == "$EXPECTED_SIGNER_SHA256" ]] \
+  || fail "unexpected APK signer certificate: ${SIGNER_SHA256:-missing}"
 if [[ -n "${MINIMUM_SUPPORTED_VERSION_CODE:-}" ]]; then
   [[ "$MINIMUM_SUPPORTED_VERSION_CODE" =~ ^[1-9][0-9]*$ ]] \
     || fail 'minimum versionCode must be a positive integer'
