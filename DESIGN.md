@@ -10,6 +10,7 @@
   `src/ui/driver/DriverWorkspace.tsx`, `src/ui/driver/DeliveryProofModal.tsx`,
   `src/ui/driver/DriverSettingsModal.tsx`,
   `src/ui/driver/DeliveryScreen.tsx`,
+  `src/ui/driver/DestinationNotesSheet.tsx`,
   `../clever-routes-app/src/app/NativeRouteMapPreview.tsx`,
   `../clever-routes-app/src/app/routeMapGeoJson.ts`
 
@@ -197,6 +198,8 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
   순서만 즉시 반영한다.
 - 서버 계약 전 Preview는 배송지 정보를 화면 메모리에만 저장한다. Preview UI는
   예상 API를 호출하거나 기존 주문 `customerNote`를 수정하지 않는다.
+- `preview` 빌드는 서버 주문이 0건일 때만 기존 로컬 fixture를 표시해 하단 시트를
+  검토할 수 있게 한다. 실제 주문이 있거나 production 빌드에서는 사용하지 않는다.
 
 ## Open questions
 
