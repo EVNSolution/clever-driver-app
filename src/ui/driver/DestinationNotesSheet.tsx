@@ -14,8 +14,8 @@ import {
   formatTimeInput,
   isValidLunchTime,
   isValidRequiredArrivalTime,
-  savePreviewDestinationNotes,
   type DestinationNotes,
+  type DestinationNoteValues,
 } from '../../domain/delivery/destinationNotesPreview';
 import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
 
@@ -24,6 +24,7 @@ type InformationTab = 'orders' | 'destination';
 export function DestinationNotesSheet({
   address,
   destinationName,
+  isPreview,
   notes,
   onClose,
   onSave,
@@ -31,13 +32,15 @@ export function DestinationNotesSheet({
 }: {
   address: string;
   destinationName: string;
+  isPreview: boolean;
   notes: DestinationNotes;
   onClose(): void;
-  onSave(notes: DestinationNotes): void;
+  onSave(values: DestinationNoteValues): Promise<void> | void;
   orders: DeliveryOrder[];
 }) {
   const insets = useSafeAreaInsets();
   const [informationTab, setInformationTab] = useState<InformationTab>('orders');
+  const [isSaving, setIsSaving] = useState(false);
   const [initialLunchStartsAt = '', initialLunchEndsAt = ''] =
     notes.lunchTime.value.split('~');
   const [lunchAccess, setLunchAccess] = useState(notes.lunchAccess.value);
@@ -54,22 +57,25 @@ export function DestinationNotesSheet({
   const normalizedArrivalTime = requiredArrivalTime.trim();
   const hasValidLunchTime = isValidLunchTime(normalizedLunchTime);
   const hasValidArrivalTime = isValidRequiredArrivalTime(normalizedArrivalTime);
-  const canSave = hasValidLunchTime && hasValidArrivalTime;
+  const canSave = hasValidLunchTime && hasValidArrivalTime && !isSaving;
   const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
   );
 
-  function save() {
+  async function save() {
     if (!canSave) return;
-    const updatedAt = new Date().toISOString();
-
-    onSave(savePreviewDestinationNotes(notes, {
-      lunchAccess,
-      lunchTime: normalizedLunchTime,
-      memo: normalizedMemo,
-      requiredArrivalTime: normalizedArrivalTime,
-    }, updatedAt));
+    setIsSaving(true);
+    try {
+      await onSave({
+        lunchAccess,
+        lunchTime: normalizedLunchTime,
+        memo: normalizedMemo,
+        requiredArrivalTime: normalizedArrivalTime,
+      });
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -168,11 +174,13 @@ export function DestinationNotesSheet({
               </>
             ) : (
               <>
-                <View style={styles.previewNotice}>
-                  <Text style={styles.previewNoticeText}>
-                    UI Preview · 저장 내용은 앱을 닫으면 초기화됩니다
-                  </Text>
-                </View>
+                {isPreview ? (
+                  <View style={styles.previewNotice}>
+                    <Text style={styles.previewNoticeText}>
+                      UI Preview · 저장 내용은 앱을 닫으면 초기화됩니다
+                    </Text>
+                  </View>
+                ) : null}
                 <FieldHeader label="일반 메모" updatedAt={notes.memo.updatedAt} />
                 <TextInput
                   accessibilityLabel="배송지 일반 메모"
@@ -283,14 +291,16 @@ export function DestinationNotesSheet({
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSave }}
               disabled={!canSave}
-              onPress={save}
+              onPress={() => { void save(); }}
               style={({ pressed }) => [
                 styles.saveButton,
                 !canSave && styles.saveButtonDisabled,
                 pressed && styles.buttonPressed,
               ]}
             >
-              <Text style={styles.saveButtonText}>배송지 정보 저장</Text>
+              <Text style={styles.saveButtonText}>
+                {isSaving ? '저장 중…' : '배송지 정보 저장'}
+              </Text>
             </Pressable>
           ) : null}
         </View>

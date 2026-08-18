@@ -50,5 +50,7 @@ describe('destination notes UI preview state', () => {
     assert.equal(isValidLunchTime('12:00~13:00'), true);
     assert.equal(isValidLunchTime('12:00'), false);
     assert.equal(isValidLunchTime('24:00~25:00'), false);
+    assert.equal(isValidLunchTime('13:00~12:00'), false);
+    assert.equal(isValidLunchTime('12:00~12:00'), false);
   });
 });

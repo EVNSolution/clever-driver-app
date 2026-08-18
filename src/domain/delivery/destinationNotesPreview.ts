@@ -55,7 +55,8 @@ export function isValidLunchTime(value: string): boolean {
     && startsAt !== undefined
     && endsAt !== undefined
     && isValidTime(startsAt)
-    && isValidTime(endsAt);
+    && isValidTime(endsAt)
+    && startsAt < endsAt;
 }
 
 export function formatTimeInput(value: string): string {

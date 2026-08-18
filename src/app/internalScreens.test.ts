@@ -139,7 +139,7 @@ describe('authenticated driver screens', () => {
     assert.match(source, /order\.shippedBoxes/u);
   });
 
-  it('opens order and preview-only destination information in one tabbed sheet', () => {
+  it('opens order and server-backed destination information in one tabbed sheet', () => {
     const workspace = readFileSync(
       join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
       'utf8',
@@ -157,6 +157,8 @@ describe('authenticated driver screens', () => {
     assert.match(deliveryScreen, /onOpenDeliveryInformation/u);
     assert.match(deliveryScreen, /배송 정보 열기/u);
     assert.match(deliveryScreen, /destinationNotesById/u);
+    assert.match(workspace, /updateDriverDestinationNotes/u);
+    assert.match(workspace, /destinationNotesById=\{route\.destinationNotesById\}/u);
     assert.match(deliveryScreen, /EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW/u);
     assert.match(workspace, /PREVIEW_DELIVERY_DATE/u);
     assert.match(workspace, /deliveryDateOverride=\{previewDeliveryDate\}/u);
@@ -203,7 +205,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(destinationSheet, /numbers-and-punctuation/u);
     assert.match(destinationSheet, /필수 도착 시간/u);
     assert.match(destinationSheet, /마지막 수정/u);
-    assert.match(destinationSheet, /앱을 닫으면 초기화됩니다/u);
+    assert.match(destinationSheet, /isPreview/u);
     assert.doesNotMatch(destinationSheet, /fetch\(/u);
   });
 

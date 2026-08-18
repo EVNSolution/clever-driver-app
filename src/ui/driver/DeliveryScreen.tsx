@@ -32,7 +32,9 @@ import {
 } from '../../domain/delivery/deliveryPlan';
 import {
   EMPTY_DESTINATION_NOTES,
+  savePreviewDestinationNotes,
   type DestinationNotes,
+  type DestinationNoteValues,
 } from '../../domain/delivery/destinationNotesPreview';
 import {
   createDeliveryOrderPositions,
@@ -56,6 +58,7 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 
 type DeliveryScreenProps = {
   deliveryDate: string;
+  destinationNotesById: Record<string, DestinationNotes>;
   isEditing: boolean;
   nextDeliveryStopId: string | null;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
@@ -63,6 +66,11 @@ type DeliveryScreenProps = {
   onOpenDeliverySpace(): void;
   onOrdersChange(orders: DeliveryOrder[]): void;
   onReadDriverMessage(messageId: string): Promise<void>;
+  onSaveDestinationNotes(
+    destinationId: string,
+    previous: DestinationNotes,
+    values: DestinationNoteValues,
+  ): Promise<DestinationNotes>;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
@@ -70,6 +78,7 @@ type DeliveryScreenProps = {
 
 export function DeliveryScreen({
   deliveryDate,
+  destinationNotesById: initialDestinationNotesById,
   isEditing,
   nextDeliveryStopId,
   onAcknowledgeTimeConstraint,
@@ -77,6 +86,7 @@ export function DeliveryScreen({
   onOpenDeliverySpace,
   onOrdersChange,
   onReadDriverMessage,
+  onSaveDestinationNotes,
   orders,
   serverRouteGeometry,
   timezone,
@@ -92,7 +102,7 @@ export function DeliveryScreen({
   const displayedOrders = isDestinationNotesUiPreview
     ? previewOrders
     : orders;
-  const [destinationNotesById, setDestinationNotesById] = useState<
+  const [previewDestinationNotesById, setPreviewDestinationNotesById] = useState<
     Record<string, DestinationNotes>
   >({});
   const [draftOrders, setDraftOrders] = useState(displayedOrders);
@@ -292,18 +302,39 @@ export function DeliveryScreen({
         <DestinationNotesSheet
           address={selectedDestinationGroup.address}
           destinationName={selectedDestinationGroup.destinationName}
+          isPreview={isDestinationNotesUiPreview}
           orders={selectedDestinationGroup.orders}
           notes={
-            destinationNotesById[selectedDestinationGroup.destinationId]
+            (isDestinationNotesUiPreview
+              ? previewDestinationNotesById[selectedDestinationGroup.destinationId]
+              : initialDestinationNotesById[selectedDestinationGroup.destinationId])
             ?? EMPTY_DESTINATION_NOTES
           }
           onClose={() => setSelectedDestinationGroup(null)}
-          onSave={(notes) => {
-            setDestinationNotesById((currentNotes) => ({
-              ...currentNotes,
-              [selectedDestinationGroup.destinationId]: notes,
-            }));
-            setSelectedDestinationGroup(null);
+          onSave={async (values) => {
+            const destinationId = selectedDestinationGroup.destinationId;
+            const previous = (isDestinationNotesUiPreview
+              ? previewDestinationNotesById[destinationId]
+              : initialDestinationNotesById[destinationId])
+              ?? EMPTY_DESTINATION_NOTES;
+            try {
+              const notes = isDestinationNotesUiPreview
+                ? savePreviewDestinationNotes(previous, values, new Date().toISOString())
+                : await onSaveDestinationNotes(destinationId, previous, values);
+              if (isDestinationNotesUiPreview) {
+                setPreviewDestinationNotesById((currentNotes) => ({
+                  ...currentNotes,
+                  [destinationId]: notes,
+                }));
+              }
+              setSelectedDestinationGroup(null);
+            } catch (error) {
+              showDialog({
+                message: error instanceof Error ? error.message : '다시 시도해 주세요.',
+                title: '배송지 정보를 저장하지 못했습니다',
+                tone: 'warning',
+              });
+            }
           }}
         />
       )}

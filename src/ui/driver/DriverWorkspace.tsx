@@ -25,6 +25,7 @@ import {
 import {
   DriverRouteApiError,
   loadDriverDeliveryRoute,
+  updateDriverDestinationNotes,
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
 } from '../../api/dsvDriverRoute';
@@ -33,6 +34,10 @@ import {
   PREVIEW_DELIVERY_DATE,
   type DeliveryOrder,
 } from '../../domain/delivery/deliveryPlan';
+import type {
+  DestinationNotes,
+  DestinationNoteValues,
+} from '../../domain/delivery/destinationNotesPreview';
 import { resolveAndroidBackAction } from '../../domain/navigation/androidBackNavigation';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
@@ -234,6 +239,30 @@ export function DriverWorkspace({
     setLoadAttempt((attempt) => attempt + 1);
   }
 
+  async function saveDestinationNotes(
+    destinationId: string,
+    previous: DestinationNotes,
+    values: DestinationNoteValues,
+  ): Promise<DestinationNotes> {
+    if (route === null) return previous;
+    const notes = await updateDriverDestinationNotes(
+      route.routeAccessToken,
+      destinationId,
+      previous,
+      values,
+    );
+    setRoute((currentRoute) => currentRoute === null
+      ? null
+      : {
+          ...currentRoute,
+          destinationNotesById: {
+            ...currentRoute.destinationNotesById,
+            [destinationId]: notes,
+          },
+        });
+    return notes;
+  }
+
   async function uploadDeliveryProof(
     deliveryStopId: string,
     photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
@@ -316,6 +345,7 @@ export function DriverWorkspace({
                 />
                 <DeliveryScreen
                   deliveryDate={previewDeliveryDate ?? route.deliveryDate}
+                  destinationNotesById={route.destinationNotesById}
                   isEditing={isSequenceEditing}
                   nextDeliveryStopId={route.nextDeliveryStopId}
                   onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
@@ -323,6 +353,7 @@ export function DriverWorkspace({
                   onOpenDeliverySpace={openDeliverySpace}
                   onOrdersChange={setOrders}
                   onReadDriverMessage={readDriverMessage}
+                  onSaveDestinationNotes={saveDestinationNotes}
                   orders={orders}
                   serverRouteGeometry={route.serverRouteGeometry}
                   timezone={route.timezone}

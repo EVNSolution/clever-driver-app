@@ -3,6 +3,12 @@ import type {
   DeliveryOrder,
   ServerDeliveryRouteGeometry,
 } from '../domain/delivery/deliveryPlan';
+import {
+  EMPTY_DESTINATION_NOTES,
+  type DestinationNotes,
+  type DestinationNoteValues,
+  type LunchAccess,
+} from '../domain/delivery/destinationNotesPreview';
 import { resolveDsvApiUrl } from './dsvApiUrl';
 
 const DSV_DEFAULT_TIMEZONE = 'Asia/Seoul';
@@ -30,6 +36,7 @@ type AssignedRouteStop = {
   coordinates: { latitude: number | null; longitude: number | null };
   deliveryStopId: string;
   destinationId: string | null;
+  destinationNotes?: ServerDestinationNotes;
   driverMessages?: {
     body: string;
     createdAt: string;
@@ -53,6 +60,22 @@ type AssignedRouteStop = {
   status: string;
   timeWindowEnd?: string | null;
   timeWindowStart?: string | null;
+};
+
+type ServerDestinationNotes = {
+  lunchEntryStatus: 'AVAILABLE' | 'UNAVAILABLE' | null;
+  lunchEntryStatusUpdatedAt: string | null;
+  lunchTimeRange: string | null;
+  lunchTimeRangeUpdatedAt: string | null;
+  memo: string | null;
+  memoUpdatedAt: string | null;
+  requiredArrivalTime: string | null;
+  requiredArrivalTimeUpdatedAt: string | null;
+};
+
+type DestinationNotesEnvelope = {
+  data: { destinationId: string; notes: ServerDestinationNotes } | null;
+  error?: { code: string; message: string } | null;
 };
 
 type AssignedRouteEnvelope = {
@@ -83,6 +106,7 @@ export type DriverDeliveryRoute = {
   availableRoutes: DriverDeliveryRouteChoice[];
   deliveryDate: string;
   depotCoordinate: DeliveryCoordinate | null;
+  destinationNotesById: Record<string, DestinationNotes>;
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   nextDeliveryStopId: string | null;
   orders: DeliveryOrder[];
@@ -139,6 +163,7 @@ export async function loadDriverDeliveryRoute(
       availableRoutes: routeChoices,
       deliveryDate: routeChoice.deliveryDate,
       depotCoordinate: null,
+      destinationNotesById: {},
       etaStatus: 'PRE_PICKUP',
       nextDeliveryStopId: null,
       orders: [],
@@ -166,6 +191,10 @@ export async function loadDriverDeliveryRoute(
   return {
     deliveryDate: route.deliveryDate,
     depotCoordinate: readCoordinate(route.depot),
+    destinationNotesById: Object.fromEntries(route.stops.map((stop) => [
+      stop.destinationId ?? stop.deliveryStopId,
+      mapServerDestinationNotes(stop.destinationNotes),
+    ])),
     etaStatus,
     nextDeliveryStopId:
       route.etaSnapshot?.nextStopEta?.deliveryStopId ??
@@ -189,10 +218,73 @@ export async function loadDriverDeliveryRoute(
   };
 }
 
+export async function updateDriverDestinationNotes(
+  routeAccessToken: string,
+  destinationId: string,
+  previous: DestinationNotes,
+  values: DestinationNoteValues,
+): Promise<DestinationNotes> {
+  const patch = buildDestinationNotesPatch(previous, values);
+  if (Object.keys(patch).length === 0) return previous;
+
+  const envelope = await requestJson<DestinationNotesEnvelope>(
+    `/driver/destinations/${encodeURIComponent(destinationId)}/notes`,
+    routeAccessToken,
+    { body: JSON.stringify(patch), method: 'PATCH' },
+  );
+  if (envelope.data === null) throwEnvelopeError(envelope.error);
+  return mapServerDestinationNotes(envelope.data.notes);
+}
+
 function normalizeDsvTimezone(timezone: string | undefined): string {
   return timezone === undefined || timezone === 'UTC'
     ? DSV_DEFAULT_TIMEZONE
     : timezone;
+}
+
+function buildDestinationNotesPatch(
+  previous: DestinationNotes,
+  values: DestinationNoteValues,
+): Record<string, string | null> {
+  const patch: Record<string, string | null> = {};
+  if (previous.memo.value !== values.memo) patch.memo = values.memo || null;
+  if (previous.lunchTime.value !== values.lunchTime) {
+    patch.lunchTimeRange = values.lunchTime || null;
+  }
+  if (previous.lunchAccess.value !== values.lunchAccess) {
+    patch.lunchEntryStatus = values.lunchAccess === 'UNKNOWN'
+      ? null
+      : values.lunchAccess;
+  }
+  if (previous.requiredArrivalTime.value !== values.requiredArrivalTime) {
+    patch.requiredArrivalTime = values.requiredArrivalTime || null;
+  }
+  return patch;
+}
+
+function mapServerDestinationNotes(
+  notes: ServerDestinationNotes | undefined,
+): DestinationNotes {
+  if (notes === undefined) return EMPTY_DESTINATION_NOTES;
+  return {
+    lunchAccess: {
+      updatedAt: notes.lunchEntryStatusUpdatedAt,
+      value: readLunchAccess(notes.lunchEntryStatus),
+    },
+    lunchTime: {
+      updatedAt: notes.lunchTimeRangeUpdatedAt,
+      value: notes.lunchTimeRange ?? '',
+    },
+    memo: { updatedAt: notes.memoUpdatedAt, value: notes.memo ?? '' },
+    requiredArrivalTime: {
+      updatedAt: notes.requiredArrivalTimeUpdatedAt,
+      value: notes.requiredArrivalTime ?? '',
+    },
+  };
+}
+
+function readLunchAccess(value: ServerDestinationNotes['lunchEntryStatus']): LunchAccess {
+  return value === 'AVAILABLE' || value === 'UNAVAILABLE' ? value : 'UNKNOWN';
 }
 
 export async function loadDriverDeliveryRouteChoices(
