@@ -11,11 +11,16 @@ import {
 
 import {
   acquireDeliveryBundle,
+  acceptDeliveryBundleHandoff,
+  cancelDeliveryBundleHandoff,
   DriverDeliverySpaceApiError,
   loadDriverDeliverySpace,
   releaseDeliveryBundle,
-  transferDeliveryBundle,
+  rejectDeliveryBundleHandoff,
+  requestDeliveryBundleHandoff,
   type DriverDeliveryBundle,
+  type DriverDeliveryIncomingHandoff,
+  type DriverDeliveryOutgoingHandoff,
   type DriverDeliveryRecipient,
   type DriverDeliverySpace,
 } from '../../api/dsvDriverDeliverySpace';
@@ -38,6 +43,7 @@ export function DeliverySpaceScreen({
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState<string>();
   const [activeDestinationId, setActiveDestinationId] = useState<string>();
+  const [activeHandoffId, setActiveHandoffId] = useState<string>();
   const [transferBundle, setTransferBundle] = useState<DriverDeliveryBundle>();
 
   const refresh = useCallback(async () => {
@@ -101,19 +107,38 @@ export function DeliverySpaceScreen({
       actions: [
         { label: '취소', tone: 'secondary' },
         {
-          onPress: () => void runCommand(bundle, 'transfer', recipient),
-          label: '전달',
+          onPress: () => void runCommand(bundle, 'handoff', recipient),
+          label: '요청',
           tone: 'primary',
         },
       ],
-      message: `${bundle.destinationName} 배송지의 주문 ${bundle.orderCount}건을 ${recipient.driverName} 배송원에게 전달할까요?`,
-      title: '배송 전달',
+      message: `${recipient.driverName} 배송원에게 ${bundle.destinationName} 배송 인계를 요청할까요? 상대가 수락하면 배정이 변경됩니다.`,
+      title: '배송 전달 요청',
+    });
+  }
+
+  function confirmAcceptHandoff(handoff: DriverDeliveryIncomingHandoff) {
+    showDialog({
+      actions: [
+        { label: '취소', tone: 'secondary' },
+        {
+          onPress: () => void runHandoffAction(
+            handoff.requestId,
+            'accept',
+            `${handoff.bundle.destinationName} 배송을 받았습니다.`,
+          ),
+          label: '수락',
+          tone: 'primary',
+        },
+      ],
+      message: `${handoff.senderDriverName} 배송원의 ${handoff.bundle.destinationName} 배송 요청을 수락할까요? 수락하면 내 배송으로 배정이 변경됩니다.`,
+      title: '전달 요청 수락',
     });
   }
 
   async function runCommand(
     bundle: DriverDeliveryBundle,
-    action: 'acquire' | 'release' | 'transfer',
+    action: 'acquire' | 'handoff' | 'release',
     recipient?: DriverDeliveryRecipient,
   ) {
     if (space === null || activeDestinationId !== undefined) return;
@@ -133,7 +158,7 @@ export function DeliverySpaceScreen({
           space.version,
         );
       } else if (recipient !== undefined) {
-        await transferDeliveryBundle(
+        await requestDeliveryBundleHandoff(
           accessToken,
           bundle.destinationId,
           space.version,
@@ -143,12 +168,12 @@ export function DeliverySpaceScreen({
       setMessage(
         action === 'release'
           ? `${bundle.destinationName} 배송을 반납했습니다.`
-          : action === 'transfer'
-            ? `${bundle.destinationName} 배송을 ${recipient?.driverName ?? '다른 배송원'}에게 전달했습니다.`
+          : action === 'handoff'
+            ? `${recipient?.driverName ?? '다른 배송원'} 배송원에게 전달 요청을 보냈습니다.`
             : `${bundle.destinationName} 배송을 가져왔습니다.`,
       );
       setSpace(await loadDriverDeliverySpace(accessToken));
-      onAssignmentsChanged();
+      if (action !== 'handoff') onAssignmentsChanged();
     } catch (error) {
       setMessage(commandErrorMessage(error));
       if (
@@ -164,6 +189,33 @@ export function DeliverySpaceScreen({
       }
     } finally {
       setActiveDestinationId(undefined);
+    }
+  }
+
+  async function runHandoffAction(
+    requestId: string,
+    action: 'accept' | 'cancel' | 'reject',
+    label: string,
+  ) {
+    if (activeHandoffId !== undefined) return;
+    setActiveHandoffId(requestId);
+    setMessage(undefined);
+    try {
+      if (action === 'accept') await acceptDeliveryBundleHandoff(accessToken, requestId);
+      else if (action === 'reject') await rejectDeliveryBundleHandoff(accessToken, requestId);
+      else await cancelDeliveryBundleHandoff(accessToken, requestId);
+      setMessage(label);
+      setSpace(await loadDriverDeliverySpace(accessToken));
+      if (action === 'accept') onAssignmentsChanged();
+    } catch (error) {
+      setMessage(commandErrorMessage(error));
+      try {
+        setSpace(await loadDriverDeliverySpace(accessToken));
+      } catch {
+        // Keep the action failure message when refresh also fails.
+      }
+    } finally {
+      setActiveHandoffId(undefined);
     }
   }
 
@@ -228,9 +280,21 @@ export function DeliverySpaceScreen({
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
+          {section === 'mine' && (space?.incomingHandoffs.length ?? 0) > 0 ? (
+            <HandoffPanel
+              activeHandoffId={activeHandoffId}
+              incoming={space?.incomingHandoffs ?? []}
+              onAccept={confirmAcceptHandoff}
+              onReject={(handoff) => void runHandoffAction(
+                handoff.requestId,
+                'reject',
+                `${handoff.senderDriverName} 배송원의 전달 요청을 거절했습니다.`,
+              )}
+            />
+          ) : null}
           <Text style={styles.sectionGuide}>
             {section === 'mine'
-              ? '반납하면 이 배송지의 모든 주문이 공용 배송으로 이동합니다.'
+              ? '전달은 상대 배송원이 수락할 때 배정이 변경됩니다.'
               : '다른 배송원보다 먼저 가져오면 내 배송으로 전체 묶음이 배정됩니다.'}
           </Text>
           {bundles.length === 0 ? (
@@ -251,6 +315,14 @@ export function DeliverySpaceScreen({
                 if (section === 'mine') confirmRelease(bundle);
                 else void runCommand(bundle, 'acquire');
               }}
+              onCancelHandoff={section === 'mine' ? (handoff) => void runHandoffAction(
+                handoff.requestId,
+                'cancel',
+                `${handoff.targetDriverName} 배송원에게 보낸 전달 요청을 취소했습니다.`,
+              ) : undefined}
+              pendingHandoff={section === 'mine'
+                ? space?.outgoingHandoffs.find((handoff) => handoffDestinationId(handoff) === bundle.destinationId)
+                : undefined}
               onTransfer={section === 'mine' ? () => startTransfer(bundle) : undefined}
             />
           ))}
@@ -274,13 +346,11 @@ function SectionTab({
   isSelected,
   label,
   onPress,
-  onTransfer,
 }: {
   count?: number;
   isSelected: boolean;
   label: string;
   onPress(): void;
-  onTransfer?(): void;
 }) {
   return (
     <Pressable
@@ -300,21 +370,92 @@ function SectionTab({
   );
 }
 
+function HandoffPanel({
+  activeHandoffId,
+  incoming,
+  onAccept,
+  onReject,
+}: {
+  activeHandoffId?: string;
+  incoming: DriverDeliveryIncomingHandoff[];
+  onAccept(handoff: DriverDeliveryIncomingHandoff): void;
+  onReject(handoff: DriverDeliveryIncomingHandoff): void;
+}) {
+  return (
+    <View style={styles.handoffPanel}>
+      <Text style={styles.handoffPanelTitle}>받은 전달 요청</Text>
+      {incoming.map((handoff) => (
+        <View key={handoff.requestId} style={styles.handoffCard}>
+          <View style={styles.bundleCopy}>
+            <Text style={styles.handoffFrom}>{handoff.senderDriverName} 배송원</Text>
+            <Text numberOfLines={1} style={styles.destinationName}>{handoff.bundle.destinationName}</Text>
+            <Text numberOfLines={2} style={styles.address}>{handoff.bundle.address}</Text>
+            <View style={styles.bundleMetaRow}>
+              <Text style={styles.bundleMeta}>주문 {handoff.bundle.orderCount}건</Text>
+              <Text style={styles.bundleMeta}>박스 {handoff.bundle.boxCount}개</Text>
+              <Text style={styles.expiresText}>{formatExpiresAt(handoff.expiresAt)}까지</Text>
+            </View>
+          </View>
+          <View style={styles.bundleActions}>
+            <Pressable
+              accessibilityLabel={`${handoff.bundle.destinationName} 전달 요청 거절`}
+              accessibilityRole="button"
+              disabled={activeHandoffId !== undefined}
+              onPress={() => onReject(handoff)}
+              style={({ pressed }) => [
+                styles.bundleAction,
+                styles.rejectAction,
+                pressed && styles.pressed,
+                activeHandoffId !== undefined && styles.disabled,
+              ]}
+            >
+              <Text style={styles.rejectActionText}>거절</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel={`${handoff.bundle.destinationName} 전달 요청 수락`}
+              accessibilityRole="button"
+              accessibilityState={{ busy: activeHandoffId === handoff.requestId }}
+              disabled={activeHandoffId !== undefined}
+              onPress={() => onAccept(handoff)}
+              style={({ pressed }) => [
+                styles.bundleAction,
+                pressed && styles.pressed,
+                activeHandoffId !== undefined && styles.disabled,
+              ]}
+            >
+              {activeHandoffId === handoff.requestId ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.bundleActionText}>수락</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function BundleCard({
   action,
   bundle,
   isBusy,
   isDisabled,
+  onCancelHandoff,
   onPress,
+  pendingHandoff,
   onTransfer,
 }: {
   action: 'acquire' | 'release';
   bundle: DriverDeliveryBundle;
   isBusy: boolean;
   isDisabled: boolean;
+  onCancelHandoff?(handoff: DriverDeliveryOutgoingHandoff): void;
   onPress(): void;
+  pendingHandoff?: DriverDeliveryOutgoingHandoff;
   onTransfer?(): void;
 }) {
+  const hasPendingHandoff = pendingHandoff !== undefined;
   return (
     <View style={styles.bundleCard}>
       <View style={styles.bundleCopy}>
@@ -325,9 +466,39 @@ function BundleCard({
           <Text style={styles.bundleMeta}>박스 {bundle.boxCount}개</Text>
           <Text numberOfLines={1} style={styles.conditions}>{bundle.conditionCodes.join(' · ')}</Text>
         </View>
+        {hasPendingHandoff ? (
+          <Text style={styles.pendingHandoffText}>
+            {pendingHandoff.targetDriverName} 배송원 수락 대기 중
+          </Text>
+        ) : null}
       </View>
       <View style={styles.bundleActions}>
-        {onTransfer === undefined ? null : (
+        {hasPendingHandoff ? (
+          <>
+            <View
+              accessibilityLabel={`${bundle.destinationName} 전달 요청 중`}
+              accessibilityRole="text"
+              style={[styles.bundleAction, styles.transferAction, styles.disabled]}
+            >
+              <Text style={styles.transferActionText}>요청 중</Text>
+            </View>
+            <Pressable
+              accessibilityLabel={`${bundle.destinationName} 전달 요청 취소`}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isDisabled }}
+              disabled={isDisabled}
+              onPress={() => onCancelHandoff?.(pendingHandoff)}
+              style={({ pressed }) => [
+                styles.bundleAction,
+                styles.releaseAction,
+                pressed && styles.pressed,
+                isDisabled && styles.disabled,
+              ]}
+            >
+              <Text style={styles.releaseActionText}>취소</Text>
+            </Pressable>
+          </>
+        ) : onTransfer === undefined ? null : (
           <Pressable
             accessibilityLabel={`${bundle.destinationName} 배송 전달`}
             accessibilityRole="button"
@@ -344,6 +515,7 @@ function BundleCard({
             <Text style={styles.transferActionText}>전달</Text>
           </Pressable>
         )}
+        {hasPendingHandoff ? null : (
         <Pressable
           accessibilityLabel={`${bundle.destinationName} 배송 ${action === 'release' ? '반납' : '가져오기'}`}
           accessibilityRole="button"
@@ -365,6 +537,7 @@ function BundleCard({
             </Text>
           )}
         </Pressable>
+        )}
       </View>
     </View>
   );
@@ -423,9 +596,25 @@ function commandErrorMessage(error: unknown): string {
     if (error.code === 'DESTINATION_BUNDLE_TRANSFER_CLOSED') {
       return '이미 배송을 시작해 배정을 변경할 수 없습니다.';
     }
+    if (error.code === 'DRIVER_BUNDLE_HANDOFF_EXPIRED') {
+      return '전달 요청 시간이 지나 최신 목록으로 갱신했습니다.';
+    }
     return error.message;
   }
   return '배송 배정을 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+}
+
+function formatExpiresAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '만료 시간';
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function handoffDestinationId(handoff: DriverDeliveryOutgoingHandoff): string | undefined {
+  return handoff.bundle?.destinationId ?? handoff.destinationId;
 }
 
 const styles = StyleSheet.create({
@@ -476,6 +665,14 @@ const styles = StyleSheet.create({
   recipientChevron: { color: '#667085', fontSize: 24 },
   transferCancel: { alignItems: 'center', backgroundColor: '#f2f4f7', borderRadius: 12, justifyContent: 'center', marginTop: 14, minHeight: 46 },
   transferCancelText: { color: '#344054', fontSize: 13, fontWeight: '800' },
+  handoffPanel: { gap: 8, marginBottom: 4 },
+  handoffPanelTitle: { color: '#344054', fontSize: 12, fontWeight: '900' },
+  handoffCard: { alignItems: 'center', backgroundColor: '#fffbeb', borderColor: '#fedf89', borderRadius: 12, borderWidth: 1, flexDirection: 'row', gap: 12, padding: 13 },
+  handoffFrom: { color: '#7a2e0e', fontSize: 11, fontWeight: '900' },
+  expiresText: { color: '#667085', fontSize: 10, fontWeight: '800' },
+  pendingHandoffText: { color: '#1849a9', fontSize: 10, fontWeight: '900' },
+  rejectAction: { backgroundColor: '#ffffff', borderColor: '#fedf89', borderWidth: 1, minWidth: 58 },
+  rejectActionText: { color: '#93370d', fontSize: 12, fontWeight: '900' },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.7 },
 });

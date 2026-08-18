@@ -99,16 +99,26 @@ describe('authenticated driver screens', () => {
     assert.match(workspace, /DeliverySpaceScreen/u);
     assert.match(screen, /label="내 배송"/u);
     assert.match(screen, /label="공용 배송"/u);
-    assert.match(screen, /배송지의 모든 주문이 공용 배송으로 이동/u);
+    assert.match(screen, /상대 배송원이 수락할 때 배정이 변경/u);
     assert.match(screen, />전달<\/Text>/u);
     assert.match(screen, /전달할 배송원 선택/u);
+    assert.match(screen, /받은 전달 요청/u);
+    assert.match(screen, />수락<\/Text>/u);
+    assert.match(screen, />거절<\/Text>/u);
+    assert.match(screen, />요청 중<\/Text>/u);
+    assert.match(screen, />취소<\/Text>/u);
     assert.match(screen, /space\.recipients/u);
-    assert.match(client, /transferDeliveryBundle/u);
+    assert.match(client, /requestDeliveryBundleHandoff/u);
+    assert.match(client, /acceptDeliveryBundleHandoff/u);
+    assert.match(client, /rejectDeliveryBundleHandoff/u);
+    assert.match(client, /cancelDeliveryBundleHandoff/u);
     assert.match(client, /targetDriverId/u);
     assert.match(screen, /다른 배송원이 먼저 가져갔습니다/u);
     assert.match(client, /destinationId/u);
     assert.match(client, /expectedVersion/u);
+    assert.match(client, /handoff-requests/u);
     assert.match(client, /\/driver\/delivery-space/u);
+    assert.doesNotMatch(client, /\/transfer/u);
     assert.doesNotMatch(screen, /sellerOrderKey|orderId/u);
   });
 
