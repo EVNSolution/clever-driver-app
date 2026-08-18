@@ -135,9 +135,8 @@ export function DestinationNotesSheet({
                 label="점심시간"
                 updatedAt={notes.lunchTime.updatedAt}
               />
-              <View style={styles.timeRangeInputs}>
-                <View style={styles.timeRangeField}>
-                  <Text style={styles.timeRangeLabel}>시작</Text>
+              <View style={styles.lunchControls}>
+                <View style={styles.timeRangeInputs}>
                   <TextInput
                     accessibilityLabel="점심시간 시작"
                     keyboardType="number-pad"
@@ -154,10 +153,7 @@ export function DestinationNotesSheet({
                     ]}
                     value={lunchStartsAt}
                   />
-                </View>
-                <Text style={styles.timeRangeSeparator}>→</Text>
-                <View style={styles.timeRangeField}>
-                  <Text style={styles.timeRangeLabel}>종료</Text>
+                  <Text style={styles.timeRangeSeparator}>~</Text>
                   <TextInput
                     accessibilityLabel="점심시간 종료"
                     keyboardType="number-pad"
@@ -175,32 +171,26 @@ export function DestinationNotesSheet({
                     value={lunchEndsAt}
                   />
                 </View>
+                <View style={[styles.segmentedControl, styles.accessControl]}>
+                  <LunchAccessButton
+                    accessibilityLabel="점심시간 입장 가능"
+                    isSelected={lunchAccess === 'AVAILABLE'}
+                    label="가능"
+                    onPress={() => setLunchAccess('AVAILABLE')}
+                  />
+                  <LunchAccessButton
+                    accessibilityLabel="점심시간 입장 불가"
+                    isSelected={lunchAccess === 'UNAVAILABLE'}
+                    label="불가"
+                    onPress={() => setLunchAccess('UNAVAILABLE')}
+                  />
+                </View>
               </View>
-              <Text style={[
-                styles.fieldHint,
-                !hasValidLunchTime && styles.fieldError,
-              ]}>
-                {hasValidLunchTime
-                  ? '1200 입력 → 12:00 자동 변환'
-                  : '시작·종료 시간을 각각 숫자 4자리로 입력해 주세요.'}
-              </Text>
-
-              <FieldHeader
-                label="점심시간 입장"
-                updatedAt={notes.lunchAccess.updatedAt}
-              />
-              <View style={styles.segmentedControl}>
-                <LunchAccessButton
-                  isSelected={lunchAccess === 'AVAILABLE'}
-                  label="가능"
-                  onPress={() => setLunchAccess('AVAILABLE')}
-                />
-                <LunchAccessButton
-                  isSelected={lunchAccess === 'UNAVAILABLE'}
-                  label="불가능"
-                  onPress={() => setLunchAccess('UNAVAILABLE')}
-                />
-              </View>
+              {!hasValidLunchTime ? (
+                <Text style={[styles.fieldHint, styles.fieldError]}>
+                  시작·종료 시간을 각각 숫자 4자리로 입력해 주세요.
+                </Text>
+              ) : null}
             </View>
 
             <FieldHeader
@@ -216,21 +206,16 @@ export function DestinationNotesSheet({
               placeholderTextColor="#98a2b3"
               style={[
                 styles.textInput,
+                styles.arrivalTimeInput,
                 !hasValidArrivalTime && styles.textInputInvalid,
               ]}
               value={requiredArrivalTime}
             />
-            <Text style={[
-              styles.fieldHint,
-              !hasValidArrivalTime && styles.fieldError,
-            ]}>
-              {hasValidArrivalTime
-                ? '1330 입력 → 13:30 자동 변환'
-                : '0000부터 2359 사이의 숫자 4자리로 입력해 주세요.'}
-            </Text>
-            <Text style={styles.fieldHint}>
-              정보성 항목이며 현재 경로와 ETA에는 반영되지 않습니다.
-            </Text>
+            {!hasValidArrivalTime ? (
+              <Text style={[styles.fieldHint, styles.fieldError]}>
+                0000부터 2359 사이의 숫자 4자리로 입력해 주세요.
+              </Text>
+            ) : null}
           </ScrollView>
 
           <Pressable
@@ -270,16 +255,19 @@ function FieldHeader({
 }
 
 function LunchAccessButton({
+  accessibilityLabel,
   isSelected,
   label,
   onPress,
 }: {
+  accessibilityLabel: string;
   isSelected: boolean;
   label: string;
   onPress(): void;
 }) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="radio"
       accessibilityState={{ checked: isSelected }}
       onPress={onPress}
@@ -425,31 +413,40 @@ const styles = StyleSheet.create({
     borderColor: '#e4e7ec',
     borderRadius: 14,
     borderWidth: 1,
-    gap: 10,
-    padding: 12,
+    gap: 8,
+    padding: 10,
   },
-  timeRangeInputs: {
-    alignItems: 'flex-end',
+  lunchControls: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
   },
-  timeRangeField: {
+  timeRangeInputs: {
+    alignItems: 'center',
     flex: 1,
+    flexDirection: 'row',
     gap: 5,
   },
-  timeRangeLabel: {
-    color: '#667085',
-    fontSize: 10,
-    fontWeight: '700',
-  },
   timeRangeInput: {
+    flex: 1,
+    minHeight: 40,
+    paddingVertical: 6,
     textAlign: 'center',
   },
   timeRangeSeparator: {
     color: '#667085',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    paddingBottom: 13,
+  },
+  accessControl: {
+    width: 126,
+  },
+  arrivalTimeInput: {
+    alignSelf: 'flex-start',
+    minHeight: 40,
+    paddingVertical: 6,
+    textAlign: 'center',
+    width: 132,
   },
   segmentedControl: {
     flexDirection: 'row',
@@ -462,7 +459,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
-    minHeight: 46,
+    minHeight: 40,
     justifyContent: 'center',
   },
   segmentButtonSelected: {
