@@ -163,13 +163,19 @@ describe('authenticated driver screens', () => {
     assert.match(destinationSheet, /일반 메모/u);
     assert.match(destinationSheet, /점심시간 시작/u);
     assert.match(destinationSheet, /점심시간 종료/u);
+    assert.match(destinationSheet, /placeholder="12:00"/u);
+    assert.match(destinationSheet, /placeholder="13:00"/u);
+    assert.match(destinationSheet, /placeholder="13:30"/u);
     assert.match(destinationSheet, /timeRangeSeparator/u);
     assert.match(destinationSheet, />~<\/Text>/u);
     assert.match(destinationSheet, /점심시간 입장 가능/u);
     assert.match(destinationSheet, /점심시간 입장 불가/u);
-    assert.match(destinationSheet, /가능/u);
-    assert.match(destinationSheet, /불가/u);
+    assert.match(destinationSheet, /label="입장 가능"/u);
+    assert.match(destinationSheet, /label="입장 불가"/u);
     assert.match(destinationSheet, /keyboardType="number-pad"/u);
+    assert.match(destinationSheet, /KeyboardAwareScrollView/u);
+    assert.match(destinationSheet, /bottomOffset=\{80\}/u);
+    assert.doesNotMatch(destinationSheet, /KeyboardAvoidingView/u);
     assert.doesNotMatch(destinationSheet, /자동 변환/u);
     assert.doesNotMatch(destinationSheet, /정보성 항목/u);
     assert.doesNotMatch(

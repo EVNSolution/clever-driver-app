@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -66,10 +64,7 @@ export function DestinationNotesSheet({
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
-      >
+      <View style={styles.backdrop}>
         <Pressable
           accessibilityLabel="배송지 정보 닫기"
           onPress={onClose}
@@ -112,7 +107,8 @@ export function DestinationNotesSheet({
             </Text>
           </View>
 
-          <ScrollView
+          <KeyboardAwareScrollView
+            bottomOffset={80}
             contentContainerStyle={styles.form}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -144,7 +140,7 @@ export function DestinationNotesSheet({
                     onChangeText={(value) => {
                       setLunchStartsAt(formatTimeInput(value));
                     }}
-                    placeholder="1200"
+                    placeholder="12:00"
                     placeholderTextColor="#98a2b3"
                     style={[
                       styles.textInput,
@@ -161,7 +157,7 @@ export function DestinationNotesSheet({
                     onChangeText={(value) => {
                       setLunchEndsAt(formatTimeInput(value));
                     }}
-                    placeholder="1300"
+                    placeholder="13:00"
                     placeholderTextColor="#98a2b3"
                     style={[
                       styles.textInput,
@@ -175,13 +171,13 @@ export function DestinationNotesSheet({
                   <LunchAccessButton
                     accessibilityLabel="점심시간 입장 가능"
                     isSelected={lunchAccess === 'AVAILABLE'}
-                    label="가능"
+                    label="입장 가능"
                     onPress={() => setLunchAccess('AVAILABLE')}
                   />
                   <LunchAccessButton
                     accessibilityLabel="점심시간 입장 불가"
                     isSelected={lunchAccess === 'UNAVAILABLE'}
-                    label="불가"
+                    label="입장 불가"
                     onPress={() => setLunchAccess('UNAVAILABLE')}
                   />
                 </View>
@@ -202,7 +198,7 @@ export function DestinationNotesSheet({
               keyboardType="number-pad"
               maxLength={5}
               onChangeText={(value) => setRequiredArrivalTime(formatTimeInput(value))}
-              placeholder="1330"
+              placeholder="13:30"
               placeholderTextColor="#98a2b3"
               style={[
                 styles.textInput,
@@ -216,7 +212,7 @@ export function DestinationNotesSheet({
                 0000부터 2359 사이의 숫자 4자리로 입력해 주세요.
               </Text>
             ) : null}
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           <Pressable
             accessibilityRole="button"
@@ -232,7 +228,7 @@ export function DestinationNotesSheet({
             <Text style={styles.saveButtonText}>배송지 정보 저장</Text>
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -429,7 +425,7 @@ const styles = StyleSheet.create({
   },
   timeRangeInput: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     paddingVertical: 6,
     textAlign: 'center',
   },
@@ -439,11 +435,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   accessControl: {
-    width: 126,
+    width: 150,
   },
   arrivalTimeInput: {
     alignSelf: 'flex-start',
-    minHeight: 40,
+    minHeight: 44,
     paddingVertical: 6,
     textAlign: 'center',
     width: 132,
@@ -459,7 +455,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     justifyContent: 'center',
   },
   segmentButtonSelected: {
@@ -468,7 +464,7 @@ const styles = StyleSheet.create({
   },
   segmentButtonText: {
     color: '#667085',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   segmentButtonTextSelected: {
