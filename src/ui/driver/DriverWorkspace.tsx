@@ -25,11 +25,16 @@ import {
 import {
   DriverRouteApiError,
   loadDriverDeliveryRoute,
+  updateDriverDestinationNotes,
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
 } from '../../api/dsvDriverRoute';
 import { resolveDeliveryActivityForUpdate } from '../../domain/appUpdate/driverAppUpdate';
 import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
+import type {
+  DestinationNotes,
+  DestinationNoteValues,
+} from '../../domain/delivery/destinationNotesPreview';
 import { resolveAndroidBackAction } from '../../domain/navigation/androidBackNavigation';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
@@ -226,6 +231,30 @@ export function DriverWorkspace({
     setLoadAttempt((attempt) => attempt + 1);
   }
 
+  async function saveDestinationNotes(
+    destinationId: string,
+    previous: DestinationNotes,
+    values: DestinationNoteValues,
+  ): Promise<DestinationNotes> {
+    if (route === null) return previous;
+    const notes = await updateDriverDestinationNotes(
+      route.routeAccessToken,
+      destinationId,
+      previous,
+      values,
+    );
+    setRoute((currentRoute) => currentRoute === null
+      ? null
+      : {
+          ...currentRoute,
+          destinationNotesById: {
+            ...currentRoute.destinationNotesById,
+            [destinationId]: notes,
+          },
+        });
+    return notes;
+  }
+
   async function uploadDeliveryProof(
     deliveryStopId: string,
     photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
@@ -307,6 +336,7 @@ export function DriverWorkspace({
                 />
                 <DeliveryScreen
                   deliveryDate={route.deliveryDate}
+                  destinationNotesById={route.destinationNotesById}
                   isEditing={isSequenceEditing}
                   nextDeliveryStopId={route.nextDeliveryStopId}
                   onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
@@ -314,6 +344,7 @@ export function DriverWorkspace({
                   onOpenDeliverySpace={openDeliverySpace}
                   onOrdersChange={setOrders}
                   onReadDriverMessage={readDriverMessage}
+                  onSaveDestinationNotes={saveDestinationNotes}
                   orders={orders}
                   serverRouteGeometry={route.serverRouteGeometry}
                   timezone={route.timezone}
@@ -398,6 +429,7 @@ function RouteDateSelector({
   if (selectedRoute === undefined) {
     return null;
   }
+  const selectedDeliveryDate = selectedRoute.deliveryDate;
 
   function selectRoute(routePlanId: string) {
     onSelect(routePlanId);
@@ -407,7 +439,7 @@ function RouteDateSelector({
   return (
     <View style={styles.dateAccordion}>
       <Pressable
-        accessibilityLabel={`배송 날짜 ${formatDeliveryDate(selectedRoute.deliveryDate)} 목록 ${isExpanded ? '접기' : '펼치기'}`}
+        accessibilityLabel={`배송 날짜 ${formatDeliveryDate(selectedDeliveryDate)} 목록 ${isExpanded ? '접기' : '펼치기'}`}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
         onPress={() => setIsExpanded((expanded) => !expanded)}
@@ -420,7 +452,7 @@ function RouteDateSelector({
           <Text style={styles.dateAccordionLabel}>배송 날짜</Text>
           <View style={styles.dateAccordionValueRow}>
             <Text style={styles.dateAccordionValue}>
-              {formatDeliveryDate(selectedRoute.deliveryDate)}
+              {formatDeliveryDate(selectedDeliveryDate)}
             </Text>
             <Text numberOfLines={1} style={styles.dateAccordionMeta}>
               {selectedRoute.routeName}
@@ -440,10 +472,11 @@ function RouteDateSelector({
         >
           {routes.map((routeChoice) => {
             const isSelected = routeChoice.routePlanId === selectedRoutePlanId;
+            const deliveryDate = routeChoice.deliveryDate;
 
             return (
               <Pressable
-                accessibilityLabel={`${formatDeliveryDate(routeChoice.deliveryDate)} 배송 선택`}
+                accessibilityLabel={`${formatDeliveryDate(deliveryDate)} 배송 선택`}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
                 key={routeChoice.routePlanId}
@@ -459,7 +492,7 @@ function RouteDateSelector({
                     styles.dateAccordionOptionDate,
                     isSelected && styles.dateAccordionOptionDateSelected,
                   ]}>
-                    {formatDeliveryDate(routeChoice.deliveryDate)}
+                    {formatDeliveryDate(deliveryDate)}
                   </Text>
                   <Text numberOfLines={1} style={styles.dateAccordionOptionMeta}>
                     {routeChoice.routeName}

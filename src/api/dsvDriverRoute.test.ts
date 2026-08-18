@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import {
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
+  updateDriverDestinationNotes,
 } from './dsvDriverRoute';
 
 const ORIGINAL_BASE_URL = process.env.EXPO_PUBLIC_DSV_API_BASE_URL;
@@ -80,6 +81,16 @@ describe('DSV assigned route API client', () => {
                 coordinates: { latitude: 37.51, longitude: 127.01 },
                 deliveryStopId: 'stop-1',
                 destinationId: null,
+                destinationNotes: {
+                  lunchEntryStatus: 'AVAILABLE',
+                  lunchEntryStatusUpdatedAt: '2026-07-30T23:00:00.000Z',
+                  lunchTimeRange: '12:00~13:00',
+                  lunchTimeRangeUpdatedAt: '2026-07-30T22:00:00.000Z',
+                  memo: '후문으로 입장',
+                  memoUpdatedAt: '2026-07-30T21:00:00.000Z',
+                  requiredArrivalTime: '10:30',
+                  requiredArrivalTimeUpdatedAt: '2026-07-30T20:00:00.000Z',
+                },
                 customerNote: '10분 전 연락',
                 driverMessages: [{
                   body: '후문 경비실에 먼저 연락해 주세요.',
@@ -126,6 +137,24 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.availableRoutes.length, 2);
     assert.equal(route?.orders[0]?.destinationName, '케이팜');
     assert.equal(route?.orders[0]?.destinationId, 'stop-1');
+    assert.deepEqual(route?.destinationNotesById['stop-1'], {
+      lunchAccess: {
+        updatedAt: '2026-07-30T23:00:00.000Z',
+        value: 'AVAILABLE',
+      },
+      lunchTime: {
+        updatedAt: '2026-07-30T22:00:00.000Z',
+        value: '12:00~13:00',
+      },
+      memo: {
+        updatedAt: '2026-07-30T21:00:00.000Z',
+        value: '후문으로 입장',
+      },
+      requiredArrivalTime: {
+        updatedAt: '2026-07-30T20:00:00.000Z',
+        value: '10:30',
+      },
+    });
     assert.equal(route?.orders[0]?.sellerOrderKey, '0525032088');
     assert.equal(route?.orders[0]?.shippedBoxes, 0);
     assert.equal(route?.orders[0]?.conditionCode, 'COLD');
@@ -294,5 +323,62 @@ describe('DSV assigned route API client', () => {
     }));
 
     assert.equal(await loadDriverDeliveryRoute('account-token'), null);
+  });
+
+  it('patches only changed destination note fields and uses server timestamps', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let request: { input: string; init?: RequestInit } | undefined;
+    globalThis.fetch = async (input, init) => {
+      request = { input: input.toString(), init };
+      return new Response(JSON.stringify({
+        data: {
+          destinationId: 'destination-1',
+          notes: {
+            lunchEntryStatus: null,
+            lunchEntryStatusUpdatedAt: '2026-08-18T04:00:00.000Z',
+            lunchTimeRange: '12:00~13:00',
+            lunchTimeRangeUpdatedAt: '2026-08-17T03:00:00.000Z',
+            memo: null,
+            memoUpdatedAt: '2026-08-18T04:00:00.000Z',
+            requiredArrivalTime: '10:30',
+            requiredArrivalTimeUpdatedAt: '2026-08-17T05:00:00.000Z',
+          },
+        },
+        error: null,
+      }));
+    };
+
+    const notes = await updateDriverDestinationNotes(
+      'route-token',
+      'destination-1',
+      {
+        lunchAccess: { updatedAt: null, value: 'AVAILABLE' },
+        lunchTime: { updatedAt: '2026-08-17T03:00:00.000Z', value: '12:00~13:00' },
+        memo: { updatedAt: null, value: '기존 메모' },
+        requiredArrivalTime: { updatedAt: '2026-08-17T05:00:00.000Z', value: '10:30' },
+      },
+      {
+        lunchAccess: 'UNKNOWN',
+        lunchTime: '12:00~13:00',
+        memo: '',
+        requiredArrivalTime: '10:30',
+      },
+    );
+
+    assert.equal(request?.input, 'https://dsv.example.test/driver/destinations/destination-1/notes');
+    assert.equal(request?.init?.method, 'PATCH');
+    assert.equal((request?.init?.headers as Headers).get('Authorization'), 'Bearer route-token');
+    assert.deepEqual(JSON.parse(request?.init?.body as string), {
+      lunchEntryStatus: null,
+      memo: null,
+    });
+    assert.deepEqual(notes.memo, {
+      updatedAt: '2026-08-18T04:00:00.000Z',
+      value: '',
+    });
+    assert.deepEqual(notes.lunchAccess, {
+      updatedAt: '2026-08-18T04:00:00.000Z',
+      value: 'UNKNOWN',
+    });
   });
 });

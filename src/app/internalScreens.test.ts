@@ -139,6 +139,75 @@ describe('authenticated driver screens', () => {
     assert.match(source, /order\.shippedBoxes/u);
   });
 
+  it('opens order and server-backed destination information in one tabbed sheet', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const destinationSheet = readFileSync(
+      join(appDirectory, '../ui/driver/DestinationNotesSheet.tsx'),
+      'utf8',
+    );
+
+    assert.match(deliveryScreen, /DestinationNotesSheet/u);
+    assert.match(deliveryScreen, /onOpenDeliveryInformation/u);
+    assert.match(deliveryScreen, /배송 정보 열기/u);
+    assert.match(deliveryScreen, /destinationNotesById/u);
+    assert.match(workspace, /updateDriverDestinationNotes/u);
+    assert.match(workspace, /destinationNotesById=\{route\.destinationNotesById\}/u);
+    assert.doesNotMatch(deliveryScreen, /EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW/u);
+    assert.doesNotMatch(workspace, /PREVIEW_DELIVERY_DATE/u);
+    assert.doesNotMatch(workspace, /deliveryDateOverride/u);
+    assert.doesNotMatch(deliveryScreen, /PREVIEW_DELIVERY_ORDERS/u);
+    assert.doesNotMatch(deliveryScreen, /배송지 정보 UI Preview/u);
+    assert.match(
+      deliveryScreen,
+      /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
+    );
+    assert.match(deliveryScreen, /orders=\{selectedDestinationGroup\.orders\}/u);
+    assert.match(destinationSheet, /useState<InformationTab>\('orders'\)/u);
+    assert.match(destinationSheet, /accessibilityRole="tablist"/u);
+    assert.match(destinationSheet, /label="주문 정보"/u);
+    assert.match(destinationSheet, /label="배송지 정보"/u);
+    assert.match(destinationSheet, /주문 \{orders\.length\}건/u);
+    assert.match(destinationSheet, /총 \{totalBoxes\}박스/u);
+    assert.match(destinationSheet, /orders\.map\(\(order, index\)/u);
+    assert.match(destinationSheet, /order\.conditionCode/u);
+    assert.match(destinationSheet, /order\.shippedBoxes/u);
+    assert.match(destinationSheet, /일반 메모/u);
+    assert.match(destinationSheet, /점심시간 시작/u);
+    assert.match(destinationSheet, /점심시간 종료/u);
+    assert.match(destinationSheet, /placeholder="12:00"/u);
+    assert.match(destinationSheet, /placeholder="13:00"/u);
+    assert.match(destinationSheet, /placeholder="13:30"/u);
+    assert.match(destinationSheet, /timeRangeSeparator/u);
+    assert.match(destinationSheet, />~<\/Text>/u);
+    assert.match(destinationSheet, /점심시간 입장 가능/u);
+    assert.match(destinationSheet, /점심시간 입장 불가/u);
+    assert.match(destinationSheet, /label="입장 가능"/u);
+    assert.match(destinationSheet, /label="입장 불가"/u);
+    assert.match(destinationSheet, /keyboardType="number-pad"/u);
+    assert.match(destinationSheet, /KeyboardAwareScrollView/u);
+    assert.match(destinationSheet, /bottomOffset=\{80\}/u);
+    assert.doesNotMatch(destinationSheet, /KeyboardAvoidingView/u);
+    assert.doesNotMatch(destinationSheet, /자동 변환/u);
+    assert.doesNotMatch(destinationSheet, /정보성 항목/u);
+    assert.doesNotMatch(
+      destinationSheet,
+      /<FieldHeader\s+label="점심시간 입장"/u,
+    );
+    assert.doesNotMatch(destinationSheet, /label="미확인"/u);
+    assert.doesNotMatch(destinationSheet, /numbers-and-punctuation/u);
+    assert.match(destinationSheet, /필수 도착 시간/u);
+    assert.match(destinationSheet, /마지막 수정/u);
+    assert.doesNotMatch(destinationSheet, /UI Preview/u);
+    assert.doesNotMatch(destinationSheet, /fetch\(/u);
+  });
+
   it('shows driver messages and pending time changes inside the existing order details', () => {
     const deliveryScreen = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),

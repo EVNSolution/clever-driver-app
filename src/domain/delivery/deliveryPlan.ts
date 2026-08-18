@@ -116,6 +116,7 @@ const DESTINATIONS = {
 
 // Local preview rows follow the DSV dispatch-import schema. Sequence editing is
 // per SellerOrderKey; it does not alter assignment or destination ownership.
+export const PREVIEW_DELIVERY_DATE = '2026-08-18';
 export const PREVIEW_DELIVERY_ORDERS: DeliveryOrder[] = [
   {
     id: 'preview-order-2018330223',
