@@ -110,7 +110,7 @@ export function DeliveryScreen({
   }
 
   function cancelEditing() {
-    setDraftOrders(orders);
+    setDraftOrders(displayedOrders);
     onEditingChange(false);
   }
 
@@ -220,13 +220,13 @@ export function DeliveryScreen({
           <Pressable
             accessibilityLabel="배송 순서 편집"
             accessibilityRole="button"
-            accessibilityState={{ disabled: displayedOrders.length === 0 }}
-            disabled={displayedOrders.length === 0}
+            accessibilityState={{ disabled: orders.length === 0 }}
+            disabled={orders.length === 0}
             onPress={startEditing}
             style={({ pressed }) => [
               styles.headerActionButton,
               styles.editButton,
-              displayedOrders.length === 0 && styles.editButtonDisabled,
+              orders.length === 0 && styles.editButtonDisabled,
               pressed && styles.buttonPressed,
             ]}
           >

@@ -156,6 +156,10 @@ describe('authenticated driver screens', () => {
     assert.match(deliveryScreen, /EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW/u);
     assert.match(deliveryScreen, /PREVIEW_DELIVERY_ORDERS/u);
     assert.match(deliveryScreen, /배송지 정보 UI Preview/u);
+    assert.match(
+      deliveryScreen,
+      /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
+    );
     assert.match(destinationSheet, /일반 메모/u);
     assert.match(destinationSheet, /점심시간 입장/u);
     assert.match(destinationSheet, /미확인/u);
