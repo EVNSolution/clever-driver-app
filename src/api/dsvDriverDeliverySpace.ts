@@ -16,9 +16,35 @@ export type DriverDeliveryRecipient = {
 
 export type DriverDeliverySpace = {
   available: DriverDeliveryBundle[];
+  incomingHandoffs: DriverDeliveryIncomingHandoff[];
   mine: DriverDeliveryBundle[];
+  outgoingHandoffs: DriverDeliveryOutgoingHandoff[];
   recipients: DriverDeliveryRecipient[];
   version: string;
+};
+
+export type DriverDeliveryHandoffStatus =
+  | 'APPLIED'
+  | 'CANCELLED'
+  | 'INVALIDATED'
+  | 'PROPOSED'
+  | 'REJECTED';
+
+export type DriverDeliveryIncomingHandoff = {
+  bundle: DriverDeliveryBundle;
+  expiresAt: string;
+  requestId: string;
+  senderDriverName: string;
+  status: DriverDeliveryHandoffStatus;
+};
+
+export type DriverDeliveryOutgoingHandoff = {
+  bundle?: DriverDeliveryBundle;
+  destinationId?: string;
+  expiresAt: string;
+  requestId: string;
+  status: DriverDeliveryHandoffStatus;
+  targetDriverName: string;
 };
 
 type ApiEnvelope<T> = {
@@ -35,7 +61,12 @@ export class DriverDeliverySpaceApiError extends Error {
 
 export async function loadDriverDeliverySpace(accessToken: string): Promise<DriverDeliverySpace> {
   const space = await request<DriverDeliverySpace>('/driver/delivery-space', accessToken);
-  return { ...space, recipients: space.recipients ?? [] };
+  return {
+    ...space,
+    incomingHandoffs: space.incomingHandoffs ?? [],
+    outgoingHandoffs: space.outgoingHandoffs ?? [],
+    recipients: space.recipients ?? [],
+  };
 }
 
 export function releaseDeliveryBundle(
@@ -54,20 +85,41 @@ export function acquireDeliveryBundle(
   return command(accessToken, destinationId, expectedVersion, 'acquire');
 }
 
-export function transferDeliveryBundle(
+export function requestDeliveryBundleHandoff(
   accessToken: string,
   destinationId: string,
   expectedVersion: string,
   targetDriverId: string,
 ): Promise<unknown> {
   return request(
-    `/driver/delivery-space/${encodeURIComponent(destinationId)}/transfer`,
+    `/driver/delivery-space/${encodeURIComponent(destinationId)}/handoff-requests`,
     accessToken,
     {
       body: JSON.stringify({ expectedVersion, targetDriverId }),
       method: 'POST',
     },
   );
+}
+
+export function acceptDeliveryBundleHandoff(
+  accessToken: string,
+  requestId: string,
+): Promise<unknown> {
+  return handoffCommand(accessToken, requestId, 'accept');
+}
+
+export function rejectDeliveryBundleHandoff(
+  accessToken: string,
+  requestId: string,
+): Promise<unknown> {
+  return handoffCommand(accessToken, requestId, 'reject');
+}
+
+export function cancelDeliveryBundleHandoff(
+  accessToken: string,
+  requestId: string,
+): Promise<unknown> {
+  return handoffCommand(accessToken, requestId, 'cancel');
 }
 
 function command(
@@ -80,6 +132,18 @@ function command(
     `/driver/delivery-space/${encodeURIComponent(destinationId)}/${action}`,
     accessToken,
     { body: JSON.stringify({ expectedVersion }), method: 'POST' },
+  );
+}
+
+function handoffCommand(
+  accessToken: string,
+  requestId: string,
+  action: 'accept' | 'cancel' | 'reject',
+): Promise<unknown> {
+  return request(
+    `/driver/delivery-space/handoff-requests/${encodeURIComponent(requestId)}/${action}`,
+    accessToken,
+    { method: 'POST' },
   );
 }
 
