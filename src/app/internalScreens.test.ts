@@ -140,6 +140,10 @@ describe('authenticated driver screens', () => {
   });
 
   it('opens order and preview-only destination information in one tabbed sheet', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
     const deliveryScreen = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
@@ -154,11 +158,14 @@ describe('authenticated driver screens', () => {
     assert.match(deliveryScreen, /배송 정보 열기/u);
     assert.match(deliveryScreen, /destinationNotesById/u);
     assert.match(deliveryScreen, /EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW/u);
+    assert.match(workspace, /PREVIEW_DELIVERY_DATE/u);
+    assert.match(workspace, /deliveryDateOverride=\{previewDeliveryDate\}/u);
     assert.match(deliveryScreen, /PREVIEW_DELIVERY_ORDERS/u);
+    assert.match(deliveryScreen, /setPreviewOrders\(draftOrders\)/u);
     assert.match(deliveryScreen, /배송지 정보 UI Preview/u);
     assert.match(
       deliveryScreen,
-      /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
+      /accessibilityState=\{\{ disabled: displayedOrders\.length === 0 \}\}/u,
     );
     assert.match(deliveryScreen, /orders=\{selectedDestinationGroup\.orders\}/u);
     assert.match(destinationSheet, /useState<InformationTab>\('orders'\)/u);

@@ -29,7 +29,10 @@ import {
   type DriverDeliveryRouteChoice,
 } from '../../api/dsvDriverRoute';
 import { resolveDeliveryActivityForUpdate } from '../../domain/appUpdate/driverAppUpdate';
-import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
+import {
+  PREVIEW_DELIVERY_DATE,
+  type DeliveryOrder,
+} from '../../domain/delivery/deliveryPlan';
 import { resolveAndroidBackAction } from '../../domain/navigation/androidBackNavigation';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
@@ -66,6 +69,11 @@ export function DriverWorkspace({
   const lastRootBackAtRef = useRef<number | null>(null);
   const driverName =
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
+  const previewDeliveryDate =
+    process.env.EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW === 'true'
+      && orders.length === 0
+      ? PREVIEW_DELIVERY_DATE
+      : undefined;
 
   useEffect(() => {
     onDeliveryActivityChange(resolveDeliveryActivityForUpdate({
@@ -301,12 +309,13 @@ export function DriverWorkspace({
             ) : activeTab === 'delivery' ? (
               <>
                 <RouteDateSelector
+                  deliveryDateOverride={previewDeliveryDate}
                   onSelect={selectRoute}
                   routes={route.availableRoutes}
                   selectedRoutePlanId={route.routePlanId}
                 />
                 <DeliveryScreen
-                  deliveryDate={route.deliveryDate}
+                  deliveryDate={previewDeliveryDate ?? route.deliveryDate}
                   isEditing={isSequenceEditing}
                   nextDeliveryStopId={route.nextDeliveryStopId}
                   onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
@@ -381,10 +390,12 @@ export function DriverWorkspace({
 }
 
 function RouteDateSelector({
+  deliveryDateOverride,
   onSelect,
   routes,
   selectedRoutePlanId,
 }: {
+  deliveryDateOverride?: string;
   onSelect(routePlanId: string): void;
   routes: DriverDeliveryRouteChoice[];
   selectedRoutePlanId: string;
@@ -398,6 +409,8 @@ function RouteDateSelector({
   if (selectedRoute === undefined) {
     return null;
   }
+  const selectedDeliveryDate =
+    deliveryDateOverride ?? selectedRoute.deliveryDate;
 
   function selectRoute(routePlanId: string) {
     onSelect(routePlanId);
@@ -407,7 +420,7 @@ function RouteDateSelector({
   return (
     <View style={styles.dateAccordion}>
       <Pressable
-        accessibilityLabel={`배송 날짜 ${formatDeliveryDate(selectedRoute.deliveryDate)} 목록 ${isExpanded ? '접기' : '펼치기'}`}
+        accessibilityLabel={`배송 날짜 ${formatDeliveryDate(selectedDeliveryDate)} 목록 ${isExpanded ? '접기' : '펼치기'}`}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
         onPress={() => setIsExpanded((expanded) => !expanded)}
@@ -420,7 +433,7 @@ function RouteDateSelector({
           <Text style={styles.dateAccordionLabel}>배송 날짜</Text>
           <View style={styles.dateAccordionValueRow}>
             <Text style={styles.dateAccordionValue}>
-              {formatDeliveryDate(selectedRoute.deliveryDate)}
+              {formatDeliveryDate(selectedDeliveryDate)}
             </Text>
             <Text numberOfLines={1} style={styles.dateAccordionMeta}>
               {selectedRoute.routeName}
@@ -440,10 +453,13 @@ function RouteDateSelector({
         >
           {routes.map((routeChoice) => {
             const isSelected = routeChoice.routePlanId === selectedRoutePlanId;
+            const deliveryDate = isSelected && deliveryDateOverride !== undefined
+              ? deliveryDateOverride
+              : routeChoice.deliveryDate;
 
             return (
               <Pressable
-                accessibilityLabel={`${formatDeliveryDate(routeChoice.deliveryDate)} 배송 선택`}
+                accessibilityLabel={`${formatDeliveryDate(deliveryDate)} 배송 선택`}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
                 key={routeChoice.routePlanId}
@@ -459,7 +475,7 @@ function RouteDateSelector({
                     styles.dateAccordionOptionDate,
                     isSelected && styles.dateAccordionOptionDateSelected,
                   ]}>
-                    {formatDeliveryDate(routeChoice.deliveryDate)}
+                    {formatDeliveryDate(deliveryDate)}
                   </Text>
                   <Text numberOfLines={1} style={styles.dateAccordionOptionMeta}>
                     {routeChoice.routeName}

@@ -88,8 +88,9 @@ export function DeliveryScreen({
   const isDestinationNotesUiPreview =
     process.env.EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW === 'true'
     && orders.length === 0;
+  const [previewOrders, setPreviewOrders] = useState(PREVIEW_DELIVERY_ORDERS);
   const displayedOrders = isDestinationNotesUiPreview
-    ? PREVIEW_DELIVERY_ORDERS
+    ? previewOrders
     : orders;
   const [destinationNotesById, setDestinationNotesById] = useState<
     Record<string, DestinationNotes>
@@ -115,7 +116,11 @@ export function DeliveryScreen({
   }
 
   function finishEditing() {
-    onOrdersChange(draftOrders);
+    if (isDestinationNotesUiPreview) {
+      setPreviewOrders(draftOrders);
+    } else {
+      onOrdersChange(draftOrders);
+    }
     onEditingChange(false);
   }
 
@@ -190,7 +195,9 @@ export function DeliveryScreen({
       >
       <View style={styles.deliveryHeader}>
         <View style={styles.deliveryHeadingCopy}>
-          <Text style={styles.title}>{formatDeliveryDate(deliveryDate)} 배송</Text>
+          <Text style={styles.title}>
+            {formatDeliveryDate(deliveryDate)} 배송
+          </Text>
           <View style={styles.summaryItems}>
             <Text style={styles.summaryText}>주문 {displayedOrders.length}건</Text>
             <View style={styles.summaryDivider} />
@@ -220,13 +227,13 @@ export function DeliveryScreen({
           <Pressable
             accessibilityLabel="배송 순서 편집"
             accessibilityRole="button"
-            accessibilityState={{ disabled: orders.length === 0 }}
-            disabled={orders.length === 0}
+            accessibilityState={{ disabled: displayedOrders.length === 0 }}
+            disabled={displayedOrders.length === 0}
             onPress={startEditing}
             style={({ pressed }) => [
               styles.headerActionButton,
               styles.editButton,
-              orders.length === 0 && styles.editButtonDisabled,
+              displayedOrders.length === 0 && styles.editButtonDisabled,
               pressed && styles.buttonPressed,
             ]}
           >
