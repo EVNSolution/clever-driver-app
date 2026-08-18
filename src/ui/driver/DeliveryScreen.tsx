@@ -30,6 +30,10 @@ import {
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 import {
+  EMPTY_DESTINATION_NOTES,
+  type DestinationNotes,
+} from '../../domain/delivery/destinationNotesPreview';
+import {
   createDeliveryOrderPositions,
   moveDeliveryOrderPosition,
   resolveDeliveryOrderDragTarget,
@@ -37,6 +41,7 @@ import {
 } from '../../domain/delivery/sortableOrder';
 import { useAppDialog } from './AppDialog';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
+import { DestinationNotesSheet } from './DestinationNotesSheet';
 
 const EDITOR_ORDER_ROW_HEIGHT = 72;
 const EDITOR_ORDER_ROW_GAP = 6;
@@ -79,8 +84,13 @@ export function DeliveryScreen({
   const deliveryScrollRef = useRef<ScrollView>(null);
   const orderListTopRef = useRef(0);
   const revealedDeliveryStopIdRef = useRef<string | null>(null);
+  const [destinationNotesById, setDestinationNotesById] = useState<
+    Record<string, DestinationNotes>
+  >({});
   const [draftOrders, setDraftOrders] = useState(orders);
   const [isOrderActionPending, setIsOrderActionPending] = useState(false);
+  const [selectedDestinationGroup, setSelectedDestinationGroup] =
+    useState<DeliveryDestinationGroup | null>(null);
   const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
@@ -248,6 +258,7 @@ export function DeliveryScreen({
                 () => onAcknowledgeTimeConstraint(deliveryStopId),
               )}
               onCurrentLayout={revealCurrentDestination}
+              onOpenDestinationNotes={() => setSelectedDestinationGroup(group)}
               onReadDriverMessage={(messageId) => runOrderAction(
                 () => onReadDriverMessage(messageId),
               )}
@@ -258,6 +269,24 @@ export function DeliveryScreen({
         })}
       </View>
       </ScrollView>
+      {selectedDestinationGroup === null ? null : (
+        <DestinationNotesSheet
+          address={selectedDestinationGroup.address}
+          destinationName={selectedDestinationGroup.destinationName}
+          notes={
+            destinationNotesById[selectedDestinationGroup.destinationId]
+            ?? EMPTY_DESTINATION_NOTES
+          }
+          onClose={() => setSelectedDestinationGroup(null)}
+          onSave={(notes) => {
+            setDestinationNotesById((currentNotes) => ({
+              ...currentNotes,
+              [selectedDestinationGroup.destinationId]: notes,
+            }));
+            setSelectedDestinationGroup(null);
+          }}
+        />
+      )}
       {dialog}
     </>
   );
@@ -282,6 +311,7 @@ function DestinationGroupRow({
   isLast,
   onAcknowledgeTimeConstraint,
   onCurrentLayout,
+  onOpenDestinationNotes,
   onReadDriverMessage,
   progressState,
   timezone,
@@ -292,6 +322,7 @@ function DestinationGroupRow({
   isLast: boolean;
   onAcknowledgeTimeConstraint(deliveryStopId: string): void;
   onCurrentLayout(event: LayoutChangeEvent): void;
+  onOpenDestinationNotes(): void;
   onReadDriverMessage(messageId: string): void;
   progressState: DeliveryRouteMarkerState;
   timezone: string;
@@ -310,16 +341,7 @@ function DestinationGroupRow({
         isCurrent && styles.destinationGroupCurrent,
       ]}
     >
-      <Pressable
-        accessibilityLabel={`${group.destinationName} 주문 ${group.orderCount}건 ${isExpanded ? '접기' : '펼치기'}`}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: isExpanded }}
-        onPress={() => setIsExpanded((expanded) => !expanded)}
-        style={({ pressed }) => [
-          styles.orderRow,
-          pressed && styles.groupRowPressed,
-        ]}
-      >
+      <View style={styles.orderRow}>
         <View
           style={[
             styles.sequenceBadge,
@@ -336,7 +358,15 @@ function DestinationGroupRow({
             {index + 1}
           </Text>
         </View>
-        <View style={styles.orderCopy}>
+        <Pressable
+          accessibilityLabel={`${group.destinationName} 배송지 정보 열기`}
+          accessibilityRole="button"
+          onPress={onOpenDestinationNotes}
+          style={({ pressed }) => [
+            styles.orderCopy,
+            pressed && styles.groupRowPressed,
+          ]}
+        >
           <View style={styles.destinationHeading}>
             <Text
               numberOfLines={1}
@@ -367,8 +397,17 @@ function DestinationGroupRow({
           >
             주문 {group.orderCount}건
           </Text>
-        </View>
-        <View style={styles.orderRight}>
+        </Pressable>
+        <Pressable
+          accessibilityLabel={`${group.destinationName} 주문 ${group.orderCount}건 ${isExpanded ? '접기' : '펼치기'}`}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: isExpanded }}
+          onPress={() => setIsExpanded((expanded) => !expanded)}
+          style={({ pressed }) => [
+            styles.orderRight,
+            pressed && styles.groupRowPressed,
+          ]}
+        >
           <Text
             numberOfLines={1}
             style={[
@@ -391,8 +430,8 @@ function DestinationGroupRow({
               {isExpanded ? '▴' : '▾'}
             </Text>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
+      </View>
 
       {isExpanded ? (
         <View
@@ -931,6 +970,8 @@ const styles = StyleSheet.create({
   orderCopy: {
     flex: 1,
     gap: 2,
+    justifyContent: 'center',
+    minHeight: 48,
   },
   destinationName: {
     color: '#111827',
@@ -1003,7 +1044,10 @@ const styles = StyleSheet.create({
   orderRight: {
     alignItems: 'flex-end',
     gap: 6,
+    justifyContent: 'center',
     maxWidth: '34%',
+    minHeight: 48,
+    minWidth: 70,
   },
   groupOrderCount: {
     color: '#344054',

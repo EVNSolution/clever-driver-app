@@ -3,12 +3,13 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-08-03
+- Last refreshed: 2026-08-18
 - Primary product surfaces: DSV 배송원 인증, 배송, 지도
 - Evidence reviewed: `docs/project-brief.md`, `docs/technology-stack.md`,
   `docs/code-organization.md`, `src/ui/auth/AuthEntryScreen.tsx`,
   `src/ui/driver/DriverWorkspace.tsx`, `src/ui/driver/DeliveryProofModal.tsx`,
   `src/ui/driver/DriverSettingsModal.tsx`,
+  `src/ui/driver/DeliveryScreen.tsx`,
   `../clever-routes-app/src/app/NativeRouteMapPreview.tsx`,
   `../clever-routes-app/src/app/routeMapGeoJson.ts`
 
@@ -32,6 +33,8 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
 - 경로 선은 서버가 OSRM/VWorld로 생성한 geometry가 있을 때만 그대로 표시한다.
 - 서버 계약이 확정되기 전에는 미리보기 데이터와 화면 메모리 상태만 사용한다.
 - 플랫폼에 따라 앱 경고·확인 화면의 모양과 행동이 달라지지 않게 한다.
+- 배송원이 배송지명·주소 영역에서 고정 배송지 정보를 확인하고, 일반 메모,
+  점심시간 입장 가능 여부와 필수 도착 시간을 기록한다.
 
 Non-goals: Android 시스템 권한 창이나 외부 지도 앱 선택기처럼 OS가 소유하는
 화면을 앱 디자인으로 위장하지 않는다.
@@ -54,6 +57,10 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 2. `지도`: 동일한 주문 순서와 서버 제공 경로 geometry를 MapLibre 지도에서
    확인
 
+배송지 정보는 새 탭을 만들지 않고 `배송` 카드의 배송지명·주소 영역에서 여는
+하단 시트로 제공한다. 주문 상세 펼치기와 배송지 정보 열기는 서로 다른 터치
+영역으로 구분한다.
+
 하단 탭은 위 두 화면만 전환한다. 별도 내비게이션 라이브러리는 도입하지 않고
 앱 조립 계층의 단순 상태로 전환한다.
 
@@ -66,6 +73,8 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 - 배정 변경과 방문 순서 변경을 같은 개념으로 취급하지 않는다.
 - 미리보기 데이터와 서버 확정 데이터를 혼동하지 않도록 명확히 표시한다.
 - 앱은 배송지 좌표를 임의로 직선 연결하거나 경로를 계산·보간하지 않는다.
+- 필수 도착 시간은 첫 버전에서 배송원이 참고하는 정보이며 서버 ETA, 시간창 또는
+  경로 최적화를 변경하지 않는다.
 
 ## Visual language
 
@@ -84,6 +93,9 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 - 앱 다이얼로그: 화면 중앙 흰색 카드, 24px 모서리, 어두운 반투명 배경,
   48px 상태 아이콘, 48px 액션 버튼을 사용한다. 기본 액션은 파란색, 위험 액션은
   빨간색, 취소는 회색으로 구분한다.
+- 배송지 정보 하단 시트: 기존 배송 증빙 시트와 같은 반투명 배경, 상단 핸들,
+  둥근 상단 모서리를 사용한다. 입력 항목별 마지막 수정일은 라벨 바로 아래에
+  작은 보조문으로 표시한다.
 
 ## Components
 
@@ -103,6 +115,8 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
   단일 확인 또는 취소/실행 버튼 조합을 제공한다.
 - 바텀시트: 환경설정과 배송 증빙처럼 내용 탐색 또는 입력이 필요한 경우에만
   사용하고, 짧은 확인·결과는 앱 다이얼로그를 사용한다.
+- 배송지 정보 하단 시트: 일반 메모, 점심시간 입장 `미확인/가능/불가능`,
+  `HH:mm` 필수 도착 시간과 각 항목의 마지막 수정일을 제공한다.
 
 ## Accessibility
 
@@ -113,6 +127,8 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 - 순서 변경 후 화면 읽기 순서가 실제 배송 순서와 일치하게 유지된다.
 - 앱 다이얼로그는 `alert` 역할과 modal 접근성 범위를 제공하고 모든 버튼은
   최소 44pt 터치 영역을 유지한다.
+- 배송지명·주소 터치 영역은 `button` 역할과 명시적인 "배송지 정보 열기" 라벨을
+  갖고, 주문 상세 펼치기 버튼과 중첩하지 않는다.
 
 ## Responsive behavior
 
@@ -142,6 +158,9 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
   표시하고 성공·오류 결과는 한 개의 `확인` 액션으로 닫는다.
 - 시스템 권한 요청: OS 권한 창을 그대로 사용하고, 거부 결과와 설정 이동 안내는
   앱 다이얼로그로 표시한다.
+- 배송지 정보 열기: 배송 카드의 배송지명·주소 영역을 누르면 하단 시트를 연다.
+- Preview 저장: 변경된 항목만 현재 시각으로 수정일을 갱신하고 화면 메모리에
+  유지한다. 앱을 재시작하면 초기화됨을 시트 안에서 알린다.
 
 ## Content voice
 
@@ -176,6 +195,8 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 - 주문 순서 변경은 배정이나 배송지 연결을 변경하지 않고 sequence만 바꾼다.
 - 시스템의 동작 줄이기 설정이 켜져 있으면 정착·레이아웃 애니메이션을 생략하고
   순서만 즉시 반영한다.
+- 서버 계약 전 Preview는 배송지 정보를 화면 메모리에만 저장한다. Preview UI는
+  예상 API를 호출하거나 기존 주문 `customerNote`를 수정하지 않는다.
 
 ## Open questions
 
@@ -184,3 +205,5 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 - [ ] 배송원 계정에 배정된 경로 geometry를 제공할 driver-scoped DSV API 계약
 - [ ] 서버 geometry의 fresh/stale/unavailable 상태와 순서 확정 revision 계약
 - [ ] 배송 시작 이후 순서 재확정 허용 정책
+- [ ] 배송원 route-access 범위에서 고정 배송지 정보를 읽고 수정하는 서버 계약
+- [ ] 배송지 정보의 revision 충돌과 항목별 `updatedAt` 저장 계약

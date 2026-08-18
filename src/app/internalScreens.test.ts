@@ -139,6 +139,31 @@ describe('authenticated driver screens', () => {
     assert.match(source, /order\.shippedBoxes/u);
   });
 
+  it('opens a preview-only destination information sheet from the destination copy', () => {
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const destinationSheet = readFileSync(
+      join(appDirectory, '../ui/driver/DestinationNotesSheet.tsx'),
+      'utf8',
+    );
+
+    assert.match(deliveryScreen, /DestinationNotesSheet/u);
+    assert.match(deliveryScreen, /onOpenDestinationNotes/u);
+    assert.match(deliveryScreen, /배송지 정보 열기/u);
+    assert.match(deliveryScreen, /destinationNotesById/u);
+    assert.match(destinationSheet, /일반 메모/u);
+    assert.match(destinationSheet, /점심시간 입장/u);
+    assert.match(destinationSheet, /미확인/u);
+    assert.match(destinationSheet, /가능/u);
+    assert.match(destinationSheet, /불가능/u);
+    assert.match(destinationSheet, /필수 도착 시간/u);
+    assert.match(destinationSheet, /마지막 수정/u);
+    assert.match(destinationSheet, /앱을 닫으면 초기화됩니다/u);
+    assert.doesNotMatch(destinationSheet, /fetch\(/u);
+  });
+
   it('shows driver messages and pending time changes inside the existing order details', () => {
     const deliveryScreen = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
