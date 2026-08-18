@@ -139,7 +139,7 @@ describe('authenticated driver screens', () => {
     assert.match(source, /order\.shippedBoxes/u);
   });
 
-  it('opens a preview-only destination information sheet from the destination copy', () => {
+  it('opens order and preview-only destination information in one tabbed sheet', () => {
     const deliveryScreen = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
@@ -150,8 +150,8 @@ describe('authenticated driver screens', () => {
     );
 
     assert.match(deliveryScreen, /DestinationNotesSheet/u);
-    assert.match(deliveryScreen, /onOpenDestinationNotes/u);
-    assert.match(deliveryScreen, /배송지 정보 열기/u);
+    assert.match(deliveryScreen, /onOpenDeliveryInformation/u);
+    assert.match(deliveryScreen, /배송 정보 열기/u);
     assert.match(deliveryScreen, /destinationNotesById/u);
     assert.match(deliveryScreen, /EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW/u);
     assert.match(deliveryScreen, /PREVIEW_DELIVERY_ORDERS/u);
@@ -160,6 +160,16 @@ describe('authenticated driver screens', () => {
       deliveryScreen,
       /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
     );
+    assert.match(deliveryScreen, /orders=\{selectedDestinationGroup\.orders\}/u);
+    assert.match(destinationSheet, /useState<InformationTab>\('orders'\)/u);
+    assert.match(destinationSheet, /accessibilityRole="tablist"/u);
+    assert.match(destinationSheet, /label="주문 정보"/u);
+    assert.match(destinationSheet, /label="배송지 정보"/u);
+    assert.match(destinationSheet, /주문 \{orders\.length\}건/u);
+    assert.match(destinationSheet, /총 \{totalBoxes\}박스/u);
+    assert.match(destinationSheet, /orders\.map\(\(order, index\)/u);
+    assert.match(destinationSheet, /order\.conditionCode/u);
+    assert.match(destinationSheet, /order\.shippedBoxes/u);
     assert.match(destinationSheet, /일반 메모/u);
     assert.match(destinationSheet, /점심시간 시작/u);
     assert.match(destinationSheet, /점심시간 종료/u);

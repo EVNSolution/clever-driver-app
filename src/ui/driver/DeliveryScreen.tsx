@@ -268,7 +268,9 @@ export function DeliveryScreen({
                 () => onAcknowledgeTimeConstraint(deliveryStopId),
               )}
               onCurrentLayout={revealCurrentDestination}
-              onOpenDestinationNotes={() => setSelectedDestinationGroup(group)}
+              onOpenDeliveryInformation={() => {
+                setSelectedDestinationGroup(group);
+              }}
               onReadDriverMessage={(messageId) => runOrderAction(
                 () => onReadDriverMessage(messageId),
               )}
@@ -283,6 +285,7 @@ export function DeliveryScreen({
         <DestinationNotesSheet
           address={selectedDestinationGroup.address}
           destinationName={selectedDestinationGroup.destinationName}
+          orders={selectedDestinationGroup.orders}
           notes={
             destinationNotesById[selectedDestinationGroup.destinationId]
             ?? EMPTY_DESTINATION_NOTES
@@ -321,7 +324,7 @@ function DestinationGroupRow({
   isLast,
   onAcknowledgeTimeConstraint,
   onCurrentLayout,
-  onOpenDestinationNotes,
+  onOpenDeliveryInformation,
   onReadDriverMessage,
   progressState,
   timezone,
@@ -332,7 +335,7 @@ function DestinationGroupRow({
   isLast: boolean;
   onAcknowledgeTimeConstraint(deliveryStopId: string): void;
   onCurrentLayout(event: LayoutChangeEvent): void;
-  onOpenDestinationNotes(): void;
+  onOpenDeliveryInformation(): void;
   onReadDriverMessage(messageId: string): void;
   progressState: DeliveryRouteMarkerState;
   timezone: string;
@@ -369,9 +372,9 @@ function DestinationGroupRow({
           </Text>
         </View>
         <Pressable
-          accessibilityLabel={`${group.destinationName} 배송지 정보 열기`}
+          accessibilityLabel={`${group.destinationName} 배송 정보 열기`}
           accessibilityRole="button"
-          onPress={onOpenDestinationNotes}
+          onPress={onOpenDeliveryInformation}
           style={({ pressed }) => [
             styles.orderCopy,
             pressed && styles.groupRowPressed,

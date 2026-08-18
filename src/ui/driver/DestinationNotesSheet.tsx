@@ -17,6 +17,9 @@ import {
   savePreviewDestinationNotes,
   type DestinationNotes,
 } from '../../domain/delivery/destinationNotesPreview';
+import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
+
+type InformationTab = 'orders' | 'destination';
 
 export function DestinationNotesSheet({
   address,
@@ -24,14 +27,17 @@ export function DestinationNotesSheet({
   notes,
   onClose,
   onSave,
+  orders,
 }: {
   address: string;
   destinationName: string;
   notes: DestinationNotes;
   onClose(): void;
   onSave(notes: DestinationNotes): void;
+  orders: DeliveryOrder[];
 }) {
   const insets = useSafeAreaInsets();
+  const [informationTab, setInformationTab] = useState<InformationTab>('orders');
   const [initialLunchStartsAt = '', initialLunchEndsAt = ''] =
     notes.lunchTime.value.split('~');
   const [lunchAccess, setLunchAccess] = useState(notes.lunchAccess.value);
@@ -49,6 +55,10 @@ export function DestinationNotesSheet({
   const hasValidLunchTime = isValidLunchTime(normalizedLunchTime);
   const hasValidArrivalTime = isValidRequiredArrivalTime(normalizedArrivalTime);
   const canSave = hasValidLunchTime && hasValidArrivalTime;
+  const totalBoxes = orders.reduce(
+    (sum, order) => sum + order.shippedBoxes,
+    0,
+  );
 
   function save() {
     if (!canSave) return;
@@ -66,7 +76,7 @@ export function DestinationNotesSheet({
     <Modal animationType="slide" onRequestClose={onClose} transparent visible>
       <View style={styles.backdrop}>
         <Pressable
-          accessibilityLabel="배송지 정보 닫기"
+          accessibilityLabel="배송 정보 닫기"
           onPress={onClose}
           style={StyleSheet.absoluteFill}
         />
@@ -80,7 +90,7 @@ export function DestinationNotesSheet({
           <View style={styles.handle} />
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <Text style={styles.title}>배송지 정보</Text>
+              <Text style={styles.title}>배송 정보</Text>
               <Text numberOfLines={1} style={styles.destinationName}>
                 {destinationName}
               </Text>
@@ -89,7 +99,7 @@ export function DestinationNotesSheet({
               </Text>
             </View>
             <Pressable
-              accessibilityLabel="배송지 정보 닫기"
+              accessibilityLabel="배송 정보 닫기"
               accessibilityRole="button"
               onPress={onClose}
               style={({ pressed }) => [
@@ -101,10 +111,17 @@ export function DestinationNotesSheet({
             </Pressable>
           </View>
 
-          <View style={styles.previewNotice}>
-            <Text style={styles.previewNoticeText}>
-              UI Preview · 저장 내용은 앱을 닫으면 초기화됩니다
-            </Text>
+          <View accessibilityRole="tablist" style={styles.informationTabs}>
+            <InformationTabButton
+              isSelected={informationTab === 'orders'}
+              label="주문 정보"
+              onPress={() => setInformationTab('orders')}
+            />
+            <InformationTabButton
+              isSelected={informationTab === 'destination'}
+              label="배송지 정보"
+              onPress={() => setInformationTab('destination')}
+            />
           </View>
 
           <KeyboardAwareScrollView
@@ -113,123 +130,202 @@ export function DestinationNotesSheet({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <FieldHeader label="일반 메모" updatedAt={notes.memo.updatedAt} />
-            <TextInput
-              accessibilityLabel="배송지 일반 메모"
-              maxLength={500}
-              multiline
-              onChangeText={setMemo}
-              placeholder="출입구, 담당자 연락 등 배송 시 참고할 내용을 입력하세요"
-              placeholderTextColor="#98a2b3"
-              style={[styles.textInput, styles.memoInput]}
-              textAlignVertical="top"
-              value={memo}
-            />
-
-            <View style={styles.lunchGroup}>
-              <FieldHeader
-                label="점심시간"
-                updatedAt={notes.lunchTime.updatedAt}
-              />
-              <View style={styles.lunchControls}>
-                <View style={styles.timeRangeInputs}>
-                  <TextInput
-                    accessibilityLabel="점심시간 시작"
-                    keyboardType="number-pad"
-                    maxLength={5}
-                    onChangeText={(value) => {
-                      setLunchStartsAt(formatTimeInput(value));
-                    }}
-                    placeholder="12:00"
-                    placeholderTextColor="#98a2b3"
-                    style={[
-                      styles.textInput,
-                      styles.timeRangeInput,
-                      !hasValidLunchTime && styles.textInputInvalid,
-                    ]}
-                    value={lunchStartsAt}
-                  />
-                  <Text style={styles.timeRangeSeparator}>~</Text>
-                  <TextInput
-                    accessibilityLabel="점심시간 종료"
-                    keyboardType="number-pad"
-                    maxLength={5}
-                    onChangeText={(value) => {
-                      setLunchEndsAt(formatTimeInput(value));
-                    }}
-                    placeholder="13:00"
-                    placeholderTextColor="#98a2b3"
-                    style={[
-                      styles.textInput,
-                      styles.timeRangeInput,
-                      !hasValidLunchTime && styles.textInputInvalid,
-                    ]}
-                    value={lunchEndsAt}
-                  />
+            {informationTab === 'orders' ? (
+              <>
+                <View style={styles.orderSummary}>
+                  <Text style={styles.orderSummaryText}>주문 {orders.length}건</Text>
+                  <View style={styles.orderSummaryDivider} />
+                  <Text style={styles.orderSummaryText}>총 {totalBoxes}박스</Text>
                 </View>
-                <View style={[styles.segmentedControl, styles.accessControl]}>
-                  <LunchAccessButton
-                    accessibilityLabel="점심시간 입장 가능"
-                    isSelected={lunchAccess === 'AVAILABLE'}
-                    label="입장 가능"
-                    onPress={() => setLunchAccess('AVAILABLE')}
-                  />
-                  <LunchAccessButton
-                    accessibilityLabel="점심시간 입장 불가"
-                    isSelected={lunchAccess === 'UNAVAILABLE'}
-                    label="입장 불가"
-                    onPress={() => setLunchAccess('UNAVAILABLE')}
-                  />
+                <View style={styles.orderInformationCard}>
+                  {orders.map((order, index) => (
+                    <View
+                      key={order.id}
+                      style={[
+                        styles.orderInformationRow,
+                        index < orders.length - 1
+                          && styles.orderInformationDivider,
+                      ]}
+                    >
+                      <Text style={styles.orderInformationLabel}>
+                        주문 {index + 1}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.orderCondition,
+                          order.conditionCode === 'COLD'
+                            && styles.orderConditionCold,
+                        ]}
+                      >
+                        {order.conditionCode}
+                      </Text>
+                      <Text style={styles.orderBoxes}>
+                        {order.shippedBoxes}박스
+                      </Text>
+                    </View>
+                  ))}
                 </View>
-              </View>
-              {!hasValidLunchTime ? (
-                <Text style={[styles.fieldHint, styles.fieldError]}>
-                  시작·종료 시간을 각각 숫자 4자리로 입력해 주세요.
-                </Text>
-              ) : null}
-            </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.previewNotice}>
+                  <Text style={styles.previewNoticeText}>
+                    UI Preview · 저장 내용은 앱을 닫으면 초기화됩니다
+                  </Text>
+                </View>
+                <FieldHeader label="일반 메모" updatedAt={notes.memo.updatedAt} />
+                <TextInput
+                  accessibilityLabel="배송지 일반 메모"
+                  maxLength={500}
+                  multiline
+                  onChangeText={setMemo}
+                  placeholder="출입구, 담당자 연락 등 배송 시 참고할 내용을 입력하세요"
+                  placeholderTextColor="#98a2b3"
+                  style={[styles.textInput, styles.memoInput]}
+                  textAlignVertical="top"
+                  value={memo}
+                />
 
-            <FieldHeader
-              label="필수 도착 시간"
-              updatedAt={notes.requiredArrivalTime.updatedAt}
-            />
-            <TextInput
-              accessibilityLabel="필수 도착 시간"
-              keyboardType="number-pad"
-              maxLength={5}
-              onChangeText={(value) => setRequiredArrivalTime(formatTimeInput(value))}
-              placeholder="13:30"
-              placeholderTextColor="#98a2b3"
-              style={[
-                styles.textInput,
-                styles.arrivalTimeInput,
-                !hasValidArrivalTime && styles.textInputInvalid,
-              ]}
-              value={requiredArrivalTime}
-            />
-            {!hasValidArrivalTime ? (
-              <Text style={[styles.fieldHint, styles.fieldError]}>
-                0000부터 2359 사이의 숫자 4자리로 입력해 주세요.
-              </Text>
-            ) : null}
+                <View style={styles.lunchGroup}>
+                  <FieldHeader
+                    label="점심시간"
+                    updatedAt={notes.lunchTime.updatedAt}
+                  />
+                  <View style={styles.lunchControls}>
+                    <View style={styles.timeRangeInputs}>
+                      <TextInput
+                        accessibilityLabel="점심시간 시작"
+                        keyboardType="number-pad"
+                        maxLength={5}
+                        onChangeText={(value) => {
+                          setLunchStartsAt(formatTimeInput(value));
+                        }}
+                        placeholder="12:00"
+                        placeholderTextColor="#98a2b3"
+                        style={[
+                          styles.textInput,
+                          styles.timeRangeInput,
+                          !hasValidLunchTime && styles.textInputInvalid,
+                        ]}
+                        value={lunchStartsAt}
+                      />
+                      <Text style={styles.timeRangeSeparator}>~</Text>
+                      <TextInput
+                        accessibilityLabel="점심시간 종료"
+                        keyboardType="number-pad"
+                        maxLength={5}
+                        onChangeText={(value) => {
+                          setLunchEndsAt(formatTimeInput(value));
+                        }}
+                        placeholder="13:00"
+                        placeholderTextColor="#98a2b3"
+                        style={[
+                          styles.textInput,
+                          styles.timeRangeInput,
+                          !hasValidLunchTime && styles.textInputInvalid,
+                        ]}
+                        value={lunchEndsAt}
+                      />
+                    </View>
+                    <View style={[styles.segmentedControl, styles.accessControl]}>
+                      <LunchAccessButton
+                        accessibilityLabel="점심시간 입장 가능"
+                        isSelected={lunchAccess === 'AVAILABLE'}
+                        label="입장 가능"
+                        onPress={() => setLunchAccess('AVAILABLE')}
+                      />
+                      <LunchAccessButton
+                        accessibilityLabel="점심시간 입장 불가"
+                        isSelected={lunchAccess === 'UNAVAILABLE'}
+                        label="입장 불가"
+                        onPress={() => setLunchAccess('UNAVAILABLE')}
+                      />
+                    </View>
+                  </View>
+                  {!hasValidLunchTime ? (
+                    <Text style={[styles.fieldHint, styles.fieldError]}>
+                      시작·종료 시간을 각각 숫자 4자리로 입력해 주세요.
+                    </Text>
+                  ) : null}
+                </View>
+
+                <FieldHeader
+                  label="필수 도착 시간"
+                  updatedAt={notes.requiredArrivalTime.updatedAt}
+                />
+                <TextInput
+                  accessibilityLabel="필수 도착 시간"
+                  keyboardType="number-pad"
+                  maxLength={5}
+                  onChangeText={(value) => {
+                    setRequiredArrivalTime(formatTimeInput(value));
+                  }}
+                  placeholder="13:30"
+                  placeholderTextColor="#98a2b3"
+                  style={[
+                    styles.textInput,
+                    styles.arrivalTimeInput,
+                    !hasValidArrivalTime && styles.textInputInvalid,
+                  ]}
+                  value={requiredArrivalTime}
+                />
+                {!hasValidArrivalTime ? (
+                  <Text style={[styles.fieldHint, styles.fieldError]}>
+                    0000부터 2359 사이의 숫자 4자리로 입력해 주세요.
+                  </Text>
+                ) : null}
+              </>
+            )}
           </KeyboardAwareScrollView>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canSave }}
-            disabled={!canSave}
-            onPress={save}
-            style={({ pressed }) => [
-              styles.saveButton,
-              !canSave && styles.saveButtonDisabled,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.saveButtonText}>배송지 정보 저장</Text>
-          </Pressable>
+          {informationTab === 'destination' ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canSave }}
+              disabled={!canSave}
+              onPress={save}
+              style={({ pressed }) => [
+                styles.saveButton,
+                !canSave && styles.saveButtonDisabled,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.saveButtonText}>배송지 정보 저장</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </Modal>
+  );
+}
+
+function InformationTabButton({
+  isSelected,
+  label,
+  onPress,
+}: {
+  isSelected: boolean;
+  label: string;
+  onPress(): void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isSelected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.informationTab,
+        isSelected && styles.informationTabSelected,
+        pressed && styles.buttonPressed,
+      ]}
+    >
+      <Text style={[
+        styles.informationTabText,
+        isSelected && styles.informationTabTextSelected,
+      ]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -359,7 +455,6 @@ const styles = StyleSheet.create({
   previewNotice: {
     backgroundColor: '#eef4ff',
     borderRadius: 10,
-    marginTop: 14,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
@@ -368,10 +463,96 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  informationTabs: {
+    backgroundColor: '#f2f4f7',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 14,
+    padding: 4,
+  },
+  informationTab: {
+    alignItems: 'center',
+    borderRadius: 9,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  informationTabSelected: {
+    backgroundColor: '#ffffff',
+    borderColor: '#b2ccff',
+    borderWidth: 1,
+  },
+  informationTabText: {
+    color: '#667085',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  informationTabTextSelected: {
+    color: '#0b57d0',
+  },
   form: {
     gap: 10,
     paddingBottom: 18,
     paddingTop: 18,
+  },
+  orderSummary: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  orderSummaryText: {
+    color: '#344054',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  orderSummaryDivider: {
+    backgroundColor: '#d0d5dd',
+    height: 12,
+    width: 1,
+  },
+  orderInformationCard: {
+    borderColor: '#e4e7ec',
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  orderInformationRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 52,
+    paddingHorizontal: 14,
+  },
+  orderInformationDivider: {
+    borderBottomColor: '#eaecf0',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  orderInformationLabel: {
+    color: '#344054',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  orderCondition: {
+    backgroundColor: '#f2f4f7',
+    borderRadius: 6,
+    color: '#475467',
+    fontSize: 10,
+    fontWeight: '900',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  orderConditionCold: {
+    backgroundColor: '#e8f1ff',
+    color: '#0b57d0',
+  },
+  orderBoxes: {
+    color: '#027a48',
+    fontSize: 12,
+    fontWeight: '800',
+    minWidth: 52,
+    textAlign: 'right',
   },
   fieldHeader: {
     gap: 2,
