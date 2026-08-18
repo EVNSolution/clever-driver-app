@@ -34,7 +34,8 @@ export class DriverDeliverySpaceApiError extends Error {
 }
 
 export async function loadDriverDeliverySpace(accessToken: string): Promise<DriverDeliverySpace> {
-  return request<DriverDeliverySpace>('/driver/delivery-space', accessToken);
+  const space = await request<DriverDeliverySpace>('/driver/delivery-space', accessToken);
+  return { ...space, recipients: space.recipients ?? [] };
 }
 
 export function releaseDeliveryBundle(

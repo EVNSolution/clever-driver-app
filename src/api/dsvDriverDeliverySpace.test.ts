@@ -78,4 +78,16 @@ describe('DSV driver delivery Space API client', () => {
         error.message.includes('서버 연결'),
     );
   });
+
+  it('keeps release and pickup usable during a server rollback without recipient data', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      data: { available: [], mine: [], version: 'grouping-v1' },
+      error: null,
+    }));
+
+    const space = await loadDriverDeliverySpace('route-token');
+
+    assert.deepEqual(space.recipients, []);
+  });
 });

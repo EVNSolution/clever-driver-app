@@ -231,7 +231,7 @@ export function DeliverySpaceScreen({
           <Text style={styles.sectionGuide}>
             {section === 'mine'
               ? '반납하면 이 배송지의 모든 주문이 공용 배송으로 이동합니다.'
-              : '다른 배송원보다 먼저 선택한 배송원에게 전체 묶음이 배정됩니다.'}
+              : '다른 배송원보다 먼저 가져오면 내 배송으로 전체 묶음이 배정됩니다.'}
           </Text>
           {bundles.length === 0 ? (
             <View style={styles.emptyCard}>
