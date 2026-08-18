@@ -9,9 +9,15 @@ export type DriverDeliveryBundle = {
   orderCount: number;
 };
 
+export type DriverDeliveryRecipient = {
+  driverId: string;
+  driverName: string;
+};
+
 export type DriverDeliverySpace = {
   available: DriverDeliveryBundle[];
   mine: DriverDeliveryBundle[];
+  recipients: DriverDeliveryRecipient[];
   version: string;
 };
 
@@ -28,7 +34,8 @@ export class DriverDeliverySpaceApiError extends Error {
 }
 
 export async function loadDriverDeliverySpace(accessToken: string): Promise<DriverDeliverySpace> {
-  return request<DriverDeliverySpace>('/driver/delivery-space', accessToken);
+  const space = await request<DriverDeliverySpace>('/driver/delivery-space', accessToken);
+  return { ...space, recipients: space.recipients ?? [] };
 }
 
 export function releaseDeliveryBundle(
@@ -45,6 +52,22 @@ export function acquireDeliveryBundle(
   expectedVersion: string,
 ): Promise<unknown> {
   return command(accessToken, destinationId, expectedVersion, 'acquire');
+}
+
+export function transferDeliveryBundle(
+  accessToken: string,
+  destinationId: string,
+  expectedVersion: string,
+  targetDriverId: string,
+): Promise<unknown> {
+  return request(
+    `/driver/delivery-space/${encodeURIComponent(destinationId)}/transfer`,
+    accessToken,
+    {
+      body: JSON.stringify({ expectedVersion, targetDriverId }),
+      method: 'POST',
+    },
+  );
 }
 
 function command(

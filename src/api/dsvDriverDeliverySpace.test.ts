@@ -5,6 +5,7 @@ import {
   acquireDeliveryBundle,
   loadDriverDeliverySpace,
   releaseDeliveryBundle,
+  transferDeliveryBundle,
 } from './dsvDriverDeliverySpace';
 
 const ORIGINAL_BASE_URL = process.env.EXPO_PUBLIC_DSV_API_BASE_URL;
@@ -32,6 +33,7 @@ describe('DSV driver delivery Space API client', () => {
                 destinationName: '지오영강북',
                 orderCount: 2,
               }],
+              recipients: [{ driverId: 'driver-2', driverName: '양우진' }],
               version: 'grouping-v1',
             }
           : {
@@ -46,12 +48,18 @@ describe('DSV driver delivery Space API client', () => {
     const space = await loadDriverDeliverySpace('route-token');
     await releaseDeliveryBundle('route-token', 'destination-a', space.version);
     await acquireDeliveryBundle('route-token', 'destination-a', 'grouping-v2');
+    await transferDeliveryBundle('route-token', 'destination-a', 'grouping-v2', 'driver-2');
 
     assert.equal(space.mine[0]?.orderCount, 2);
     assert.equal(calls[0]?.input, 'https://dsv.example.test/driver/delivery-space');
     assert.equal(calls[1]?.input, 'https://dsv.example.test/driver/delivery-space/destination-a/release');
     assert.equal(calls[2]?.input, 'https://dsv.example.test/driver/delivery-space/destination-a/acquire');
+    assert.equal(calls[3]?.input, 'https://dsv.example.test/driver/delivery-space/destination-a/transfer');
     assert.deepEqual(JSON.parse(calls[1]?.init?.body as string), { expectedVersion: 'grouping-v1' });
+    assert.deepEqual(JSON.parse(calls[3]?.init?.body as string), {
+      expectedVersion: 'grouping-v2',
+      targetDriverId: 'driver-2',
+    });
     assert.equal((calls[2]?.init?.headers as Headers).get('Authorization'), 'Bearer route-token');
   });
 
@@ -69,5 +77,17 @@ describe('DSV driver delivery Space API client', () => {
         error.name === 'DriverDeliverySpaceApiError' &&
         error.message.includes('서버 연결'),
     );
+  });
+
+  it('keeps release and pickup usable during a server rollback without recipient data', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      data: { available: [], mine: [], version: 'grouping-v1' },
+      error: null,
+    }));
+
+    const space = await loadDriverDeliverySpace('route-token');
+
+    assert.deepEqual(space.recipients, []);
   });
 });
