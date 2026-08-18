@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +14,9 @@ import {
   DriverDeliverySpaceApiError,
   loadDriverDeliverySpace,
   releaseDeliveryBundle,
+  transferDeliveryBundle,
   type DriverDeliveryBundle,
+  type DriverDeliveryRecipient,
   type DriverDeliverySpace,
 } from '../../api/dsvDriverDeliverySpace';
 import { useAppDialog } from './AppDialog';
@@ -35,6 +38,7 @@ export function DeliverySpaceScreen({
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState<string>();
   const [activeDestinationId, setActiveDestinationId] = useState<string>();
+  const [transferBundle, setTransferBundle] = useState<DriverDeliveryBundle>();
 
   const refresh = useCallback(async () => {
     setState('loading');
@@ -80,9 +84,37 @@ export function DeliverySpaceScreen({
     });
   }
 
+  function startTransfer(bundle: DriverDeliveryBundle) {
+    if (space === null || space.recipients.length === 0) {
+      showDialog({
+        message: '현재 배차에서 전달할 수 있는 다른 배송원이 없습니다.',
+        title: '전달 대상 없음',
+      });
+      return;
+    }
+    setTransferBundle(bundle);
+  }
+
+  function confirmTransfer(bundle: DriverDeliveryBundle, recipient: DriverDeliveryRecipient) {
+    setTransferBundle(undefined);
+    showDialog({
+      actions: [
+        { label: '취소', tone: 'secondary' },
+        {
+          onPress: () => void runCommand(bundle, 'transfer', recipient),
+          label: '전달',
+          tone: 'primary',
+        },
+      ],
+      message: `${bundle.destinationName} 배송지의 주문 ${bundle.orderCount}건을 ${recipient.driverName} 배송원에게 전달할까요?`,
+      title: '배송 전달',
+    });
+  }
+
   async function runCommand(
     bundle: DriverDeliveryBundle,
-    action: 'acquire' | 'release',
+    action: 'acquire' | 'release' | 'transfer',
+    recipient?: DriverDeliveryRecipient,
   ) {
     if (space === null || activeDestinationId !== undefined) return;
     setActiveDestinationId(bundle.destinationId);
@@ -94,17 +126,26 @@ export function DeliverySpaceScreen({
           bundle.destinationId,
           space.version,
         );
-      } else {
+      } else if (action === 'acquire') {
         await acquireDeliveryBundle(
           accessToken,
           bundle.destinationId,
           space.version,
         );
+      } else if (recipient !== undefined) {
+        await transferDeliveryBundle(
+          accessToken,
+          bundle.destinationId,
+          space.version,
+          recipient.driverId,
+        );
       }
       setMessage(
         action === 'release'
           ? `${bundle.destinationName} 배송을 반납했습니다.`
-          : `${bundle.destinationName} 배송을 가져왔습니다.`,
+          : action === 'transfer'
+            ? `${bundle.destinationName} 배송을 ${recipient?.driverName ?? '다른 배송원'}에게 전달했습니다.`
+            : `${bundle.destinationName} 배송을 가져왔습니다.`,
       );
       setSpace(await loadDriverDeliverySpace(accessToken));
       onAssignmentsChanged();
@@ -141,7 +182,7 @@ export function DeliverySpaceScreen({
         </Pressable>
         <View style={styles.headingCopy}>
           <Text style={styles.title}>주문 목록</Text>
-          <Text style={styles.description}>배송지 전체 묶음으로 반납하거나 가져옵니다</Text>
+          <Text style={styles.description}>배송지 전체 묶음을 반납·전달하거나 가져옵니다</Text>
         </View>
       </View>
 
@@ -210,9 +251,18 @@ export function DeliverySpaceScreen({
                 if (section === 'mine') confirmRelease(bundle);
                 else void runCommand(bundle, 'acquire');
               }}
+              onTransfer={section === 'mine' ? () => startTransfer(bundle) : undefined}
             />
           ))}
         </ScrollView>
+      )}
+      {transferBundle === undefined || space === null ? null : (
+        <TransferRecipientModal
+          bundle={transferBundle}
+          onClose={() => setTransferBundle(undefined)}
+          onSelect={(recipient) => confirmTransfer(transferBundle, recipient)}
+          recipients={space.recipients}
+        />
       )}
       {dialog}
     </View>
@@ -224,11 +274,13 @@ function SectionTab({
   isSelected,
   label,
   onPress,
+  onTransfer,
 }: {
   count?: number;
   isSelected: boolean;
   label: string;
   onPress(): void;
+  onTransfer?(): void;
 }) {
   return (
     <Pressable
@@ -254,12 +306,14 @@ function BundleCard({
   isBusy,
   isDisabled,
   onPress,
+  onTransfer,
 }: {
   action: 'acquire' | 'release';
   bundle: DriverDeliveryBundle;
   isBusy: boolean;
   isDisabled: boolean;
   onPress(): void;
+  onTransfer?(): void;
 }) {
   return (
     <View style={styles.bundleCard}>
@@ -272,28 +326,92 @@ function BundleCard({
           <Text numberOfLines={1} style={styles.conditions}>{bundle.conditionCodes.join(' · ')}</Text>
         </View>
       </View>
-      <Pressable
-        accessibilityLabel={`${bundle.destinationName} 배송 ${action === 'release' ? '반납' : '가져오기'}`}
-        accessibilityRole="button"
-        accessibilityState={{ busy: isBusy, disabled: isDisabled }}
-        disabled={isDisabled}
-        onPress={onPress}
-        style={({ pressed }) => [
-          styles.bundleAction,
-          action === 'release' && styles.releaseAction,
-          pressed && styles.pressed,
-          isDisabled && styles.disabled,
-        ]}
-      >
-        {isBusy ? (
-          <ActivityIndicator color={action === 'release' ? '#b42318' : '#ffffff'} size="small" />
-        ) : (
-          <Text style={[styles.bundleActionText, action === 'release' && styles.releaseActionText]}>
-            {action === 'release' ? '반납' : '가져오기'}
-          </Text>
+      <View style={styles.bundleActions}>
+        {onTransfer === undefined ? null : (
+          <Pressable
+            accessibilityLabel={`${bundle.destinationName} 배송 전달`}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isDisabled }}
+            disabled={isDisabled}
+            onPress={onTransfer}
+            style={({ pressed }) => [
+              styles.bundleAction,
+              styles.transferAction,
+              pressed && styles.pressed,
+              isDisabled && styles.disabled,
+            ]}
+          >
+            <Text style={styles.transferActionText}>전달</Text>
+          </Pressable>
         )}
-      </Pressable>
+        <Pressable
+          accessibilityLabel={`${bundle.destinationName} 배송 ${action === 'release' ? '반납' : '가져오기'}`}
+          accessibilityRole="button"
+          accessibilityState={{ busy: isBusy, disabled: isDisabled }}
+          disabled={isDisabled}
+          onPress={onPress}
+          style={({ pressed }) => [
+            styles.bundleAction,
+            action === 'release' && styles.releaseAction,
+            pressed && styles.pressed,
+            isDisabled && styles.disabled,
+          ]}
+        >
+          {isBusy ? (
+            <ActivityIndicator color={action === 'release' ? '#b42318' : '#ffffff'} size="small" />
+          ) : (
+            <Text style={[styles.bundleActionText, action === 'release' && styles.releaseActionText]}>
+              {action === 'release' ? '반납' : '가져오기'}
+            </Text>
+          )}
+        </Pressable>
+      </View>
     </View>
+  );
+}
+
+function TransferRecipientModal({
+  bundle,
+  onClose,
+  onSelect,
+  recipients,
+}: {
+  bundle: DriverDeliveryBundle;
+  onClose(): void;
+  onSelect(recipient: DriverDeliveryRecipient): void;
+  recipients: DriverDeliveryRecipient[];
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} statusBarTranslucent transparent visible>
+      <View style={styles.transferBackdrop}>
+        <Pressable
+          accessibilityLabel="전달 대상 선택 닫기"
+          onPress={onClose}
+          style={StyleSheet.absoluteFill}
+        />
+        <View accessibilityViewIsModal style={styles.transferCard}>
+          <Text style={styles.transferTitle}>전달할 배송원 선택</Text>
+          <Text numberOfLines={1} style={styles.transferDestination}>{bundle.destinationName}</Text>
+          <ScrollView contentContainerStyle={styles.recipientList} showsVerticalScrollIndicator={false}>
+            {recipients.map((recipient) => (
+              <Pressable
+                accessibilityLabel={`${recipient.driverName} 배송원에게 전달`}
+                accessibilityRole="button"
+                key={recipient.driverId}
+                onPress={() => onSelect(recipient)}
+                style={({ pressed }) => [styles.recipientButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.recipientName}>{recipient.driverName}</Text>
+                <Text style={styles.recipientChevron}>›</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable accessibilityRole="button" onPress={onClose} style={styles.transferCancel}>
+            <Text style={styles.transferCancelText}>취소</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -342,9 +460,22 @@ const styles = StyleSheet.create({
   bundleMeta: { color: '#344054', fontSize: 10, fontWeight: '800' },
   conditions: { color: '#667085', flex: 1, fontSize: 9, fontWeight: '700' },
   bundleAction: { alignItems: 'center', backgroundColor: '#0b57d0', borderRadius: 9, justifyContent: 'center', minHeight: 44, minWidth: 72, paddingHorizontal: 10 },
+  bundleActions: { flexDirection: 'row', gap: 6 },
   releaseAction: { backgroundColor: '#fff1f0', borderColor: '#fecdca', borderWidth: 1 },
   bundleActionText: { color: '#ffffff', fontSize: 12, fontWeight: '900' },
   releaseActionText: { color: '#b42318' },
+  transferAction: { backgroundColor: '#eef4ff', borderColor: '#b2ccff', borderWidth: 1, minWidth: 58 },
+  transferActionText: { color: '#1849a9', fontSize: 12, fontWeight: '900' },
+  transferBackdrop: { alignItems: 'center', backgroundColor: 'rgba(15, 23, 42, 0.56)', flex: 1, justifyContent: 'center', padding: 24 },
+  transferCard: { backgroundColor: '#ffffff', borderRadius: 20, maxHeight: '70%', maxWidth: 380, padding: 20, width: '100%' },
+  transferTitle: { color: '#101828', fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  transferDestination: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 6, textAlign: 'center' },
+  recipientList: { gap: 8, paddingTop: 18 },
+  recipientButton: { alignItems: 'center', backgroundColor: '#f8fafc', borderColor: '#e4e7ec', borderRadius: 12, borderWidth: 1, flexDirection: 'row', minHeight: 52, paddingHorizontal: 16 },
+  recipientName: { color: '#101828', flex: 1, fontSize: 14, fontWeight: '800' },
+  recipientChevron: { color: '#667085', fontSize: 24 },
+  transferCancel: { alignItems: 'center', backgroundColor: '#f2f4f7', borderRadius: 12, justifyContent: 'center', marginTop: 14, minHeight: 46 },
+  transferCancelText: { color: '#344054', fontSize: 13, fontWeight: '800' },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.7 },
 });

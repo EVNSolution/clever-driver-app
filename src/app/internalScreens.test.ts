@@ -100,6 +100,11 @@ describe('authenticated driver screens', () => {
     assert.match(screen, /label="내 배송"/u);
     assert.match(screen, /label="공용 배송"/u);
     assert.match(screen, /배송지의 모든 주문이 공용 배송으로 이동/u);
+    assert.match(screen, />전달<\/Text>/u);
+    assert.match(screen, /전달할 배송원 선택/u);
+    assert.match(screen, /space\.recipients/u);
+    assert.match(client, /transferDeliveryBundle/u);
+    assert.match(client, /targetDriverId/u);
     assert.match(screen, /다른 배송원이 먼저 가져갔습니다/u);
     assert.match(client, /destinationId/u);
     assert.match(client, /expectedVersion/u);
