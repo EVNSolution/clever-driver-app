@@ -7,18 +7,21 @@ type DestinationNoteField<T> = {
 
 export type DestinationNotes = {
   lunchAccess: DestinationNoteField<LunchAccess>;
+  lunchTime: DestinationNoteField<string>;
   memo: DestinationNoteField<string>;
   requiredArrivalTime: DestinationNoteField<string>;
 };
 
 export type DestinationNoteValues = {
   lunchAccess: LunchAccess;
+  lunchTime: string;
   memo: string;
   requiredArrivalTime: string;
 };
 
 export const EMPTY_DESTINATION_NOTES: DestinationNotes = {
   lunchAccess: { updatedAt: null, value: 'UNKNOWN' },
+  lunchTime: { updatedAt: null, value: '' },
   memo: { updatedAt: null, value: '' },
   requiredArrivalTime: { updatedAt: null, value: '' },
 };
@@ -30,6 +33,7 @@ export function savePreviewDestinationNotes(
 ): DestinationNotes {
   return {
     lunchAccess: updateField(previous.lunchAccess, values.lunchAccess, updatedAt),
+    lunchTime: updateField(previous.lunchTime, values.lunchTime, updatedAt),
     memo: updateField(previous.memo, values.memo, updatedAt),
     requiredArrivalTime: updateField(
       previous.requiredArrivalTime,

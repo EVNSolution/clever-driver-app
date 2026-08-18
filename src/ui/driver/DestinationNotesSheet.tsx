@@ -33,10 +33,12 @@ export function DestinationNotesSheet({
 }) {
   const insets = useSafeAreaInsets();
   const [lunchAccess, setLunchAccess] = useState(notes.lunchAccess.value);
+  const [lunchTime, setLunchTime] = useState(notes.lunchTime.value);
   const [memo, setMemo] = useState(notes.memo.value);
   const [requiredArrivalTime, setRequiredArrivalTime] = useState(
     notes.requiredArrivalTime.value,
   );
+  const normalizedLunchTime = lunchTime.trim();
   const normalizedMemo = memo.trim();
   const normalizedArrivalTime = requiredArrivalTime.trim();
   const hasValidArrivalTime = isValidRequiredArrivalTime(normalizedArrivalTime);
@@ -47,6 +49,7 @@ export function DestinationNotesSheet({
 
     onSave(savePreviewDestinationNotes(notes, {
       lunchAccess,
+      lunchTime: normalizedLunchTime,
       memo: normalizedMemo,
       requiredArrivalTime: normalizedArrivalTime,
     }, updatedAt));
@@ -116,6 +119,20 @@ export function DestinationNotesSheet({
               style={[styles.textInput, styles.memoInput]}
               textAlignVertical="top"
               value={memo}
+            />
+
+            <FieldHeader
+              label="점심시간"
+              updatedAt={notes.lunchTime.updatedAt}
+            />
+            <TextInput
+              accessibilityLabel="점심시간 입력"
+              maxLength={30}
+              onChangeText={setLunchTime}
+              placeholder="예: 12:00~13:00"
+              placeholderTextColor="#98a2b3"
+              style={styles.textInput}
+              value={lunchTime}
             />
 
             <FieldHeader
