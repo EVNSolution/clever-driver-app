@@ -30,10 +30,7 @@ import {
   type DriverDeliveryRouteChoice,
 } from '../../api/dsvDriverRoute';
 import { resolveDeliveryActivityForUpdate } from '../../domain/appUpdate/driverAppUpdate';
-import {
-  PREVIEW_DELIVERY_DATE,
-  type DeliveryOrder,
-} from '../../domain/delivery/deliveryPlan';
+import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
 import type {
   DestinationNotes,
   DestinationNoteValues,
@@ -74,11 +71,6 @@ export function DriverWorkspace({
   const lastRootBackAtRef = useRef<number | null>(null);
   const driverName =
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
-  const previewDeliveryDate =
-    process.env.EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW === 'true'
-      && orders.length === 0
-      ? PREVIEW_DELIVERY_DATE
-      : undefined;
 
   useEffect(() => {
     onDeliveryActivityChange(resolveDeliveryActivityForUpdate({
@@ -338,13 +330,12 @@ export function DriverWorkspace({
             ) : activeTab === 'delivery' ? (
               <>
                 <RouteDateSelector
-                  deliveryDateOverride={previewDeliveryDate}
                   onSelect={selectRoute}
                   routes={route.availableRoutes}
                   selectedRoutePlanId={route.routePlanId}
                 />
                 <DeliveryScreen
-                  deliveryDate={previewDeliveryDate ?? route.deliveryDate}
+                  deliveryDate={route.deliveryDate}
                   destinationNotesById={route.destinationNotesById}
                   isEditing={isSequenceEditing}
                   nextDeliveryStopId={route.nextDeliveryStopId}
@@ -421,12 +412,10 @@ export function DriverWorkspace({
 }
 
 function RouteDateSelector({
-  deliveryDateOverride,
   onSelect,
   routes,
   selectedRoutePlanId,
 }: {
-  deliveryDateOverride?: string;
   onSelect(routePlanId: string): void;
   routes: DriverDeliveryRouteChoice[];
   selectedRoutePlanId: string;
@@ -440,8 +429,7 @@ function RouteDateSelector({
   if (selectedRoute === undefined) {
     return null;
   }
-  const selectedDeliveryDate =
-    deliveryDateOverride ?? selectedRoute.deliveryDate;
+  const selectedDeliveryDate = selectedRoute.deliveryDate;
 
   function selectRoute(routePlanId: string) {
     onSelect(routePlanId);
@@ -484,9 +472,7 @@ function RouteDateSelector({
         >
           {routes.map((routeChoice) => {
             const isSelected = routeChoice.routePlanId === selectedRoutePlanId;
-            const deliveryDate = isSelected && deliveryDateOverride !== undefined
-              ? deliveryDateOverride
-              : routeChoice.deliveryDate;
+            const deliveryDate = routeChoice.deliveryDate;
 
             return (
               <Pressable

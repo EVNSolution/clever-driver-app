@@ -159,15 +159,14 @@ describe('authenticated driver screens', () => {
     assert.match(deliveryScreen, /destinationNotesById/u);
     assert.match(workspace, /updateDriverDestinationNotes/u);
     assert.match(workspace, /destinationNotesById=\{route\.destinationNotesById\}/u);
-    assert.match(deliveryScreen, /EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW/u);
-    assert.match(workspace, /PREVIEW_DELIVERY_DATE/u);
-    assert.match(workspace, /deliveryDateOverride=\{previewDeliveryDate\}/u);
-    assert.match(deliveryScreen, /PREVIEW_DELIVERY_ORDERS/u);
-    assert.match(deliveryScreen, /setPreviewOrders\(draftOrders\)/u);
-    assert.match(deliveryScreen, /배송지 정보 UI Preview/u);
+    assert.doesNotMatch(deliveryScreen, /EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW/u);
+    assert.doesNotMatch(workspace, /PREVIEW_DELIVERY_DATE/u);
+    assert.doesNotMatch(workspace, /deliveryDateOverride/u);
+    assert.doesNotMatch(deliveryScreen, /PREVIEW_DELIVERY_ORDERS/u);
+    assert.doesNotMatch(deliveryScreen, /배송지 정보 UI Preview/u);
     assert.match(
       deliveryScreen,
-      /accessibilityState=\{\{ disabled: displayedOrders\.length === 0 \}\}/u,
+      /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
     );
     assert.match(deliveryScreen, /orders=\{selectedDestinationGroup\.orders\}/u);
     assert.match(destinationSheet, /useState<InformationTab>\('orders'\)/u);
@@ -205,7 +204,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(destinationSheet, /numbers-and-punctuation/u);
     assert.match(destinationSheet, /필수 도착 시간/u);
     assert.match(destinationSheet, /마지막 수정/u);
-    assert.match(destinationSheet, /isPreview/u);
+    assert.doesNotMatch(destinationSheet, /UI Preview/u);
     assert.doesNotMatch(destinationSheet, /fetch\(/u);
   });
 

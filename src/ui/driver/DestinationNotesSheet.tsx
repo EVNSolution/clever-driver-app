@@ -24,7 +24,6 @@ type InformationTab = 'orders' | 'destination';
 export function DestinationNotesSheet({
   address,
   destinationName,
-  isPreview,
   notes,
   onClose,
   onSave,
@@ -32,7 +31,6 @@ export function DestinationNotesSheet({
 }: {
   address: string;
   destinationName: string;
-  isPreview: boolean;
   notes: DestinationNotes;
   onClose(): void;
   onSave(values: DestinationNoteValues): Promise<void> | void;
@@ -174,13 +172,6 @@ export function DestinationNotesSheet({
               </>
             ) : (
               <>
-                {isPreview ? (
-                  <View style={styles.previewNotice}>
-                    <Text style={styles.previewNoticeText}>
-                      UI Preview · 저장 내용은 앱을 닫으면 초기화됩니다
-                    </Text>
-                  </View>
-                ) : null}
                 <FieldHeader label="일반 메모" updatedAt={notes.memo.updatedAt} />
                 <TextInput
                   accessibilityLabel="배송지 일반 메모"
@@ -461,17 +452,6 @@ const styles = StyleSheet.create({
     color: '#475467',
     fontSize: 26,
     lineHeight: 29,
-  },
-  previewNotice: {
-    backgroundColor: '#eef4ff',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  previewNoticeText: {
-    color: '#1849a9',
-    fontSize: 11,
-    fontWeight: '700',
   },
   informationTabs: {
     backgroundColor: '#f2f4f7',

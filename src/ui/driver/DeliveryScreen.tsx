@@ -22,7 +22,6 @@ import { scheduleOnRN } from 'react-native-worklets';
 import {
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
-  PREVIEW_DELIVERY_ORDERS,
   resolveDeliveryDestinationProgressState,
   type DeliveryConditionCode,
   type DeliveryDestinationGroup,
@@ -32,7 +31,6 @@ import {
 } from '../../domain/delivery/deliveryPlan';
 import {
   EMPTY_DESTINATION_NOTES,
-  savePreviewDestinationNotes,
   type DestinationNotes,
   type DestinationNoteValues,
 } from '../../domain/delivery/destinationNotesPreview';
@@ -95,42 +93,28 @@ export function DeliveryScreen({
   const deliveryScrollRef = useRef<ScrollView>(null);
   const orderListTopRef = useRef(0);
   const revealedDeliveryStopIdRef = useRef<string | null>(null);
-  const isDestinationNotesUiPreview =
-    process.env.EXPO_PUBLIC_DESTINATION_NOTES_UI_PREVIEW === 'true'
-    && orders.length === 0;
-  const [previewOrders, setPreviewOrders] = useState(PREVIEW_DELIVERY_ORDERS);
-  const displayedOrders = isDestinationNotesUiPreview
-    ? previewOrders
-    : orders;
-  const [previewDestinationNotesById, setPreviewDestinationNotesById] = useState<
-    Record<string, DestinationNotes>
-  >({});
-  const [draftOrders, setDraftOrders] = useState(displayedOrders);
+  const [draftOrders, setDraftOrders] = useState(orders);
   const [isOrderActionPending, setIsOrderActionPending] = useState(false);
   const [selectedDestinationGroup, setSelectedDestinationGroup] =
     useState<DeliveryDestinationGroup | null>(null);
-  const totalBoxes = displayedOrders.reduce(
+  const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
   );
-  const destinationGroups = groupDeliveryOrdersByDestination(displayedOrders);
+  const destinationGroups = groupDeliveryOrdersByDestination(orders);
 
   function startEditing() {
-    setDraftOrders(displayedOrders);
+    setDraftOrders(orders);
     onEditingChange(true);
   }
 
   function cancelEditing() {
-    setDraftOrders(displayedOrders);
+    setDraftOrders(orders);
     onEditingChange(false);
   }
 
   function finishEditing() {
-    if (isDestinationNotesUiPreview) {
-      setPreviewOrders(draftOrders);
-    } else {
-      onOrdersChange(draftOrders);
-    }
+    onOrdersChange(draftOrders);
     onEditingChange(false);
   }
 
@@ -209,15 +193,12 @@ export function DeliveryScreen({
             {formatDeliveryDate(deliveryDate)} 배송
           </Text>
           <View style={styles.summaryItems}>
-            <Text style={styles.summaryText}>주문 {displayedOrders.length}건</Text>
+            <Text style={styles.summaryText}>주문 {orders.length}건</Text>
             <View style={styles.summaryDivider} />
             <Text style={styles.summaryText}>배송지 {destinationGroups.length}곳</Text>
             <View style={styles.summaryDivider} />
             <Text style={styles.summaryText}>{totalBoxes}박스</Text>
           </View>
-          {isDestinationNotesUiPreview ? (
-            <Text style={styles.previewBadge}>배송지 정보 UI Preview</Text>
-          ) : null}
         </View>
         <View style={styles.headerActions}>
           <Pressable
@@ -237,13 +218,13 @@ export function DeliveryScreen({
           <Pressable
             accessibilityLabel="배송 순서 편집"
             accessibilityRole="button"
-            accessibilityState={{ disabled: displayedOrders.length === 0 }}
-            disabled={displayedOrders.length === 0}
+            accessibilityState={{ disabled: orders.length === 0 }}
+            disabled={orders.length === 0}
             onPress={startEditing}
             style={({ pressed }) => [
               styles.headerActionButton,
               styles.editButton,
-              displayedOrders.length === 0 && styles.editButtonDisabled,
+              orders.length === 0 && styles.editButtonDisabled,
               pressed && styles.buttonPressed,
             ]}
           >
@@ -302,31 +283,16 @@ export function DeliveryScreen({
         <DestinationNotesSheet
           address={selectedDestinationGroup.address}
           destinationName={selectedDestinationGroup.destinationName}
-          isPreview={isDestinationNotesUiPreview}
           orders={selectedDestinationGroup.orders}
-          notes={
-            (isDestinationNotesUiPreview
-              ? previewDestinationNotesById[selectedDestinationGroup.destinationId]
-              : initialDestinationNotesById[selectedDestinationGroup.destinationId])
-            ?? EMPTY_DESTINATION_NOTES
-          }
+          notes={initialDestinationNotesById[selectedDestinationGroup.destinationId]
+            ?? EMPTY_DESTINATION_NOTES}
           onClose={() => setSelectedDestinationGroup(null)}
           onSave={async (values) => {
             const destinationId = selectedDestinationGroup.destinationId;
-            const previous = (isDestinationNotesUiPreview
-              ? previewDestinationNotesById[destinationId]
-              : initialDestinationNotesById[destinationId])
+            const previous = initialDestinationNotesById[destinationId]
               ?? EMPTY_DESTINATION_NOTES;
             try {
-              const notes = isDestinationNotesUiPreview
-                ? savePreviewDestinationNotes(previous, values, new Date().toISOString())
-                : await onSaveDestinationNotes(destinationId, previous, values);
-              if (isDestinationNotesUiPreview) {
-                setPreviewDestinationNotesById((currentNotes) => ({
-                  ...currentNotes,
-                  [destinationId]: notes,
-                }));
-              }
+              await onSaveDestinationNotes(destinationId, previous, values);
               setSelectedDestinationGroup(null);
             } catch (error) {
               showDialog({
@@ -932,13 +898,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#d0d5dd',
     height: 12,
     width: 1,
-  },
-  previewBadge: {
-    alignSelf: 'flex-start',
-    color: '#1849a9',
-    fontSize: 10,
-    fontWeight: '800',
-    marginTop: 3,
   },
   headerActionButton: {
     alignItems: 'center',
