@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   formatTimeInput,
-  formatTimeRangeInput,
   isValidLunchTime,
   isValidRequiredArrivalTime,
   savePreviewDestinationNotes,
@@ -35,13 +34,18 @@ export function DestinationNotesSheet({
   onSave(notes: DestinationNotes): void;
 }) {
   const insets = useSafeAreaInsets();
+  const [initialLunchStartsAt = '', initialLunchEndsAt = ''] =
+    notes.lunchTime.value.split('~');
   const [lunchAccess, setLunchAccess] = useState(notes.lunchAccess.value);
-  const [lunchTime, setLunchTime] = useState(notes.lunchTime.value);
+  const [lunchStartsAt, setLunchStartsAt] = useState(initialLunchStartsAt);
+  const [lunchEndsAt, setLunchEndsAt] = useState(initialLunchEndsAt);
   const [memo, setMemo] = useState(notes.memo.value);
   const [requiredArrivalTime, setRequiredArrivalTime] = useState(
     notes.requiredArrivalTime.value,
   );
-  const normalizedLunchTime = lunchTime.trim();
+  const normalizedLunchTime = lunchStartsAt === '' && lunchEndsAt === ''
+    ? ''
+    : `${lunchStartsAt}~${lunchEndsAt}`;
   const normalizedMemo = memo.trim();
   const normalizedArrivalTime = requiredArrivalTime.trim();
   const hasValidLunchTime = isValidLunchTime(normalizedLunchTime);
@@ -131,26 +135,54 @@ export function DestinationNotesSheet({
                 label="점심시간"
                 updatedAt={notes.lunchTime.updatedAt}
               />
-              <TextInput
-                accessibilityLabel="점심시간 입력"
-                keyboardType="number-pad"
-                maxLength={11}
-                onChangeText={(value) => setLunchTime(formatTimeRangeInput(value))}
-                placeholder="숫자 8자리 입력 (예: 12001300)"
-                placeholderTextColor="#98a2b3"
-                style={[
-                  styles.textInput,
-                  !hasValidLunchTime && styles.textInputInvalid,
-                ]}
-                value={lunchTime}
-              />
+              <View style={styles.timeRangeInputs}>
+                <View style={styles.timeRangeField}>
+                  <Text style={styles.timeRangeLabel}>시작</Text>
+                  <TextInput
+                    accessibilityLabel="점심시간 시작"
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    onChangeText={(value) => {
+                      setLunchStartsAt(formatTimeInput(value));
+                    }}
+                    placeholder="1200"
+                    placeholderTextColor="#98a2b3"
+                    style={[
+                      styles.textInput,
+                      styles.timeRangeInput,
+                      !hasValidLunchTime && styles.textInputInvalid,
+                    ]}
+                    value={lunchStartsAt}
+                  />
+                </View>
+                <Text style={styles.timeRangeSeparator}>→</Text>
+                <View style={styles.timeRangeField}>
+                  <Text style={styles.timeRangeLabel}>종료</Text>
+                  <TextInput
+                    accessibilityLabel="점심시간 종료"
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    onChangeText={(value) => {
+                      setLunchEndsAt(formatTimeInput(value));
+                    }}
+                    placeholder="1300"
+                    placeholderTextColor="#98a2b3"
+                    style={[
+                      styles.textInput,
+                      styles.timeRangeInput,
+                      !hasValidLunchTime && styles.textInputInvalid,
+                    ]}
+                    value={lunchEndsAt}
+                  />
+                </View>
+              </View>
               <Text style={[
                 styles.fieldHint,
                 !hasValidLunchTime && styles.fieldError,
               ]}>
                 {hasValidLunchTime
-                  ? '숫자만 입력하면 시간 형식으로 자동 변환됩니다.'
-                  : '시작·종료 시간을 숫자 8자리로 입력해 주세요.'}
+                  ? '1200 입력 → 12:00 자동 변환'
+                  : '시작·종료 시간을 각각 숫자 4자리로 입력해 주세요.'}
               </Text>
 
               <FieldHeader
@@ -180,7 +212,7 @@ export function DestinationNotesSheet({
               keyboardType="number-pad"
               maxLength={5}
               onChangeText={(value) => setRequiredArrivalTime(formatTimeInput(value))}
-              placeholder="숫자 4자리 입력 (예: 1330)"
+              placeholder="1330"
               placeholderTextColor="#98a2b3"
               style={[
                 styles.textInput,
@@ -193,8 +225,11 @@ export function DestinationNotesSheet({
               !hasValidArrivalTime && styles.fieldError,
             ]}>
               {hasValidArrivalTime
-                ? '정보성 항목이며 현재 경로와 ETA에는 반영되지 않습니다.'
+                ? '1330 입력 → 13:30 자동 변환'
                 : '0000부터 2359 사이의 숫자 4자리로 입력해 주세요.'}
+            </Text>
+            <Text style={styles.fieldHint}>
+              정보성 항목이며 현재 경로와 ETA에는 반영되지 않습니다.
             </Text>
           </ScrollView>
 
@@ -392,6 +427,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
     padding: 12,
+  },
+  timeRangeInputs: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timeRangeField: {
+    flex: 1,
+    gap: 5,
+  },
+  timeRangeLabel: {
+    color: '#667085',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  timeRangeInput: {
+    textAlign: 'center',
+  },
+  timeRangeSeparator: {
+    color: '#667085',
+    fontSize: 18,
+    fontWeight: '700',
+    paddingBottom: 13,
   },
   segmentedControl: {
     flexDirection: 'row',

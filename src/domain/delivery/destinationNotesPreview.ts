@@ -66,15 +66,6 @@ export function formatTimeInput(value: string): string {
     : `${digits.slice(0, 2)}:${digits.slice(2)}`;
 }
 
-export function formatTimeRangeInput(value: string): string {
-  const digits = value.replace(/\D/gu, '').slice(0, 8);
-  const startsAt = formatTimeInput(digits.slice(0, 4));
-
-  return digits.length <= 4
-    ? startsAt
-    : `${startsAt}~${formatTimeInput(digits.slice(4))}`;
-}
-
 function isValidTime(value: string): boolean {
   const match = /^(?<hour>\d{2}):(?<minute>\d{2})$/u.exec(value);
   return match?.groups !== undefined

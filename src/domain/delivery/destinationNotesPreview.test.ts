@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 import {
   EMPTY_DESTINATION_NOTES,
   formatTimeInput,
-  formatTimeRangeInput,
   isValidLunchTime,
   isValidRequiredArrivalTime,
   savePreviewDestinationNotes,
@@ -44,9 +43,6 @@ describe('destination notes UI preview state', () => {
     assert.equal(formatTimeInput('1330'), '13:30');
     assert.equal(formatTimeInput('13:30'), '13:30');
     assert.equal(formatTimeInput('133099'), '13:30');
-    assert.equal(formatTimeRangeInput('1200'), '12:00');
-    assert.equal(formatTimeRangeInput('12001300'), '12:00~13:00');
-    assert.equal(formatTimeRangeInput('12:00~13:00'), '12:00~13:00');
   });
 
   it('accepts an empty or complete lunch period', () => {

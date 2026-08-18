@@ -161,8 +161,10 @@ describe('authenticated driver screens', () => {
       /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
     );
     assert.match(destinationSheet, /일반 메모/u);
-    assert.match(destinationSheet, /점심시간 입력/u);
-    assert.match(destinationSheet, /12001300/u);
+    assert.match(destinationSheet, /점심시간 시작/u);
+    assert.match(destinationSheet, /점심시간 종료/u);
+    assert.match(destinationSheet, /1200 입력 → 12:00 자동 변환/u);
+    assert.match(destinationSheet, /1330 입력 → 13:30 자동 변환/u);
     assert.match(destinationSheet, /점심시간 입장/u);
     assert.match(destinationSheet, /가능/u);
     assert.match(destinationSheet, /불가능/u);
