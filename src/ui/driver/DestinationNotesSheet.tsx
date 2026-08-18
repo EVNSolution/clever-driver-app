@@ -13,6 +13,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  formatTimeInput,
+  formatTimeRangeInput,
+  isValidLunchTime,
   isValidRequiredArrivalTime,
   savePreviewDestinationNotes,
   type DestinationNotes,
@@ -41,10 +44,12 @@ export function DestinationNotesSheet({
   const normalizedLunchTime = lunchTime.trim();
   const normalizedMemo = memo.trim();
   const normalizedArrivalTime = requiredArrivalTime.trim();
+  const hasValidLunchTime = isValidLunchTime(normalizedLunchTime);
   const hasValidArrivalTime = isValidRequiredArrivalTime(normalizedArrivalTime);
+  const canSave = hasValidLunchTime && hasValidArrivalTime;
 
   function save() {
-    if (!hasValidArrivalTime) return;
+    if (!canSave) return;
     const updatedAt = new Date().toISOString();
 
     onSave(savePreviewDestinationNotes(notes, {
@@ -121,40 +126,49 @@ export function DestinationNotesSheet({
               value={memo}
             />
 
-            <FieldHeader
-              label="점심시간"
-              updatedAt={notes.lunchTime.updatedAt}
-            />
-            <TextInput
-              accessibilityLabel="점심시간 입력"
-              maxLength={30}
-              onChangeText={setLunchTime}
-              placeholder="예: 12:00~13:00"
-              placeholderTextColor="#98a2b3"
-              style={styles.textInput}
-              value={lunchTime}
-            />
+            <View style={styles.lunchGroup}>
+              <FieldHeader
+                label="점심시간"
+                updatedAt={notes.lunchTime.updatedAt}
+              />
+              <TextInput
+                accessibilityLabel="점심시간 입력"
+                keyboardType="number-pad"
+                maxLength={11}
+                onChangeText={(value) => setLunchTime(formatTimeRangeInput(value))}
+                placeholder="숫자 8자리 입력 (예: 12001300)"
+                placeholderTextColor="#98a2b3"
+                style={[
+                  styles.textInput,
+                  !hasValidLunchTime && styles.textInputInvalid,
+                ]}
+                value={lunchTime}
+              />
+              <Text style={[
+                styles.fieldHint,
+                !hasValidLunchTime && styles.fieldError,
+              ]}>
+                {hasValidLunchTime
+                  ? '숫자만 입력하면 시간 형식으로 자동 변환됩니다.'
+                  : '시작·종료 시간을 숫자 8자리로 입력해 주세요.'}
+              </Text>
 
-            <FieldHeader
-              label="점심시간 입장"
-              updatedAt={notes.lunchAccess.updatedAt}
-            />
-            <View style={styles.segmentedControl}>
-              <LunchAccessButton
-                isSelected={lunchAccess === 'UNKNOWN'}
-                label="미확인"
-                onPress={() => setLunchAccess('UNKNOWN')}
+              <FieldHeader
+                label="점심시간 입장"
+                updatedAt={notes.lunchAccess.updatedAt}
               />
-              <LunchAccessButton
-                isSelected={lunchAccess === 'AVAILABLE'}
-                label="가능"
-                onPress={() => setLunchAccess('AVAILABLE')}
-              />
-              <LunchAccessButton
-                isSelected={lunchAccess === 'UNAVAILABLE'}
-                label="불가능"
-                onPress={() => setLunchAccess('UNAVAILABLE')}
-              />
+              <View style={styles.segmentedControl}>
+                <LunchAccessButton
+                  isSelected={lunchAccess === 'AVAILABLE'}
+                  label="가능"
+                  onPress={() => setLunchAccess('AVAILABLE')}
+                />
+                <LunchAccessButton
+                  isSelected={lunchAccess === 'UNAVAILABLE'}
+                  label="불가능"
+                  onPress={() => setLunchAccess('UNAVAILABLE')}
+                />
+              </View>
             </View>
 
             <FieldHeader
@@ -163,10 +177,10 @@ export function DestinationNotesSheet({
             />
             <TextInput
               accessibilityLabel="필수 도착 시간"
-              keyboardType="numbers-and-punctuation"
+              keyboardType="number-pad"
               maxLength={5}
-              onChangeText={setRequiredArrivalTime}
-              placeholder="예: 13:30"
+              onChangeText={(value) => setRequiredArrivalTime(formatTimeInput(value))}
+              placeholder="숫자 4자리 입력 (예: 1330)"
               placeholderTextColor="#98a2b3"
               style={[
                 styles.textInput,
@@ -180,18 +194,18 @@ export function DestinationNotesSheet({
             ]}>
               {hasValidArrivalTime
                 ? '정보성 항목이며 현재 경로와 ETA에는 반영되지 않습니다.'
-                : '00:00부터 23:59 사이의 시간으로 입력해 주세요.'}
+                : '0000부터 2359 사이의 숫자 4자리로 입력해 주세요.'}
             </Text>
           </ScrollView>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ disabled: !hasValidArrivalTime }}
-            disabled={!hasValidArrivalTime}
+            accessibilityState={{ disabled: !canSave }}
+            disabled={!canSave}
             onPress={save}
             style={({ pressed }) => [
               styles.saveButton,
-              !hasValidArrivalTime && styles.saveButtonDisabled,
+              !canSave && styles.saveButtonDisabled,
               pressed && styles.buttonPressed,
             ]}
           >
@@ -370,6 +384,14 @@ const styles = StyleSheet.create({
   },
   memoInput: {
     minHeight: 92,
+  },
+  lunchGroup: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e4e7ec',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
   },
   segmentedControl: {
     flexDirection: 'row',

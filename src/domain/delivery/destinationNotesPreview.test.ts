@@ -3,6 +3,9 @@ import { describe, it } from 'node:test';
 
 import {
   EMPTY_DESTINATION_NOTES,
+  formatTimeInput,
+  formatTimeRangeInput,
+  isValidLunchTime,
   isValidRequiredArrivalTime,
   savePreviewDestinationNotes,
 } from './destinationNotesPreview';
@@ -34,5 +37,22 @@ describe('destination notes UI preview state', () => {
     assert.equal(isValidRequiredArrivalTime('9:30'), false);
     assert.equal(isValidRequiredArrivalTime('24:00'), false);
     assert.equal(isValidRequiredArrivalTime('12:60'), false);
+  });
+
+  it('formats digit-only time input without requiring separators', () => {
+    assert.equal(formatTimeInput('1'), '1');
+    assert.equal(formatTimeInput('1330'), '13:30');
+    assert.equal(formatTimeInput('13:30'), '13:30');
+    assert.equal(formatTimeInput('133099'), '13:30');
+    assert.equal(formatTimeRangeInput('1200'), '12:00');
+    assert.equal(formatTimeRangeInput('12001300'), '12:00~13:00');
+    assert.equal(formatTimeRangeInput('12:00~13:00'), '12:00~13:00');
+  });
+
+  it('accepts an empty or complete lunch period', () => {
+    assert.equal(isValidLunchTime(''), true);
+    assert.equal(isValidLunchTime('12:00~13:00'), true);
+    assert.equal(isValidLunchTime('12:00'), false);
+    assert.equal(isValidLunchTime('24:00~25:00'), false);
   });
 });

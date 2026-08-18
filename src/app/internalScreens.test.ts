@@ -162,11 +162,13 @@ describe('authenticated driver screens', () => {
     );
     assert.match(destinationSheet, /일반 메모/u);
     assert.match(destinationSheet, /점심시간 입력/u);
-    assert.match(destinationSheet, /예: 12:00~13:00/u);
+    assert.match(destinationSheet, /12001300/u);
     assert.match(destinationSheet, /점심시간 입장/u);
-    assert.match(destinationSheet, /미확인/u);
     assert.match(destinationSheet, /가능/u);
     assert.match(destinationSheet, /불가능/u);
+    assert.match(destinationSheet, /keyboardType="number-pad"/u);
+    assert.doesNotMatch(destinationSheet, /label="미확인"/u);
+    assert.doesNotMatch(destinationSheet, /numbers-and-punctuation/u);
     assert.match(destinationSheet, /필수 도착 시간/u);
     assert.match(destinationSheet, /마지막 수정/u);
     assert.match(destinationSheet, /앱을 닫으면 초기화됩니다/u);
