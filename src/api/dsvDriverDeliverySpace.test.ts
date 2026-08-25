@@ -27,7 +27,14 @@ describe('DSV driver delivery Space API client', () => {
       return new Response(JSON.stringify({
         data: calls.length === 1
           ? {
-              available: [],
+              available: [{
+                address: '인천 부평구 평천로115번길 29',
+                boxCount: 1,
+                conditionCodes: ['AMBIENT'],
+                destinationId: 'destination-public',
+                destinationName: '(주)동진팜',
+                orderCount: 1,
+              }],
               incomingHandoffs: [{
                 bundle: {
                   address: '서울 광진구 천호대로 704',
@@ -37,29 +44,29 @@ describe('DSV driver delivery Space API client', () => {
                   destinationName: '지오영동부',
                   orderCount: 1,
                 },
-                expiresAt: '2026-08-18T09:10:00.000Z',
+                expiresAt: '2026-08-26T09:10:00.000Z',
                 requestId: 'handoff-in',
-                senderDriverName: '임지인',
+                senderDriverName: '양우진',
                 status: 'PROPOSED',
               }],
               mine: [{
-                address: '서울 광진구 천호대로 704',
-                boxCount: 9,
+                address: '인천 서구 북항단지로 91 (원창동) 6층',
+                boxCount: 20,
                 conditionCodes: ['AMBIENT', 'COLD'],
                 destinationId: 'destination-a',
-                destinationName: '지오영강북',
+                destinationName: '인천신허브',
                 orderCount: 2,
               }],
               outgoingHandoffs: [{
                 bundle: {
-                  address: '서울 광진구 천호대로 704',
-                  boxCount: 9,
+                  address: '인천 서구 북항단지로 91 (원창동) 6층',
+                  boxCount: 20,
                   conditionCodes: ['AMBIENT', 'COLD'],
                   destinationId: 'destination-a',
-                  destinationName: '지오영강북',
+                  destinationName: '인천신허브',
                   orderCount: 2,
                 },
-                expiresAt: '2026-08-18T09:12:00.000Z',
+                expiresAt: '2026-08-26T09:12:00.000Z',
                 requestId: 'handoff-out',
                 status: 'PROPOSED',
                 targetDriverName: '양우진',
@@ -78,18 +85,19 @@ describe('DSV driver delivery Space API client', () => {
 
     const space = await loadDriverDeliverySpace('route-token');
     await releaseDeliveryBundle('route-token', 'destination-a', space.version);
-    await acquireDeliveryBundle('route-token', 'destination-a', 'grouping-v2');
+    await acquireDeliveryBundle('route-token', 'destination-public', 'grouping-v2');
     await requestDeliveryBundleHandoff('route-token', 'destination-a', 'grouping-v2', 'driver-2');
     await acceptDeliveryBundleHandoff('route-token', 'handoff-in');
     await rejectDeliveryBundleHandoff('route-token', 'handoff-in');
     await cancelDeliveryBundleHandoff('route-token', 'handoff-out');
 
     assert.equal(space.mine[0]?.orderCount, 2);
-    assert.equal(space.incomingHandoffs[0]?.senderDriverName, '임지인');
+    assert.equal(space.available[0]?.destinationName, '(주)동진팜');
+    assert.equal(space.incomingHandoffs[0]?.senderDriverName, '양우진');
     assert.equal(space.outgoingHandoffs[0]?.targetDriverName, '양우진');
     assert.equal(calls[0]?.input, 'https://dsv.example.test/driver/delivery-space');
     assert.equal(calls[1]?.input, 'https://dsv.example.test/driver/delivery-space/destination-a/release');
-    assert.equal(calls[2]?.input, 'https://dsv.example.test/driver/delivery-space/destination-a/acquire');
+    assert.equal(calls[2]?.input, 'https://dsv.example.test/driver/delivery-space/destination-public/acquire');
     assert.equal(calls[3]?.input, 'https://dsv.example.test/driver/delivery-space/destination-a/handoff-requests');
     assert.equal(calls[4]?.input, 'https://dsv.example.test/driver/delivery-space/handoff-requests/handoff-in/accept');
     assert.equal(calls[5]?.input, 'https://dsv.example.test/driver/delivery-space/handoff-requests/handoff-in/reject');

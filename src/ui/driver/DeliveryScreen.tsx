@@ -41,6 +41,7 @@ import {
   type DeliveryOrderPositions,
 } from '../../domain/delivery/sortableOrder';
 import { useAppDialog } from './AppDialog';
+import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
 
@@ -58,18 +59,21 @@ type DeliveryScreenProps = {
   deliveryDate: string;
   destinationNotesById: Record<string, DestinationNotes>;
   isEditing: boolean;
+  lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
   onOrdersChange(orders: DeliveryOrder[]): void;
   onReadDriverMessage(messageId: string): Promise<void>;
+  onRefresh(): void;
   onSaveDestinationNotes(
     destinationId: string,
     previous: DestinationNotes,
     values: DestinationNoteValues,
   ): Promise<DestinationNotes>;
   orders: DeliveryOrder[];
+  refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
 };
@@ -78,14 +82,17 @@ export function DeliveryScreen({
   deliveryDate,
   destinationNotesById: initialDestinationNotesById,
   isEditing,
+  lastUpdatedAt,
   nextDeliveryStopId,
   onAcknowledgeTimeConstraint,
   onEditingChange,
   onOpenDeliverySpace,
   onOrdersChange,
   onReadDriverMessage,
+  onRefresh,
   onSaveDestinationNotes,
   orders,
+  refreshing,
   serverRouteGeometry,
   timezone,
 }: DeliveryScreenProps) {
@@ -95,13 +102,18 @@ export function DeliveryScreen({
   const revealedDeliveryStopIdRef = useRef<string | null>(null);
   const [draftOrders, setDraftOrders] = useState(orders);
   const [isOrderActionPending, setIsOrderActionPending] = useState(false);
-  const [selectedDestinationGroup, setSelectedDestinationGroup] =
-    useState<DeliveryDestinationGroup | null>(null);
+  const [selectedDestinationId, setSelectedDestinationId] =
+    useState<string | null>(null);
   const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
   );
   const destinationGroups = groupDeliveryOrdersByDestination(orders);
+  const selectedDestinationGroup = selectedDestinationId === null
+    ? null
+    : destinationGroups.find(
+      (group) => group.destinationId === selectedDestinationId,
+    ) ?? null;
 
   function startEditing() {
     setDraftOrders(orders);
@@ -185,6 +197,13 @@ export function DeliveryScreen({
       <ScrollView
         contentContainerStyle={styles.deliveryContent}
         ref={deliveryScrollRef}
+        refreshControl={(
+          <DriverRefreshControl
+            lastUpdatedAt={lastUpdatedAt}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
+        )}
         showsVerticalScrollIndicator={false}
       >
       <View style={styles.deliveryHeader}>
@@ -261,19 +280,11 @@ export function DeliveryScreen({
               index={index}
               isLast={index === destinationGroups.length - 1}
               key={`${group.key}:${progressState}`}
-              isOrderActionPending={isOrderActionPending}
-              onAcknowledgeTimeConstraint={(deliveryStopId) => runOrderAction(
-                () => onAcknowledgeTimeConstraint(deliveryStopId),
-              )}
               onCurrentLayout={revealCurrentDestination}
               onOpenDeliveryInformation={() => {
-                setSelectedDestinationGroup(group);
+                setSelectedDestinationId(group.destinationId);
               }}
-              onReadDriverMessage={(messageId) => runOrderAction(
-                () => onReadDriverMessage(messageId),
-              )}
               progressState={progressState}
-              timezone={timezone}
             />
           );
         })}
@@ -283,17 +294,24 @@ export function DeliveryScreen({
         <DestinationNotesSheet
           address={selectedDestinationGroup.address}
           destinationName={selectedDestinationGroup.destinationName}
+          isOrderActionPending={isOrderActionPending}
           orders={selectedDestinationGroup.orders}
           notes={initialDestinationNotesById[selectedDestinationGroup.destinationId]
             ?? EMPTY_DESTINATION_NOTES}
-          onClose={() => setSelectedDestinationGroup(null)}
+          onAcknowledgeTimeConstraint={(deliveryStopId) => runOrderAction(
+            () => onAcknowledgeTimeConstraint(deliveryStopId),
+          )}
+          onClose={() => setSelectedDestinationId(null)}
+          onReadDriverMessage={(messageId) => runOrderAction(
+            () => onReadDriverMessage(messageId),
+          )}
           onSave={async (values) => {
             const destinationId = selectedDestinationGroup.destinationId;
             const previous = initialDestinationNotesById[destinationId]
               ?? EMPTY_DESTINATION_NOTES;
             try {
               await onSaveDestinationNotes(destinationId, previous, values);
-              setSelectedDestinationGroup(null);
+              setSelectedDestinationId(null);
             } catch (error) {
               showDialog({
                 message: error instanceof Error ? error.message : '다시 시도해 주세요.',
@@ -302,6 +320,7 @@ export function DeliveryScreen({
               });
             }
           }}
+          timezone={timezone}
         />
       )}
       {dialog}
@@ -324,29 +343,20 @@ function formatDeliveryDate(deliveryDate: string): string {
 function DestinationGroupRow({
   group,
   index,
-  isOrderActionPending,
   isLast,
-  onAcknowledgeTimeConstraint,
   onCurrentLayout,
   onOpenDeliveryInformation,
-  onReadDriverMessage,
   progressState,
-  timezone,
 }: {
   group: DeliveryDestinationGroup;
   index: number;
-  isOrderActionPending: boolean;
   isLast: boolean;
-  onAcknowledgeTimeConstraint(deliveryStopId: string): void;
   onCurrentLayout(event: LayoutChangeEvent): void;
   onOpenDeliveryInformation(): void;
-  onReadDriverMessage(messageId: string): void;
   progressState: DeliveryRouteMarkerState;
-  timezone: string;
 }) {
   const isCompleted = progressState === 'completed';
   const isCurrent = progressState === 'current';
-  const [isExpanded, setIsExpanded] = useState(isCurrent);
 
   return (
     <View
@@ -358,7 +368,15 @@ function DestinationGroupRow({
         isCurrent && styles.destinationGroupCurrent,
       ]}
     >
-      <View style={styles.orderRow}>
+      <Pressable
+        accessibilityLabel={`${group.destinationName} 배송 정보 열기`}
+        accessibilityRole="button"
+        onPress={onOpenDeliveryInformation}
+        style={({ pressed }) => [
+          styles.orderRow,
+          pressed && styles.groupRowPressed,
+        ]}
+      >
         <View
           style={[
             styles.sequenceBadge,
@@ -375,31 +393,16 @@ function DestinationGroupRow({
             {index + 1}
           </Text>
         </View>
-        <Pressable
-          accessibilityLabel={`${group.destinationName} 배송 정보 열기`}
-          accessibilityRole="button"
-          onPress={onOpenDeliveryInformation}
-          style={({ pressed }) => [
-            styles.orderCopy,
-            pressed && styles.groupRowPressed,
-          ]}
-        >
-          <View style={styles.destinationHeading}>
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.destinationName,
-                isCompleted && styles.completedPrimaryText,
-              ]}
-            >
-              {group.destinationName}
-            </Text>
-            {isCurrent ? (
-              <View style={styles.currentDeliveryBadge}>
-                <Text style={styles.currentDeliveryBadgeText}>배송 중</Text>
-              </View>
-            ) : null}
-          </View>
+        <View style={styles.orderCopy}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.destinationName,
+              isCompleted && styles.completedPrimaryText,
+            ]}
+          >
+            {group.destinationName}
+          </Text>
           <Text
             numberOfLines={2}
             style={[styles.address, isCompleted && styles.completedSecondaryText]}
@@ -414,164 +417,35 @@ function DestinationGroupRow({
           >
             주문 {group.orderCount}건
           </Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel={`${group.destinationName} 주문 ${group.orderCount}건 ${isExpanded ? '접기' : '펼치기'}`}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: isExpanded }}
-          onPress={() => setIsExpanded((expanded) => !expanded)}
-          style={({ pressed }) => [
-            styles.orderRight,
-            pressed && styles.groupRowPressed,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.groupConditions,
-              isCompleted && styles.completedSecondaryText,
-            ]}
-          >
-            {group.conditionCodes.join(' · ')}
-          </Text>
-          <View style={styles.groupBoxLine}>
-            <Text style={[styles.boxCount, isCompleted && styles.completedBoxText]}>
-              {group.boxCount}박스
-            </Text>
+        </View>
+        <View style={styles.orderRight}>
+          {isCurrent ? (
+            <View style={styles.currentDeliveryBadge}>
+              <Text style={styles.currentDeliveryBadgeText}>배송 중</Text>
+            </View>
+          ) : null}
+          <View style={styles.orderRightDetails}>
             <Text
+              numberOfLines={1}
               style={[
-                styles.accordionChevron,
+                styles.groupConditions,
                 isCompleted && styles.completedSecondaryText,
               ]}
             >
-              {isExpanded ? '▴' : '▾'}
+              {group.conditionCodes.join(' · ')}
+            </Text>
+            <Text style={[styles.boxCount, isCompleted && styles.completedBoxText]}>
+              {group.boxCount}박스
             </Text>
           </View>
-        </Pressable>
-      </View>
-
-      {isExpanded ? (
-        <View
-          style={[
-            styles.groupOrders,
-            isCompleted && styles.groupOrdersCompleted,
-            isCurrent && styles.groupOrdersCurrent,
-          ]}
-        >
-          {group.orders.map((order, orderIndex) => (
-            <View key={order.id} style={styles.groupOrderItem}>
-              <View style={styles.groupOrderRow}>
-                <Text
-                  style={[
-                    styles.groupOrderLabel,
-                    isCompleted && styles.completedSecondaryText,
-                  ]}
-                >
-                  주문 {orderIndex + 1}
-                </Text>
-                <ConditionBadge
-                  conditionCode={order.conditionCode}
-                  highlighted={isCurrent}
-                  muted={isCompleted}
-                />
-                <Text
-                  style={[
-                    styles.groupOrderBoxes,
-                    isCompleted && styles.completedBoxText,
-                  ]}
-                >
-                  {order.shippedBoxes}박스
-                </Text>
-              </View>
-
-              {order.driverMessages?.map((message) => (
-                <View key={message.messageId} style={styles.orderNotice}>
-                  <Text style={styles.orderNoticeLabel}>배송원 메모</Text>
-                  <Text style={styles.orderNoticeText}>{message.body}</Text>
-                  {message.readAt === null ? (
-                    <OrderNoticeButton
-                      disabled={isOrderActionPending}
-                      label="메모 확인"
-                      onPress={() => onReadDriverMessage(message.messageId)}
-                    />
-                  ) : (
-                    <Text style={styles.orderNoticeRead}>확인됨</Text>
-                  )}
-                </View>
-              ))}
-
-              {order.pendingTimeConstraintChange ? (
-                <View style={styles.orderNotice}>
-                  <Text style={styles.orderNoticeLabel}>배송 시간 변경</Text>
-                  <Text style={styles.orderNoticeText}>
-                    {formatTimeWindow(
-                      order.pendingTimeConstraintChange.timeWindow,
-                      timezone,
-                    )}
-                  </Text>
-                  <OrderNoticeButton
-                    disabled={isOrderActionPending}
-                    label="시간 변경 확인"
-                    onPress={() => onAcknowledgeTimeConstraint(order.id)}
-                  />
-                </View>
-              ) : null}
-            </View>
-          ))}
         </View>
-      ) : null}
+      </Pressable>
     </View>
   );
 }
 
-function OrderNoticeButton({
-  disabled,
-  label,
-  onPress,
-}: {
-  disabled: boolean;
-  label: string;
-  onPress(): void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.orderNoticeButton,
-        disabled && styles.orderNoticeButtonDisabled,
-        pressed && styles.buttonPressed,
-      ]}
-    >
-      <Text style={styles.orderNoticeButtonText}>{disabled ? '처리 중' : label}</Text>
-    </Pressable>
-  );
-}
-
-function formatTimeWindow(
-  timeWindow: { end: string; start: string } | null,
-  timezone: string,
-): string {
-  if (timeWindow === null) return '지정 시간 없음';
-  const formatter = new Intl.DateTimeFormat('ko-KR', {
-    hour: '2-digit',
-    hour12: false,
-    minute: '2-digit',
-    timeZone: timezone,
-  });
-  return `${formatter.format(new Date(timeWindow.start))}–${formatter.format(new Date(timeWindow.end))}`;
-}
-
-function ConditionBadge({
-  conditionCode,
-  highlighted = false,
-  muted = false,
-}: {
+function ConditionBadge({ conditionCode }: {
   conditionCode: DeliveryConditionCode;
-  highlighted?: boolean;
-  muted?: boolean;
 }) {
   const isCold = conditionCode === 'COLD';
 
@@ -580,18 +454,12 @@ function ConditionBadge({
       style={[
         styles.conditionBadge,
         isCold && styles.conditionBadgeCold,
-        highlighted && styles.conditionBadgeHighlighted,
-        highlighted && isCold && styles.conditionBadgeColdHighlighted,
-        muted && styles.conditionBadgeMuted,
       ]}
     >
       <Text
         style={[
           styles.conditionBadgeText,
           isCold && styles.conditionBadgeTextCold,
-          highlighted && styles.conditionBadgeTextHighlighted,
-          highlighted && isCold && styles.conditionBadgeTextColdHighlighted,
-          muted && styles.conditionBadgeTextMuted,
         ]}
       >
         {conditionCode}
@@ -996,11 +864,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
-  destinationHeading: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
   currentDeliveryBadge: {
     backgroundColor: '#6ce9a6',
     borderColor: '#079455',
@@ -1037,39 +900,23 @@ const styles = StyleSheet.create({
   conditionBadgeTextCold: {
     color: '#0b57d0',
   },
-  conditionBadgeMuted: {
-    backgroundColor: '#e4e7ec',
-  },
-  conditionBadgeTextMuted: {
-    color: '#667085',
-  },
-  conditionBadgeHighlighted: {
-    backgroundColor: '#d9f99d',
-    borderColor: '#84cc16',
-    borderWidth: 1,
-  },
-  conditionBadgeColdHighlighted: {
-    backgroundColor: '#cffafe',
-    borderColor: '#06b6d4',
-  },
-  conditionBadgeTextHighlighted: {
-    color: '#3f6212',
-  },
-  conditionBadgeTextColdHighlighted: {
-    color: '#0e7490',
-  },
   orderRight: {
     alignItems: 'flex-end',
-    gap: 6,
-    justifyContent: 'center',
+    alignSelf: 'stretch',
     maxWidth: '34%',
     minHeight: 48,
     minWidth: 70,
+  },
+  orderRightDetails: {
+    alignItems: 'flex-end',
+    gap: 6,
+    marginTop: 'auto',
   },
   groupOrderCount: {
     color: '#344054',
     fontSize: 11,
     fontWeight: '800',
+    lineHeight: 16,
     marginTop: 2,
   },
   groupConditions: {
@@ -1077,103 +924,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
   },
-  groupBoxLine: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 7,
-  },
-  accordionChevron: {
-    color: '#667085',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  groupOrders: {
-    backgroundColor: '#f8fafc',
-    borderTopColor: '#eaecf0',
-    borderTopWidth: 1,
-    marginBottom: 8,
-    marginLeft: 82,
-    paddingHorizontal: 12,
-  },
-  groupOrdersCompleted: {
-    backgroundColor: '#f2f4f7',
-    borderTopColor: '#d0d5dd',
-  },
-  groupOrdersCurrent: {
-    backgroundColor: '#f0fdf4',
-    borderTopColor: '#abefc6',
-  },
-  groupOrderRow: {
-    alignItems: 'center',
-    borderBottomColor: '#eaecf0',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: 8,
-    minHeight: 44,
-  },
-  groupOrderItem: {
-    borderBottomColor: '#eaecf0',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingBottom: 8,
-  },
-  groupOrderLabel: {
-    color: '#344054',
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  groupOrderBoxes: {
-    color: '#027a48',
-    fontSize: 11,
-    fontWeight: '800',
-    minWidth: 42,
-    textAlign: 'right',
-  },
-  orderNotice: {
-    backgroundColor: '#ffffff',
-    borderColor: '#d0d5dd',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 5,
-    marginBottom: 6,
-    padding: 9,
-  },
-  orderNoticeLabel: {
-    color: '#344054',
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  orderNoticeText: {
-    color: '#475467',
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  orderNoticeRead: {
-    color: '#667085',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  orderNoticeButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#0b57d0',
-    borderRadius: 7,
-    minHeight: 32,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  orderNoticeButtonDisabled: {
-    backgroundColor: '#98a2b3',
-  },
-  orderNoticeButtonText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '800',
-  },
   boxCount: {
     color: '#027a48',
     fontSize: 12,
     fontWeight: '800',
+    lineHeight: 16,
   },
   completedBoxText: {
     color: '#667085',

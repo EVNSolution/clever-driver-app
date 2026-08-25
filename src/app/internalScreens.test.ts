@@ -97,6 +97,15 @@ describe('authenticated driver screens', () => {
     );
 
     assert.match(workspace, /DeliverySpaceScreen/u);
+    assert.match(
+      workspace,
+      /deliveryDateLabel=\{formatDeliveryDate\(route\.deliveryDate\)\}/u,
+    );
+    assert.match(screen, /deliveryDateLabel: string/u);
+    assert.match(
+      screen,
+      /<View style=\{styles\.deliveryDateContext\}>[\s\S]*배송일[\s\S]*\{deliveryDateLabel\}[\s\S]*accessibilityRole="tablist"/u,
+    );
     assert.match(screen, /label="내 배송"/u);
     assert.match(screen, /label="공용 배송"/u);
     assert.match(screen, /상대 배송원이 수락할 때 배정이 변경/u);
@@ -140,18 +149,28 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /↑ 위로 이동|↓ 아래로 이동/u);
   });
 
-  it('expands a destination card to distinguish each order condition and box count', () => {
+  it('keeps destination list cards as read-only summaries without an expand control', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
     );
 
-    assert.match(source, /const \[isExpanded, setIsExpanded\] = useState\(isCurrent\)/u);
-    assert.match(source, /accessibilityState=\{\{ expanded: isExpanded \}\}/u);
-    assert.match(source, /group\.orders\.map/u);
-    assert.match(source, /주문 \{orderIndex \+ 1\}/u);
-    assert.match(source, /order\.conditionCode/u);
-    assert.match(source, /order\.shippedBoxes/u);
+    assert.match(source, /<View style=\{styles\.orderRight\}>/u);
+    assert.match(source, /group\.conditionCodes\.join/u);
+    assert.match(source, /\{group\.boxCount\}박스/u);
+    assert.match(
+      source,
+      /<Pressable[\s\S]*onPress=\{onOpenDeliveryInformation\}[\s\S]*styles\.orderRow/u,
+    );
+    assert.match(source, /<View style=\{styles\.orderCopy\}>/u);
+    assert.doesNotMatch(
+      source,
+      /styles\.orderCopy,[\s\S]*pressed && styles\.groupRowPressed/u,
+    );
+    assert.doesNotMatch(source, /const \[isExpanded, setIsExpanded\]/u);
+    assert.doesNotMatch(source, /accessibilityState=\{\{ expanded: isExpanded \}\}/u);
+    assert.doesNotMatch(source, /accordionChevron/u);
+    assert.doesNotMatch(source, /group\.orders\.map/u);
   });
 
   it('opens order and server-backed destination information in one tabbed sheet', () => {
@@ -223,9 +242,13 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(destinationSheet, /fetch\(/u);
   });
 
-  it('shows driver messages and pending time changes inside the existing order details', () => {
+  it('shows driver messages and pending time changes in the order information sheet', () => {
     const deliveryScreen = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const destinationSheet = readFileSync(
+      join(appDirectory, '../ui/driver/DestinationNotesSheet.tsx'),
       'utf8',
     );
     const workspace = readFileSync(
@@ -233,15 +256,19 @@ describe('authenticated driver screens', () => {
       'utf8',
     );
 
-    assert.match(deliveryScreen, /배송원 메모/u);
-    assert.match(deliveryScreen, /시간 변경 확인/u);
     assert.match(deliveryScreen, /onReadDriverMessage/u);
     assert.match(deliveryScreen, /onAcknowledgeTimeConstraint/u);
+    assert.doesNotMatch(deliveryScreen, /배송원 메모/u);
+    assert.doesNotMatch(deliveryScreen, /시간 변경 확인/u);
+    assert.match(destinationSheet, /배송원 메모/u);
+    assert.match(destinationSheet, /시간 변경 확인/u);
+    assert.match(destinationSheet, /onReadDriverMessage/u);
+    assert.match(destinationSheet, /onAcknowledgeTimeConstraint/u);
     assert.match(workspace, /markDriverOrderMessageRead/u);
     assert.match(workspace, /acknowledgeDriverTimeConstraint/u);
   });
 
-  it('mutes completed delivery groups and opens the active destination', () => {
+  it('mutes completed delivery groups and highlights the active destination', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
@@ -260,10 +287,15 @@ describe('authenticated driver screens', () => {
     );
     assert.match(source, /styles\.destinationGroupCurrent/u);
     assert.match(source, /styles\.currentDeliveryBadge/u);
-    assert.match(source, /highlighted=\{isCurrent\}/u);
-    assert.match(source, /styles\.conditionBadgeHighlighted/u);
-    assert.match(source, /styles\.conditionBadgeColdHighlighted/u);
     assert.match(source, />배송 중</u);
+    assert.match(
+      source,
+      /<View style=\{styles\.orderRight\}>[\s\S]*styles\.currentDeliveryBadge[\s\S]*styles\.orderRightDetails[\s\S]*group\.conditionCodes\.join[\s\S]*group\.boxCount/u,
+    );
+    assert.match(source, /orderRight:[\s\S]*alignSelf: 'stretch'/u);
+    assert.match(source, /orderRightDetails:[\s\S]*marginTop: 'auto'/u);
+    assert.match(source, /groupOrderCount:[\s\S]*lineHeight: 16/u);
+    assert.match(source, /boxCount:[\s\S]*lineHeight: 16/u);
     assert.match(source, /key=\{`\$\{group\.key\}:\$\{progressState\}`\}/u);
     assert.match(workspace, /nextDeliveryStopId=\{route\.nextDeliveryStopId\}/u);
     assert.match(source, /destinationGroupEmphasis:[\s\S]*paddingHorizontal: 9/u);

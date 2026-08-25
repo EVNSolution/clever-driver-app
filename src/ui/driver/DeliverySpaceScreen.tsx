@@ -25,15 +25,18 @@ import {
   type DriverDeliverySpace,
 } from '../../api/dsvDriverDeliverySpace';
 import { useAppDialog } from './AppDialog';
+import { DriverRefreshControl } from './DriverRefreshControl';
 
 type SpaceSection = 'mine' | 'available';
 
 export function DeliverySpaceScreen({
   accessToken,
+  deliveryDateLabel,
   onAssignmentsChanged,
   onBack,
 }: {
   accessToken: string;
+  deliveryDateLabel: string;
   onAssignmentsChanged(): void;
   onBack(): void;
 }) {
@@ -41,28 +44,38 @@ export function DeliverySpaceScreen({
   const [section, setSection] = useState<SpaceSection>('mine');
   const [space, setSpace] = useState<DriverDeliverySpace | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [message, setMessage] = useState<string>();
   const [activeDestinationId, setActiveDestinationId] = useState<string>();
   const [activeHandoffId, setActiveHandoffId] = useState<string>();
   const [transferBundle, setTransferBundle] = useState<DriverDeliveryBundle>();
 
   const refresh = useCallback(async () => {
-    setState('loading');
+    if (isRefreshing) return;
+
+    if (space === null) setState('loading');
+    setIsRefreshing(true);
     setMessage(undefined);
     try {
-      setSpace(await loadDriverDeliverySpace(accessToken));
+      const nextSpace = await loadDriverDeliverySpace(accessToken);
+      setSpace(nextSpace);
+      setLastUpdatedAt(new Date());
       setState('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '주문 목록을 불러오지 못했습니다.');
       setState('error');
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [accessToken]);
+  }, [accessToken, isRefreshing, space]);
 
   useEffect(() => {
     let isActive = true;
     void loadDriverDeliverySpace(accessToken).then((nextSpace) => {
       if (!isActive) return;
       setSpace(nextSpace);
+      setLastUpdatedAt(new Date());
       setState('ready');
     }).catch((error: unknown) => {
       if (!isActive) return;
@@ -172,7 +185,9 @@ export function DeliverySpaceScreen({
             ? `${recipient?.driverName ?? '다른 배송원'} 배송원에게 전달 요청을 보냈습니다.`
             : `${bundle.destinationName} 배송을 가져왔습니다.`,
       );
-      setSpace(await loadDriverDeliverySpace(accessToken));
+      const nextSpace = await loadDriverDeliverySpace(accessToken);
+      setSpace(nextSpace);
+      setLastUpdatedAt(new Date());
       if (action !== 'handoff') onAssignmentsChanged();
     } catch (error) {
       setMessage(commandErrorMessage(error));
@@ -182,7 +197,9 @@ export function DeliverySpaceScreen({
           error.code === 'DESTINATION_BUNDLE_ASSIGNMENT_CHANGED')
       ) {
         try {
-          setSpace(await loadDriverDeliverySpace(accessToken));
+          const nextSpace = await loadDriverDeliverySpace(accessToken);
+          setSpace(nextSpace);
+          setLastUpdatedAt(new Date());
         } catch {
           // Keep the actionable conflict message when refresh also fails.
         }
@@ -205,12 +222,16 @@ export function DeliverySpaceScreen({
       else if (action === 'reject') await rejectDeliveryBundleHandoff(accessToken, requestId);
       else await cancelDeliveryBundleHandoff(accessToken, requestId);
       setMessage(label);
-      setSpace(await loadDriverDeliverySpace(accessToken));
+      const nextSpace = await loadDriverDeliverySpace(accessToken);
+      setSpace(nextSpace);
+      setLastUpdatedAt(new Date());
       if (action === 'accept') onAssignmentsChanged();
     } catch (error) {
       setMessage(commandErrorMessage(error));
       try {
-        setSpace(await loadDriverDeliverySpace(accessToken));
+        const nextSpace = await loadDriverDeliverySpace(accessToken);
+        setSpace(nextSpace);
+        setLastUpdatedAt(new Date());
       } catch {
         // Keep the action failure message when refresh also fails.
       }
@@ -236,6 +257,11 @@ export function DeliverySpaceScreen({
           <Text style={styles.title}>주문 목록</Text>
           <Text style={styles.description}>배송지 전체 묶음을 반납·전달하거나 가져옵니다</Text>
         </View>
+      </View>
+
+      <View style={styles.deliveryDateContext}>
+        <Text style={styles.deliveryDateLabel}>배송일</Text>
+        <Text style={styles.deliveryDateValue}>{deliveryDateLabel}</Text>
       </View>
 
       <View accessibilityRole="tablist" style={styles.sectionTabs}>
@@ -278,6 +304,13 @@ export function DeliverySpaceScreen({
       ) : (
         <ScrollView
           contentContainerStyle={styles.listContent}
+          refreshControl={(
+            <DriverRefreshControl
+              lastUpdatedAt={lastUpdatedAt}
+              onRefresh={() => void refresh()}
+              refreshing={isRefreshing}
+            />
+          )}
           showsVerticalScrollIndicator={false}
         >
           {section === 'mine' && (space?.incomingHandoffs.length ?? 0) > 0 ? (
@@ -625,6 +658,9 @@ const styles = StyleSheet.create({
   headingCopy: { flex: 1, gap: 1 },
   title: { color: '#101828', fontSize: 18, fontWeight: '900' },
   description: { color: '#667085', fontSize: 10, fontWeight: '600' },
+  deliveryDateContext: { alignItems: 'center', backgroundColor: '#eef4ff', borderBottomColor: '#d1e0ff', borderBottomWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  deliveryDateLabel: { color: '#475467', fontSize: 11, fontWeight: '800' },
+  deliveryDateValue: { color: '#1849a9', fontSize: 15, fontWeight: '900' },
   sectionTabs: { backgroundColor: '#ffffff', flexDirection: 'row', paddingHorizontal: 14, paddingTop: 8 },
   sectionTab: { alignItems: 'center', borderBottomColor: 'transparent', borderBottomWidth: 3, flex: 1, justifyContent: 'center', minHeight: 44 },
   sectionTabSelected: { borderBottomColor: '#0b57d0' },
