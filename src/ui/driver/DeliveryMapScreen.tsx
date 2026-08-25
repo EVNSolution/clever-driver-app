@@ -17,20 +17,24 @@ import {
 import { openDestinationMap } from '../../platform/destinationMap';
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import { useAppDialog } from './AppDialog';
+import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryProofModal } from './DeliveryProofModal';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
 type DeliveryMapScreenProps = {
   depotCoordinate: DeliveryCoordinate | null;
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
+  lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
   onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<void>;
   onStartDelivery(): Promise<void>;
+  onRefresh(): void;
   onUploadProof(
     deliveryStopId: string,
     photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
   ): Promise<void>;
   orders: DeliveryOrder[];
+  refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
 };
@@ -38,11 +42,14 @@ type DeliveryMapScreenProps = {
 export function DeliveryMapScreen({
   depotCoordinate,
   etaStatus,
+  lastUpdatedAt,
   nextDeliveryStopId,
   onCompleteDelivery,
   onStartDelivery,
+  onRefresh,
   onUploadProof,
   orders,
+  refreshing,
   serverRouteGeometry,
   timezone,
 }: DeliveryMapScreenProps) {
@@ -185,6 +192,13 @@ export function DeliveryMapScreen({
       <View style={styles.detailsArea}>
         <ScrollView
           contentContainerStyle={styles.deliveryPanelContent}
+          refreshControl={(
+            <DriverRefreshControl
+              lastUpdatedAt={lastUpdatedAt}
+              onRefresh={onRefresh}
+              refreshing={refreshing}
+            />
+          )}
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >

@@ -24,17 +24,25 @@ type InformationTab = 'orders' | 'destination';
 export function DestinationNotesSheet({
   address,
   destinationName,
+  isOrderActionPending,
   notes,
+  onAcknowledgeTimeConstraint,
   onClose,
+  onReadDriverMessage,
   onSave,
   orders,
+  timezone,
 }: {
   address: string;
   destinationName: string;
+  isOrderActionPending: boolean;
   notes: DestinationNotes;
+  onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onClose(): void;
+  onReadDriverMessage(messageId: string): Promise<void>;
   onSave(values: DestinationNoteValues): Promise<void> | void;
   orders: DeliveryOrder[];
+  timezone: string;
 }) {
   const insets = useSafeAreaInsets();
   const [informationTab, setInformationTab] = useState<InformationTab>('orders');
@@ -146,26 +154,65 @@ export function DestinationNotesSheet({
                     <View
                       key={order.id}
                       style={[
-                        styles.orderInformationRow,
+                        styles.orderInformationItem,
                         index < orders.length - 1
                           && styles.orderInformationDivider,
                       ]}
                     >
-                      <Text style={styles.orderInformationLabel}>
-                        주문 {index + 1}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.orderCondition,
-                          order.conditionCode === 'COLD'
-                            && styles.orderConditionCold,
-                        ]}
-                      >
-                        {order.conditionCode}
-                      </Text>
-                      <Text style={styles.orderBoxes}>
-                        {order.shippedBoxes}박스
-                      </Text>
+                      <View style={styles.orderInformationRow}>
+                        <Text style={styles.orderInformationLabel}>
+                          주문 {index + 1}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.orderCondition,
+                            order.conditionCode === 'COLD'
+                              && styles.orderConditionCold,
+                          ]}
+                        >
+                          {order.conditionCode}
+                        </Text>
+                        <Text style={styles.orderBoxes}>
+                          {order.shippedBoxes}박스
+                        </Text>
+                      </View>
+
+                      {order.driverMessages?.map((message) => (
+                        <View key={message.messageId} style={styles.orderNotice}>
+                          <Text style={styles.orderNoticeLabel}>배송원 메모</Text>
+                          <Text style={styles.orderNoticeText}>{message.body}</Text>
+                          {message.readAt === null ? (
+                            <OrderNoticeButton
+                              disabled={isOrderActionPending}
+                              label="메모 확인"
+                              onPress={() => {
+                                void onReadDriverMessage(message.messageId);
+                              }}
+                            />
+                          ) : (
+                            <Text style={styles.orderNoticeRead}>확인됨</Text>
+                          )}
+                        </View>
+                      ))}
+
+                      {order.pendingTimeConstraintChange ? (
+                        <View style={styles.orderNotice}>
+                          <Text style={styles.orderNoticeLabel}>배송 시간 변경</Text>
+                          <Text style={styles.orderNoticeText}>
+                            {formatTimeWindow(
+                              order.pendingTimeConstraintChange.timeWindow,
+                              timezone,
+                            )}
+                          </Text>
+                          <OrderNoticeButton
+                            disabled={isOrderActionPending}
+                            label="시간 변경 확인"
+                            onPress={() => {
+                              void onAcknowledgeTimeConstraint(order.id);
+                            }}
+                          />
+                        </View>
+                      ) : null}
                     </View>
                   ))}
                 </View>
@@ -330,6 +377,34 @@ function InformationTabButton({
   );
 }
 
+function OrderNoticeButton({
+  disabled,
+  label,
+  onPress,
+}: {
+  disabled: boolean;
+  label: string;
+  onPress(): void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.orderNoticeButton,
+        disabled && styles.orderNoticeButtonDisabled,
+        pressed && styles.buttonPressed,
+      ]}
+    >
+      <Text style={styles.orderNoticeButtonText}>
+        {disabled ? '처리 중' : label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function FieldHeader({
   label,
   updatedAt,
@@ -391,6 +466,22 @@ function formatUpdatedAt(updatedAt: string | null): string {
     month: 'short',
     year: 'numeric',
   }).format(new Date(updatedAt));
+}
+
+function formatTimeWindow(
+  timeWindow: { end: string; start: string } | null,
+  timezone: string,
+): string {
+  if (timeWindow === null) return '지정 시간 없음';
+
+  const formatter = new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    timeZone: timezone,
+  });
+
+  return `${formatter.format(new Date(timeWindow.start))}–${formatter.format(new Date(timeWindow.end))}`;
 }
 
 const styles = StyleSheet.create({
@@ -507,12 +598,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  orderInformationItem: {
+    paddingBottom: 10,
+    paddingHorizontal: 14,
+  },
   orderInformationRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
     minHeight: 52,
-    paddingHorizontal: 14,
   },
   orderInformationDivider: {
     borderBottomColor: '#eaecf0',
@@ -543,6 +637,47 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     minWidth: 52,
     textAlign: 'right',
+  },
+  orderNotice: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#d0d5dd',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 5,
+    marginBottom: 6,
+    padding: 9,
+  },
+  orderNoticeLabel: {
+    color: '#344054',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  orderNoticeText: {
+    color: '#475467',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  orderNoticeRead: {
+    color: '#667085',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  orderNoticeButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#0b57d0',
+    borderRadius: 7,
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  orderNoticeButtonDisabled: {
+    backgroundColor: '#98a2b3',
+  },
+  orderNoticeButtonText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
   },
   fieldHeader: {
     gap: 2,

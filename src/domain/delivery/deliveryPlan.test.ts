@@ -7,13 +7,15 @@ import {
   buildDeliveryRouteVisualState,
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
+  PREVIEW_DELIVERY_DATE,
   PREVIEW_DELIVERY_ORDERS,
   resolveDeliveryDestinationProgressState,
 } from './deliveryPlan';
 
 describe('delivery order plan', () => {
   it('keeps a sequence and server-shaped fields on every seller order', () => {
-    assert.ok(PREVIEW_DELIVERY_ORDERS.length >= 7);
+    assert.equal(PREVIEW_DELIVERY_DATE, '2026-08-26');
+    assert.equal(PREVIEW_DELIVERY_ORDERS.length, 14);
     assert.equal(
       new Set(PREVIEW_DELIVERY_ORDERS.map(({ id }) => id)).size,
       PREVIEW_DELIVERY_ORDERS.length,
@@ -31,12 +33,21 @@ describe('delivery order plan', () => {
       assert.ok(Number.isFinite(order.coordinate.latitude));
       assert.ok(Number.isFinite(order.coordinate.longitude));
     }
+
+    const destinationCounts = groupDeliveryOrdersByDestination(
+      PREVIEW_DELIVERY_ORDERS,
+    ).map(({ orderCount }) => orderCount);
+    assert.equal(destinationCounts.length, 8);
+    assert.ok(destinationCounts.every((orderCount) => orderCount <= 2));
   });
 
   it('moves one seller order without moving another order at the same destination', () => {
     const source = PREVIEW_DELIVERY_ORDERS;
     const firstOrder = source[0];
-    const sameDestinationOrder = source[1];
+    const sameDestinationOrder = source.find(
+      (order) => order.id !== firstOrder?.id
+        && order.destinationId === firstOrder?.destinationId,
+    );
 
     assert.ok(firstOrder);
     assert.ok(sameDestinationOrder);
@@ -45,7 +56,10 @@ describe('delivery order plan', () => {
     const moved = moveDeliveryOrderToIndex(source, firstOrder.id, 3);
 
     assert.equal(moved[3]?.id, firstOrder.id);
-    assert.equal(moved[0]?.id, sameDestinationOrder.id);
+    assert.equal(
+      moved.find(({ id }) => id === sameDestinationOrder.id)?.destinationId,
+      sameDestinationOrder.destinationId,
+    );
     assert.deepEqual(
       moved.map(({ sequence }) => sequence),
       moved.map((_, index) => index + 1),
@@ -70,7 +84,7 @@ describe('delivery order plan', () => {
 
     const groups = groupDeliveryOrdersByDestination(orders);
 
-    assert.equal(groups.length, 3);
+    assert.equal(groups.length, 8);
     assert.equal(
       groups.reduce((sum, group) => sum + group.orderCount, 0),
       orders.length,
@@ -81,10 +95,14 @@ describe('delivery order plan', () => {
     );
     assert.deepEqual(groups[0]?.conditionCodes, ['AMBIENT', 'COLD']);
     assert.equal(groups[0]?.orderCount, 3);
-    assert.deepEqual(
-      groups[0]?.orders.map(({ id }) => id),
-      [firstOrder.id, PREVIEW_DELIVERY_ORDERS[1]?.id, movedLocationOrder.id],
-    );
+    assert.deepEqual(groups[0]?.orders.map(({ id }) => id), [
+      firstOrder.id,
+      PREVIEW_DELIVERY_ORDERS.find(
+        (order) => order.id !== firstOrder.id
+          && order.destinationId === firstOrder.destinationId,
+      )?.id,
+      movedLocationOrder.id,
+    ]);
   });
 
   it('keeps a consolidated zero-box order in its destination group', () => {
@@ -116,8 +134,11 @@ describe('delivery order plan', () => {
       duplicateDestinationOrder,
     ]);
 
-    assert.equal(points.length, 3);
-    assert.deepEqual(points.map(({ label }) => label), ['1', '2', '3']);
+    assert.equal(points.length, 8);
+    assert.deepEqual(
+      points.map(({ label }) => label),
+      ['1', '2', '3', '4', '5', '6', '7', '8'],
+    );
     assert.equal(points[0]?.destinationId, firstOrder.destinationId);
     assert.deepEqual(points[0]?.coordinate, [
       firstOrder.coordinate.longitude,
@@ -126,25 +147,32 @@ describe('delivery order plan', () => {
   });
 
   it('colors only server route slices and destination markers by delivery progress', () => {
-    const orders = PREVIEW_DELIVERY_ORDERS.map((order) => ({
+    const destinationOrders = groupDeliveryOrdersByDestination(
+      PREVIEW_DELIVERY_ORDERS,
+    ).slice(0, 3).flatMap(({ orders }) => orders);
+    const orders = destinationOrders.map((order) => ({
       ...order,
-      status: order.destinationId === PREVIEW_DELIVERY_ORDERS[0]?.destinationId
+      status: order.destinationId === destinationOrders[0]?.destinationId
         ? 'DELIVERED'
         : 'READY',
     }));
+    const [firstPoint, secondPoint, thirdPoint] = buildDeliveryDestinationPoints(orders);
+    assert.ok(firstPoint);
+    assert.ok(secondPoint);
+    assert.ok(thirdPoint);
     const routeGeometry = {
       coordinates: [
-        [126.7, 37.4],
-        [126.8, 37.5],
-        [126.814917, 37.574466],
-        [126.9, 37.58],
-        [127.087846, 37.586337],
-        [127.2, 37.6],
+        [126.6, 37.45],
+        firstPoint.coordinate,
+        [126.68, 37.52],
+        secondPoint.coordinate,
+        [126.72, 37.5],
+        thirdPoint.coordinate,
       ] as [number, number][],
       type: 'LineString' as const,
     };
     const currentOrder = orders.find(
-      ({ destinationId }) => destinationId === 'preview-destination-daeju',
+      ({ destinationId }) => destinationId === thirdPoint.destinationId,
     );
     assert.ok(currentOrder);
 
@@ -162,20 +190,23 @@ describe('delivery order plan', () => {
       routeGeometry.coordinates[0],
       routeGeometry.coordinates[1],
       routeGeometry.coordinates[2],
+      routeGeometry.coordinates[3],
     ]);
     assert.deepEqual(visualState.currentGeometry?.coordinates, [
-      routeGeometry.coordinates[2],
       routeGeometry.coordinates[3],
       routeGeometry.coordinates[4],
+      routeGeometry.coordinates[5],
     ]);
     assert.equal(visualState.upcomingGeometry, routeGeometry);
   });
 
   it('classifies grouped delivery rows from completed orders and the active stop', () => {
-    const orders = PREVIEW_DELIVERY_ORDERS.map((order, index) => ({
-      ...order,
-      status: index < 2 ? 'DELIVERED' : 'READY',
-    }));
+    const orders = groupDeliveryOrdersByDestination(PREVIEW_DELIVERY_ORDERS)
+      .slice(0, 3)
+      .flatMap(({ orders }, groupIndex) => orders.map((order) => ({
+        ...order,
+        status: groupIndex === 0 ? 'DELIVERED' : 'READY',
+      })));
     const groups = groupDeliveryOrdersByDestination(orders);
     const activeOrder = groups[1]?.orders[0];
     assert.ok(activeOrder);
@@ -190,7 +221,10 @@ describe('delivery order plan', () => {
 
   it('summarizes the server-selected next stop destination', () => {
     const firstOrder = PREVIEW_DELIVERY_ORDERS[0];
-    const secondOrder = PREVIEW_DELIVERY_ORDERS[1];
+    const secondOrder = PREVIEW_DELIVERY_ORDERS.find(
+      (order) => order.id !== firstOrder?.id
+        && order.destinationId === firstOrder?.destinationId,
+    );
     assert.ok(firstOrder);
     assert.ok(secondOrder);
     const thirdOrder = {

@@ -63,6 +63,8 @@ export function DriverWorkspace({
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [isRefreshingRoute, setIsRefreshingRoute] = useState(false);
+  const [lastRouteUpdatedAt, setLastRouteUpdatedAt] = useState<Date | null>(null);
   const [selectedRoutePlanId, setSelectedRoutePlanId] = useState<string>();
   const [loadErrorMessage, setLoadErrorMessage] = useState<string>();
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'empty' | 'error'>(
@@ -136,6 +138,7 @@ export function DriverWorkspace({
       setIsSequenceEditing(false);
       setLoadErrorMessage(undefined);
       setSelectedRoutePlanId(nextRoute?.routePlanId);
+      setLastRouteUpdatedAt(new Date());
       setLoadState(nextRoute === null ? 'empty' : 'ready');
     }).catch((error: unknown) => {
       if (!isActive) {
@@ -148,6 +151,8 @@ export function DriverWorkspace({
         error instanceof DriverRouteApiError ? error.message : undefined,
       );
       setLoadState('error');
+    }).finally(() => {
+      if (isActive) setIsRefreshingRoute(false);
     });
 
     return () => {
@@ -157,6 +162,13 @@ export function DriverWorkspace({
 
   function retryRouteLoad() {
     setLoadState('loading');
+    setLoadAttempt((attempt) => attempt + 1);
+  }
+
+  function refreshRoute() {
+    if (isRefreshingRoute || loadState === 'loading') return;
+
+    setIsRefreshingRoute(true);
     setLoadAttempt((attempt) => attempt + 1);
   }
 
@@ -324,6 +336,7 @@ export function DriverWorkspace({
             {isDeliverySpaceOpen ? (
               <DeliverySpaceScreen
                 accessToken={route.routeAccessToken}
+                deliveryDateLabel={formatDeliveryDate(route.deliveryDate)}
                 onAssignmentsChanged={() => setLoadAttempt((attempt) => attempt + 1)}
                 onBack={closeDeliverySpace}
               />
@@ -338,14 +351,17 @@ export function DriverWorkspace({
                   deliveryDate={route.deliveryDate}
                   destinationNotesById={route.destinationNotesById}
                   isEditing={isSequenceEditing}
+                  lastUpdatedAt={lastRouteUpdatedAt}
                   nextDeliveryStopId={route.nextDeliveryStopId}
                   onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
                   onEditingChange={changeSequenceEditing}
                   onOpenDeliverySpace={openDeliverySpace}
                   onOrdersChange={setOrders}
                   onReadDriverMessage={readDriverMessage}
+                  onRefresh={refreshRoute}
                   onSaveDestinationNotes={saveDestinationNotes}
                   orders={orders}
+                  refreshing={isRefreshingRoute}
                   serverRouteGeometry={route.serverRouteGeometry}
                   timezone={route.timezone}
                 />
@@ -354,11 +370,14 @@ export function DriverWorkspace({
               <DeliveryMapScreen
                 depotCoordinate={route.depotCoordinate}
                 etaStatus={route.etaStatus}
+                lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onCompleteDelivery={completeDelivery}
                 onStartDelivery={startDelivery}
+                onRefresh={refreshRoute}
                 onUploadProof={uploadDeliveryProof}
                 orders={orders}
+                refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
                 timezone={route.timezone}
               />

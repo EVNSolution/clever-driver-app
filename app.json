@@ -3,7 +3,7 @@
     "name": "CLEVER Driver",
     "slug": "clever-driver-app",
     "scheme": "clever-driver",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -17,7 +17,7 @@
     "android": {
       "package": "com.evnsolution.clever.driver",
       "predictiveBackGestureEnabled": true,
-      "versionCode": 7,
+      "versionCode": 8,
       "googleServicesFile": "./.private/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#C7D833"
