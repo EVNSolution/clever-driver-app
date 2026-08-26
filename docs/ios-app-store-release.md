@@ -40,6 +40,8 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 | EAS 소유 계정 | 조직 계정 `evandsolution`으로 생성됨 | 준비됨 |
 | EAS iOS 빌드 | 프로젝트의 iOS build history가 비어 있음 | 차단 |
 | Apple Developer 팀 | 팀 ID, 조직 가입 상태, 계약 상태를 현재 저장소에서 확인할 수 없음 | 차단 |
+| 로컬 Apple 도구 | 전체 Xcode가 없고 Command Line Tools만 활성화됨 | 로컬 archive/Simulator 차단 |
+| 로컬 코드서명 | 개발용 identity 1개, Distribution identity와 provisioning profile 없음 | 로컬 배포 차단 |
 | App Store Connect 앱 | Apple ID/`ascAppId`가 없음 | 차단 |
 | 앱 아이콘 | 저장소에 iOS용 1024×1024 불투명 원본이 없음 | 차단 |
 | 개인정보처리방침 | 공개 URL은 `200`이지만 운영자·문의 채널이 미확정인 초안 | 차단 |
@@ -77,6 +79,12 @@ npx eas-cli@latest init \
 ID가 모두 같아야 한다. App Store Connect 앱이 생성되면 `eas.json`의
 `submit.production.ios.ascAppId`를 실제 Apple ID로 설정한다. Apple ID, Team ID,
 App Store Connect API key는 저장소에 직접 기록하지 않는다.
+
+현재 Mac은 전체 Xcode가 아니라 Command Line Tools만 활성화돼 있고, 조직용
+Apple Distribution identity와 provisioning profile도 없다. 로컬 개인 개발 identity를
+정식 배포에 재사용하지 않는다. 최초 TestFlight 후보는 승인된 조직 Apple Team과 EAS
+remote credentials로 만들고, 로컬 Simulator 캡처가 필요하면 별도로 전체 Xcode와 해당
+iOS runtime을 설치한 뒤 진행한다.
 
 ### SDK와 의존성 게이트
 
@@ -273,6 +281,7 @@ Connect의 전용 필드에만 입력한다.
 - [ ] 프로덕션 의존성 high 감사 결과 해소 또는 항목별 노출 근거 승인
 - [ ] EAS 조직 owner 승인과 프로젝트 연결
 - [ ] Apple Developer 조직 가입, 계약, Team ID 확인
+- [ ] 조직용 Apple Distribution/EAS remote signing credentials 준비
 - [ ] App Store Connect 앱과 `ascAppId` 생성
 - [ ] 최종 앱 아이콘 적용
 - [ ] 계정 삭제 UI와 서버 오류 처리 검증
