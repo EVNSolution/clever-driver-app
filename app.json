@@ -21,6 +21,10 @@
       "predictiveBackGestureEnabled": true,
       "versionCode": 11,
       "googleServicesFile": "./.private/google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/branding/driver-app-icon-foreground.png",
+        "backgroundColor": "#0B57D0"
+      },
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
