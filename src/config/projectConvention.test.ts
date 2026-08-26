@@ -14,6 +14,7 @@ type ExpoConfig = {
       bundleIdentifier: string;
     };
     android: {
+      blockedPermissions: string[];
       package: string;
       versionCode: number;
     };
@@ -41,6 +42,11 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   );
   assert.equal(appConfig.expo.icon, './assets/branding/driver-app-icon.png');
   assert.equal('adaptiveIcon' in appConfig.expo.android, false);
+  assert.ok(
+    appConfig.expo.android.blockedPermissions.includes(
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    ),
+  );
 
   const icon = readFileSync(
     new URL('../../assets/branding/driver-app-icon.png', import.meta.url),
@@ -64,4 +70,28 @@ test('keeps signed iOS candidates on reviewed EAS profiles', () => {
   assert.equal(easConfig.build.preview.distribution, 'internal');
   assert.equal(easConfig.build.production.distribution, 'store');
   assert.equal(easConfig.build.production.credentialsSource, 'remote');
+});
+
+test('keeps Google Play submissions on internal testing until promotion', () => {
+  const easConfig = JSON.parse(
+    readFileSync(new URL('../../eas.json', import.meta.url), 'utf8'),
+  ) as {
+    build: {
+      production: { android: { buildType: string } };
+    };
+    submit: {
+      production: { android: { track: string } };
+    };
+  };
+
+  assert.equal(easConfig.build.production.android.buildType, 'app-bundle');
+  assert.equal(easConfig.submit.production.android.track, 'internal');
+
+  const dynamicConfig = readFileSync(
+    new URL('../../app.config.js', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(dynamicConfig, /process\.env\.GOOGLE_SERVICES_JSON/);
+  assert.match(dynamicConfig, /appConfig\.android\.googleServicesFile/);
 });

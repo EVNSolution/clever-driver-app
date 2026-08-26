@@ -20,6 +20,10 @@
 
 - CLEVER Driver는 iOS와 Android 네이티브 앱으로만 제공한다. 웹앱과 PWA는
   설치 대안이나 운영 폴백으로 만들지 않는다.
+- Android 현장 파일럿은 Google Play internal testing으로 먼저 검증한다. 검증한
+  동일 AAB만 production 후보로 승격하며 production 직전에 다시 빌드하지 않는다.
+- Google Drive 직접 설치 APK와 Google Play AAB는 서명 체계가 다르다. 기존 Drive
+  설치본은 Play 설치본으로 자동 업데이트되지 않으며 전환 시 삭제 후 재설치한다.
 - iOS 현장 파일럿은 TestFlight 외부 테스트로 배포하고, 정식 운영은 검색과
   차트에 노출되지 않는 Unlisted App Store 배포를 사용한다.
 - iOS Ad Hoc 빌드는 등록된 내부 QA 기기에서만 사용한다. 배송원 정식 배포나

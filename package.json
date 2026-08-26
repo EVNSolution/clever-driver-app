@@ -14,6 +14,7 @@
     "check:workspace": "npm run typecheck && npm run test",
     "build": "npm run build:android && npm run build:ios",
     "build:android": "expo export -p android --output-dir dist/android",
+    "build:android:play": "npx eas-cli build --platform android --profile production",
     "build:android:release:apk": "export NODE_ENV=production && npx expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease --build-cache -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxMetaspaceSize=1g' -PreactNativeArchitectures=armeabi-v7a,arm64-v8a",
     "build:ios": "expo export -p ios --output-dir dist/ios",
     "build:ios:preview": "npx eas-cli build --platform ios --profile preview",
