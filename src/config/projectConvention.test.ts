@@ -4,15 +4,22 @@ import test from 'node:test';
 
 type ExpoConfig = {
   expo: {
+    icon: string;
     name: string;
     owner: string;
     slug: string;
     scheme: string;
+    version: string;
     ios: {
       bundleIdentifier: string;
     };
     android: {
+      adaptiveIcon: {
+        backgroundColor: string;
+        foregroundImage: string;
+      };
       package: string;
+      versionCode: number;
     };
   };
 };
@@ -26,6 +33,8 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   assert.equal(appConfig.expo.owner, 'evandsolution');
   assert.equal(appConfig.expo.slug, 'clever-driver-app');
   assert.equal(appConfig.expo.scheme, 'clever-driver');
+  assert.equal(appConfig.expo.version, '0.1.10');
+  assert.equal(appConfig.expo.android.versionCode, 11);
   assert.equal(
     appConfig.expo.ios.bundleIdentifier,
     'com.evnsolution.clever.driver',
@@ -34,6 +43,23 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     appConfig.expo.android.package,
     appConfig.expo.ios.bundleIdentifier,
   );
+  assert.equal(appConfig.expo.icon, './assets/branding/driver-app-icon.png');
+  assert.deepEqual(appConfig.expo.android.adaptiveIcon, {
+    backgroundColor: '#0B57D0',
+    foregroundImage: './assets/branding/driver-app-icon-foreground.png',
+  });
+
+  for (const iconPath of [
+    '../../assets/branding/driver-app-icon.png',
+    '../../assets/branding/driver-app-icon-foreground.png',
+  ]) {
+    const icon = readFileSync(new URL(iconPath, import.meta.url));
+    assert.equal(icon.subarray(1, 4).toString('ascii'), 'PNG');
+    assert.equal(icon.readUInt32BE(16), 1024);
+    assert.equal(icon.readUInt32BE(20), 1024);
+  }
+  assert.equal(readFileSync(new URL('../../assets/branding/driver-app-icon.png', import.meta.url))[25], 2);
+  assert.equal(readFileSync(new URL('../../assets/branding/driver-app-icon-foreground.png', import.meta.url))[25], 6);
 });
 
 test('keeps signed iOS candidates on reviewed EAS profiles', () => {
