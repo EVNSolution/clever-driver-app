@@ -1,5 +1,8 @@
 # Android Google Drive release
 
+APK 생성 환경, 성능 기준과 지연 대응은
+[`Android APK 빌드 런북`](./android-build-runbook.md)을 따른다.
+
 ## 고정 배포 계약
 
 CLEVER Driver의 직접 설치 APK는 Google Drive의 파일 하나를 계속 갱신한다.

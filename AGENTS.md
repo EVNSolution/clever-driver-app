@@ -78,6 +78,8 @@ control-plane preflight와 명시적인 대상 저장소가 준비된 뒤 진행
 
 ## Android 직접 배포
 
+- Android APK 빌드는 `docs/android-build-runbook.md`를 따르고, 매 릴리스마다
+  새로 clone하지 않고 영구 릴리스 작업공간의 Gradle 캐시를 재사용한다.
 - Google Drive 배포 파일은 `clever-driver-latest.apk`, 파일 ID는
   `1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y`로 고정한다.
 - 새 파일이나 버전별 파일명을 만들지 않고 기존 Drive 파일 ID의 APK 내용만 교체한다.
