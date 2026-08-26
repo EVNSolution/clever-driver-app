@@ -15,6 +15,10 @@ type ExpoConfig = {
     };
     android: {
       blockedPermissions: string[];
+      adaptiveIcon: {
+        backgroundColor: string;
+        foregroundImage: string;
+      };
       package: string;
       versionCode: number;
     };
@@ -41,12 +45,15 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     appConfig.expo.ios.bundleIdentifier,
   );
   assert.equal(appConfig.expo.icon, './assets/branding/driver-app-icon.png');
-  assert.equal('adaptiveIcon' in appConfig.expo.android, false);
   assert.ok(
     appConfig.expo.android.blockedPermissions.includes(
       'android.permission.SYSTEM_ALERT_WINDOW',
     ),
   );
+  assert.deepEqual(appConfig.expo.android.adaptiveIcon, {
+    backgroundColor: '#0B57D0',
+    foregroundImage: './assets/branding/driver-app-icon-foreground.png',
+  });
 
   const icon = readFileSync(
     new URL('../../assets/branding/driver-app-icon.png', import.meta.url),
@@ -55,6 +62,14 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   assert.equal(icon.readUInt32BE(16), 1024);
   assert.equal(icon.readUInt32BE(20), 1024);
   assert.equal(icon[25], 2);
+
+  const adaptiveForeground = readFileSync(
+    new URL('../../assets/branding/driver-app-icon-foreground.png', import.meta.url),
+  );
+  assert.equal(adaptiveForeground.subarray(1, 4).toString('ascii'), 'PNG');
+  assert.equal(adaptiveForeground.readUInt32BE(16), 1024);
+  assert.equal(adaptiveForeground.readUInt32BE(20), 1024);
+  assert.equal(adaptiveForeground[25], 6);
 });
 
 test('keeps signed iOS candidates on reviewed EAS profiles', () => {
