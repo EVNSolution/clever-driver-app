@@ -35,10 +35,8 @@ export function classifyDriverAppUpdate(input: {
 
 export function shouldPresentDriverAppUpdate(input: {
   dismissedOptionalVersionCode: number | null;
-  isDeliveryActive: boolean;
   state: DriverAppUpdateState;
 }): boolean {
-  if (input.isDeliveryActive) return false;
   if (input.state.kind === 'required_update') return true;
   if (input.state.kind !== 'optional_update') return false;
   return input.dismissedOptionalVersionCode !== input.state.release.latestVersionCode;
@@ -61,17 +59,6 @@ export function retainDriverAppUpdateAfterLookupFailure(
   return currentState.kind === 'checking'
     ? { kind: 'unavailable' }
     : currentState;
-}
-
-export function resolveDeliveryActivityForUpdate(input: {
-  loadState: 'loading' | 'ready' | 'empty' | 'error';
-  nextDeliveryStopId: string | null;
-  pickupCompletedAt: string | null;
-}): boolean | null {
-  if (input.loadState === 'loading' || input.loadState === 'error') return null;
-  return input.loadState === 'ready'
-    && input.pickupCompletedAt !== null
-    && input.nextDeliveryStopId !== null;
 }
 
 export function readDriverAppRelease(value: unknown): DriverAppRelease {

@@ -5,6 +5,7 @@ import test from 'node:test';
 type ExpoConfig = {
   expo: {
     name: string;
+    owner: string;
     slug: string;
     scheme: string;
     ios: {
@@ -22,6 +23,7 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   ) as ExpoConfig;
 
   assert.equal(appConfig.expo.name, 'CLEVER Driver');
+  assert.equal(appConfig.expo.owner, 'evandsolution');
   assert.equal(appConfig.expo.slug, 'clever-driver-app');
   assert.equal(appConfig.expo.scheme, 'clever-driver');
   assert.equal(
@@ -32,4 +34,19 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     appConfig.expo.android.package,
     appConfig.expo.ios.bundleIdentifier,
   );
+});
+
+test('keeps signed iOS candidates on reviewed EAS profiles', () => {
+  const easConfig = JSON.parse(
+    readFileSync(new URL('../../eas.json', import.meta.url), 'utf8'),
+  ) as {
+    build: {
+      preview: { distribution: string };
+      production: { credentialsSource: string; distribution: string };
+    };
+  };
+
+  assert.equal(easConfig.build.preview.distribution, 'internal');
+  assert.equal(easConfig.build.production.distribution, 'store');
+  assert.equal(easConfig.build.production.credentialsSource, 'remote');
 });

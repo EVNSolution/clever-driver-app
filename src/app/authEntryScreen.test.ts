@@ -19,7 +19,7 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /backgroundColor: '#0b57d0'/u);
   });
 
-  it('keeps registration behind a validated invite and removes the normal signup route', () => {
+  it('offers direct signup while retaining legacy invite-link compatibility', () => {
     const source = readFileSync(authScreenPath, 'utf8');
     const appRoot = readFileSync(appRootPath, 'utf8');
 
@@ -28,9 +28,9 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /label="이름"/u);
     assert.match(source, /label="휴대전화 번호"/u);
     assert.doesNotMatch(source, /label="주민등록번호 앞 7자리"/u);
-    assert.match(source, /residentNumberFront: null/u);
+    assert.doesNotMatch(source, /residentNumberFront/u);
     assert.match(source, /signupInviteToken/u);
-    assert.match(source, /직접 입력하면 배송원으로 자동 등록됩니다/u);
+    assert.match(source, /회원가입/u);
     assert.match(source, /label="비밀번호 확인"/u);
     assert.doesNotMatch(source, /ModeButton/u);
     assert.doesNotMatch(source, /accessibilityRole="tab"/u);
@@ -88,23 +88,18 @@ describe('DSV authentication entry screen', () => {
     assert.match(appRoot, /setAutoLoginEnabled\(false\)/u);
   });
 
-  it('rechecks the installed app without interrupting an active delivery', () => {
+  it('rechecks the installed app in the background and presents available updates', () => {
     const appRoot = readFileSync(appRootPath, 'utf8');
-    const workspace = readFileSync(
-      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
-      'utf8',
-    );
-
     assert.match(appRoot, /fetchDriverAndroidAppRelease/u);
     assert.match(appRoot, /readInstalledDriverAppVersion/u);
     assert.match(appRoot, /AppState\.addEventListener\('change'/u);
     assert.match(appRoot, /shouldPresentDriverAppUpdate/u);
-    assert.match(appRoot, /onDeliveryActivityChange=\{setIsDeliveryActive\}/u);
-    assert.match(workspace, /resolveDeliveryActivityForUpdate/u);
     assert.match(appRoot, /APP_UPDATE_FAILURE_RETRY_INTERVAL_MS/u);
     assert.match(appRoot, /retainDriverAppUpdateAfterLookupFailure/u);
     assert.match(appRoot, /DriverAppUpdateScreen/u);
-    assert.match(appRoot, /Linking\.openURL\(appUpdateState\.release\.installUrl\)/u);
+    assert.match(appRoot, /Linking\.openURL\(DRIVER_APP_INSTALL_PAGE_URL\)/u);
+    assert.doesNotMatch(appRoot, /\{appUpdateState\.kind === 'checking' \?/u);
+    assert.match(appRoot, /checkForAppUpdate\(true\)/u);
   });
 
   it('shows concrete linked and unlinked success states in Korean', () => {

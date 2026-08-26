@@ -1,9 +1,10 @@
 {
   "expo": {
     "name": "CLEVER Driver",
+    "owner": "evandsolution",
     "slug": "clever-driver-app",
     "scheme": "clever-driver",
-    "version": "0.1.8",
+    "version": "0.1.9",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -17,7 +18,7 @@
     "android": {
       "package": "com.evnsolution.clever.driver",
       "predictiveBackGestureEnabled": true,
-      "versionCode": 9,
+      "versionCode": 10,
       "googleServicesFile": "./.private/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#C7D833"
@@ -29,7 +30,10 @@
     },
     "extra": {
       "projectStartIssue": "EVNSolution/clever-change-control#240",
-      "frameworkBootstrapIssue": "EVNSolution/clever-driver-app#1"
+      "frameworkBootstrapIssue": "EVNSolution/clever-driver-app#1",
+      "eas": {
+        "projectId": "f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd"
+      }
     },
     "plugins": [
       "expo-secure-store",

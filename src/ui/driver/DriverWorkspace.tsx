@@ -29,7 +29,6 @@ import {
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
 } from '../../api/dsvDriverRoute';
-import { resolveDeliveryActivityForUpdate } from '../../domain/appUpdate/driverAppUpdate';
 import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
 import type {
   DestinationNotes,
@@ -45,14 +44,12 @@ type DriverWorkspaceTab = 'delivery' | 'map';
 
 type DriverWorkspaceProps = {
   authSession: DriverAuthSession;
-  onDeliveryActivityChange(isActive: boolean | null): void;
   onLogout(): void;
   refreshRequestKey: number;
 };
 
 export function DriverWorkspace({
   authSession,
-  onDeliveryActivityChange,
   onLogout,
   refreshRequestKey,
 }: DriverWorkspaceProps) {
@@ -73,16 +70,6 @@ export function DriverWorkspace({
   const lastRootBackAtRef = useRef<number | null>(null);
   const driverName =
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
-
-  useEffect(() => {
-    onDeliveryActivityChange(resolveDeliveryActivityForUpdate({
-      loadState,
-      nextDeliveryStopId: route?.nextDeliveryStopId ?? null,
-      pickupCompletedAt: route?.pickupCompletedAt ?? null,
-    }));
-  }, [loadState, onDeliveryActivityChange, route]);
-
-  useEffect(() => () => onDeliveryActivityChange(null), [onDeliveryActivityChange]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
