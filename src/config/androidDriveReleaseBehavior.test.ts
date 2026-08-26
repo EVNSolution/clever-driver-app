@@ -57,6 +57,7 @@ case "$2" in
   application-id) printf 'com.evnsolution.clever.driver' ;;
   version-code) printf '7' ;;
   version-name) printf '0.1.7' ;;
+  list) printf '/lib/\n/lib/%s/libapp.so\n' "\${TEST_APK_ABIS:-arm64-v8a}" "armeabi-v7a" ;;
   *) exit 2 ;;
 esac
 `);
@@ -175,6 +176,14 @@ esac
     );
     assert.notEqual(unexpectedSignerResult.status, 0);
     assert.match(unexpectedSignerResult.stderr, /unexpected APK signer certificate/u);
+
+    const unexpectedAbiResult = spawnSync('bash', [publishScript, '--apk', apkPath], {
+      cwd: repository,
+      encoding: 'utf8',
+      env: { ...baseEnvironment, TEST_APK_ABIS: 'x86_64' },
+    });
+    assert.notEqual(unexpectedAbiResult.status, 0);
+    assert.match(unexpectedAbiResult.stderr, /APK ABIs must be/u);
   });
 });
 
