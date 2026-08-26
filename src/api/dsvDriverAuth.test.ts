@@ -42,7 +42,7 @@ describe('DSV driver auth API client', () => {
     delete (globalThis as { fetch?: unknown }).fetch;
   });
 
-  it('posts registration data to the approved DSV endpoint', async () => {
+  it('posts direct registration identity without an invite token', async () => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
     const calls: { input: string | URL | Request; init?: RequestInit }[] = [];
     globalThis.fetch = async (input, init) => {
@@ -62,8 +62,7 @@ describe('DSV driver auth API client', () => {
       password: 'password123',
       name: '홍길동',
       phone: '01012345678',
-      residentNumberFront: null,
-      signupInviteToken: 'A'.repeat(43),
+      signupInviteToken: null,
     });
 
     assert.deepEqual(result, SUCCESS_DATA);
@@ -77,8 +76,7 @@ describe('DSV driver auth API client', () => {
       password: 'password123',
       name: '홍길동',
       phone: '01012345678',
-      residentNumberFront: null,
-      signupInviteToken: 'A'.repeat(43),
+      signupInviteToken: null,
     });
   });
 

@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Platform,
   Pressable,
@@ -33,6 +34,7 @@ import {
   saveDriverAuthSession,
 } from '../auth/driverAuthSessionStore';
 import { readDriverSignupInviteToken } from '../auth/driverSignupInviteLink';
+import { DRIVER_APP_INSTALL_PAGE_URL } from '../config/driverAppInstall';
 import {
   classifyDriverAppUpdate,
   retainDriverAppUpdateAfterLookupFailure,
@@ -55,7 +57,7 @@ const INITIAL_APP_UPDATE_STATE: DriverAppUpdateState =
   Platform.OS === 'android' && INSTALLED_APP_VERSION !== null
     ? { kind: 'checking' }
     : { kind: 'unavailable' };
-const APP_UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const APP_UPDATE_RECHECK_INTERVAL_MS = 5 * 60 * 1_000;
 const APP_UPDATE_FAILURE_RETRY_INTERVAL_MS = 5 * 60 * 1_000;
 
 export function AppRoot() {
@@ -63,7 +65,6 @@ export function AppRoot() {
   const [dismissedOptionalVersionCode, setDismissedOptionalVersionCode] = useState<number | null>(null);
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
-  const [isDeliveryActive, setIsDeliveryActive] = useState<boolean | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [autoLoginEnabled, setAutoLoginEnabled] = useState(true);
   const [autoLoginAttempt, setAutoLoginAttempt] = useState(0);
@@ -128,13 +129,17 @@ export function AppRoot() {
     }, 0);
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void checkForAppUpdate();
+        void checkForAppUpdate(true);
         setNotificationRefreshKey((key) => key + 1);
       }
     });
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') void checkForAppUpdate();
+    }, APP_UPDATE_RECHECK_INTERVAL_MS);
     return () => {
       isMounted.current = false;
       clearTimeout(initialCheck);
+      clearInterval(interval);
       subscription.remove();
     };
   }, [checkForAppUpdate]);
@@ -145,7 +150,6 @@ export function AppRoot() {
     setHasAutoLoginConnectionError(false);
     setSignupInviteAccess(null);
     setSignupInviteError(null);
-    setIsDeliveryActive(null);
     setAuthSession(session);
   }, []);
 
@@ -202,7 +206,6 @@ export function AppRoot() {
     setAutoLoginEnabled(false);
     setHasAutoLoginConnectionError(false);
     setIsRestoringSession(false);
-    setIsDeliveryActive(null);
     setAuthSession(null);
     await clearDriverAuthSession();
   }, []);
@@ -292,12 +295,9 @@ export function AppRoot() {
     return () => clearTimeout(timeout);
   }, [acceptAuthSession, authSession, discardAuthSession]);
 
-  const canPresentAppUpdate = authSession === null
-    ? !isRestoringSession
-    : isDeliveryActive !== null;
+  const canPresentAppUpdate = authSession !== null || !isRestoringSession;
   const shouldShowAppUpdate = canPresentAppUpdate && shouldPresentDriverAppUpdate({
     dismissedOptionalVersionCode,
-    isDeliveryActive: isDeliveryActive === true,
     state: appUpdateState,
   });
 
@@ -307,11 +307,7 @@ export function AppRoot() {
         <SafeAreaProvider>
           <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
-          {appUpdateState.kind === 'checking' ? (
-            <View style={styles.loadingState}>
-              <ActivityIndicator color="#0b57d0" size="large" />
-            </View>
-          ) : shouldShowAppUpdate && (
+          {shouldShowAppUpdate && (
             appUpdateState.kind === 'required_update'
             || appUpdateState.kind === 'optional_update'
           ) ? (
@@ -321,7 +317,14 @@ export function AppRoot() {
               onDismiss={() => {
                 setDismissedOptionalVersionCode(appUpdateState.release.latestVersionCode);
               }}
-              onUpdate={() => { void Linking.openURL(appUpdateState.release.installUrl); }}
+              onUpdate={() => {
+                void Linking.openURL(DRIVER_APP_INSTALL_PAGE_URL).catch(() => {
+                  Alert.alert(
+                    '업데이트 링크 오류',
+                    '설치 페이지를 열지 못했습니다. 잠시 후 다시 시도해 주세요.',
+                  );
+                });
+              }}
               release={appUpdateState.release}
             />
           ) : authSession === null && hasAutoLoginConnectionError ? (
@@ -376,7 +379,6 @@ export function AppRoot() {
           ) : (
             <DriverWorkspace
               authSession={authSession}
-              onDeliveryActivityChange={setIsDeliveryActive}
               onLogout={logout}
               refreshRequestKey={notificationRefreshKey}
             />

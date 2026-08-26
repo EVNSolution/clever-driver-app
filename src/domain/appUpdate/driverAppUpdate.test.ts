@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 import {
   classifyDriverAppUpdate,
   readDriverAppRelease,
-  resolveDeliveryActivityForUpdate,
   retainDriverAppUpdateAfterLookupFailure,
   shouldPresentDriverAppUpdate,
   shouldRecheckDriverAppUpdate,
@@ -50,18 +49,16 @@ describe('driver app update classification', () => {
     assert.throws(() => readDriverAppRelease({ ...release, installUrl: 'http://unsafe.test/app.apk' }));
   });
 
-  it('does not interrupt an active delivery with an update screen', () => {
+  it('presents a required update even when a delivery is active', () => {
     assert.equal(shouldPresentDriverAppUpdate({
       dismissedOptionalVersionCode: null,
-      isDeliveryActive: true,
       state: { kind: 'required_update', release },
-    }), false);
+    }), true);
   });
 
   it('presents a required update when delivery is inactive', () => {
     assert.equal(shouldPresentDriverAppUpdate({
       dismissedOptionalVersionCode: null,
-      isDeliveryActive: false,
       state: { kind: 'required_update', release },
     }), true);
   });
@@ -69,12 +66,10 @@ describe('driver app update classification', () => {
   it('only dismisses the optional release that the driver already saw', () => {
     assert.equal(shouldPresentDriverAppUpdate({
       dismissedOptionalVersionCode: release.latestVersionCode,
-      isDeliveryActive: false,
       state: { kind: 'optional_update', release },
     }), false);
     assert.equal(shouldPresentDriverAppUpdate({
       dismissedOptionalVersionCode: release.latestVersionCode,
-      isDeliveryActive: false,
       state: {
         kind: 'optional_update',
         release: { ...release, latestVersionCode: release.latestVersionCode + 1 },
@@ -114,21 +109,4 @@ describe('driver app update classification', () => {
     );
   });
 
-  it('treats a route error as unknown and pickup completion as active delivery', () => {
-    assert.equal(resolveDeliveryActivityForUpdate({
-      loadState: 'error',
-      nextDeliveryStopId: 'stop-1',
-      pickupCompletedAt: '2026-08-06T00:00:00.000Z',
-    }), null);
-    assert.equal(resolveDeliveryActivityForUpdate({
-      loadState: 'ready',
-      nextDeliveryStopId: 'stop-1',
-      pickupCompletedAt: '2026-08-06T00:00:00.000Z',
-    }), true);
-    assert.equal(resolveDeliveryActivityForUpdate({
-      loadState: 'ready',
-      nextDeliveryStopId: 'stop-1',
-      pickupCompletedAt: null,
-    }), false);
-  });
 });

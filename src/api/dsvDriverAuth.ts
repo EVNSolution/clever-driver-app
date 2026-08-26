@@ -33,8 +33,7 @@ export type RegisterDriverAccountRequest = {
   password: string;
   name: string;
   phone: string;
-  residentNumberFront: string | null;
-  signupInviteToken: string;
+  signupInviteToken: string | null;
 };
 
 export type DriverSignupInvite = {

@@ -62,6 +62,9 @@ export function AuthEntryScreen({
       ...EMPTY_REGISTRATION_FORM,
       name: signupInvite?.invite.driverName ?? '',
     }));
+  const [mode, setMode] = useState<'login' | 'register'>(
+    signupInvite === null ? 'login' : 'register',
+  );
   const [loginErrors, setLoginErrors] = useState<LoginFormErrors>({});
   const [registrationErrors, setRegistrationErrors] =
     useState<RegistrationFormErrors>({});
@@ -102,10 +105,6 @@ export function AuthEntryScreen({
   }
 
   async function handleRegistrationSubmit() {
-    if (signupInvite === null) {
-      setMessage('유효한 가입 링크를 다시 열어 주세요.');
-      return;
-    }
     const errors = validateRegistrationForm(registrationForm);
     setRegistrationErrors(errors);
     setAuthSession(null);
@@ -122,8 +121,7 @@ export function AuthEntryScreen({
         name: registrationForm.name.trim(),
         password: registrationForm.password,
         phone: registrationForm.phoneNumber,
-        residentNumberFront: null,
-        signupInviteToken: signupInvite.token,
+        signupInviteToken: signupInvite?.token ?? null,
       });
       setAuthSession(session);
       setMessage(formatAuthSuccessMessage(session));
@@ -137,8 +135,8 @@ export function AuthEntryScreen({
     }
   }
 
-  const isRegistration = signupInvite !== null;
-  const hasPreRegisteredDriver = isRegistration
+  const isRegistration = mode === 'register';
+  const hasPreRegisteredDriver = signupInvite !== null
     && signupInvite.invite.driverName.trim().length > 0
     && signupInvite.invite.phoneLast4.length === 4;
 
@@ -170,7 +168,7 @@ export function AuthEntryScreen({
               {isRegistration
                 ? hasPreRegisteredDriver
                   ? `초대받은 배송원 정보로 가입합니다. 휴대전화 끝 4자리는 ${signupInvite.invite.phoneLast4}입니다.`
-                  : '이름, 휴대전화 번호와 로그인 정보를 직접 입력하면 배송원으로 자동 등록됩니다.'
+                  : '이름과 휴대전화 번호가 등록된 배송원 정보와 일치하면 자동으로 연결됩니다.'
                 : '가입한 아이디와 비밀번호를 입력해 주세요.'}
             </Text>
           </View>
@@ -345,7 +343,12 @@ export function AuthEntryScreen({
             <Pressable
               accessibilityRole="button"
               disabled={isSubmitting}
-              onPress={onCancelSignup}
+              onPress={() => {
+                setMode('login');
+                setMessage(null);
+                setRegistrationErrors({});
+                onCancelSignup?.();
+              }}
               style={({ pressed }) => [
                 styles.cancelButton,
                 pressed && styles.buttonPressed,
@@ -353,7 +356,23 @@ export function AuthEntryScreen({
             >
               <Text style={styles.cancelButtonText}>로그인으로 돌아가기</Text>
             </Pressable>
-          ) : null}
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSubmitting}
+              onPress={() => {
+                setMode('register');
+                setMessage(null);
+                setLoginErrors({});
+              }}
+              style={({ pressed }) => [
+                styles.cancelButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.cancelButtonText}>회원가입</Text>
+            </Pressable>
+          )}
         </View>
         </KeyboardAwareScrollView>
       </KeyboardToolbar.Group>
@@ -384,13 +403,11 @@ function formatAuthErrorMessage(error: unknown): string {
 
 function LabeledInput({
   error,
-  helperText,
   inputRef,
   label,
   ...inputProps
 }: TextInputProps & {
   error?: string;
-  helperText?: string;
   inputRef?: Ref<TextInput>;
   label: string;
 }) {
@@ -408,8 +425,6 @@ function LabeledInput({
       </View>
       {error !== undefined ? (
         <Text style={styles.errorText}>{error}</Text>
-      ) : helperText !== undefined ? (
-        <Text style={styles.helperText}>{helperText}</Text>
       ) : null}
     </View>
   );
@@ -548,11 +563,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     paddingVertical: 12,
-  },
-  helperText: {
-    color: '#667085',
-    fontSize: 12,
-    lineHeight: 18,
   },
   errorText: {
     color: '#b42318',

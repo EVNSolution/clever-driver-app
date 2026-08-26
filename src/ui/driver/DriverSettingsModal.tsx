@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchDriverAndroidAppRelease } from '../../api/dsvDriverAppRelease';
+import { DRIVER_APP_INSTALL_PAGE_URL } from '../../config/driverAppInstall';
 import type { DriverAppRelease } from '../../domain/appUpdate/driverAppUpdate';
 import {
   readInstalledDriverAppVersion,
@@ -87,7 +88,7 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
   async function openUpdateLink() {
     if (versionCheck.kind !== 'ready') return;
     try {
-      await Linking.openURL(versionCheck.release.installUrl);
+      await Linking.openURL(DRIVER_APP_INSTALL_PAGE_URL);
     } catch {
       showDialog({
         message: '설치 링크를 열지 못했습니다. 잠시 후 다시 시도해 주세요.',
