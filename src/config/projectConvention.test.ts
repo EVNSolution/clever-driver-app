@@ -14,10 +14,6 @@ type ExpoConfig = {
       bundleIdentifier: string;
     };
     android: {
-      adaptiveIcon: {
-        backgroundColor: string;
-        foregroundImage: string;
-      };
       package: string;
       versionCode: number;
     };
@@ -44,10 +40,7 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     appConfig.expo.ios.bundleIdentifier,
   );
   assert.equal(appConfig.expo.icon, './assets/branding/driver-app-icon.png');
-  assert.deepEqual(appConfig.expo.android.adaptiveIcon, {
-    backgroundColor: '#0B57D0',
-    foregroundImage: './assets/branding/driver-app-icon.png',
-  });
+  assert.equal('adaptiveIcon' in appConfig.expo.android, false);
 
   const icon = readFileSync(
     new URL('../../assets/branding/driver-app-icon.png', import.meta.url),
