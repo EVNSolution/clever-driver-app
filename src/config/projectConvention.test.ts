@@ -46,20 +46,16 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   assert.equal(appConfig.expo.icon, './assets/branding/driver-app-icon.png');
   assert.deepEqual(appConfig.expo.android.adaptiveIcon, {
     backgroundColor: '#0B57D0',
-    foregroundImage: './assets/branding/driver-app-icon-foreground.png',
+    foregroundImage: './assets/branding/driver-app-icon.png',
   });
 
-  for (const iconPath of [
-    '../../assets/branding/driver-app-icon.png',
-    '../../assets/branding/driver-app-icon-foreground.png',
-  ]) {
-    const icon = readFileSync(new URL(iconPath, import.meta.url));
-    assert.equal(icon.subarray(1, 4).toString('ascii'), 'PNG');
-    assert.equal(icon.readUInt32BE(16), 1024);
-    assert.equal(icon.readUInt32BE(20), 1024);
-  }
-  assert.equal(readFileSync(new URL('../../assets/branding/driver-app-icon.png', import.meta.url))[25], 2);
-  assert.equal(readFileSync(new URL('../../assets/branding/driver-app-icon-foreground.png', import.meta.url))[25], 6);
+  const icon = readFileSync(
+    new URL('../../assets/branding/driver-app-icon.png', import.meta.url),
+  );
+  assert.equal(icon.subarray(1, 4).toString('ascii'), 'PNG');
+  assert.equal(icon.readUInt32BE(16), 1024);
+  assert.equal(icon.readUInt32BE(20), 1024);
+  assert.equal(icon[25], 2);
 });
 
 test('keeps signed iOS candidates on reviewed EAS profiles', () => {
