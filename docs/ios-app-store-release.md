@@ -1,6 +1,8 @@
 # iOS TestFlight and Unlisted App Store release
 
-이 문서는 CLEVER Driver의 네이티브 iOS 파일럿과 정식 배포 정본이다.
+이 문서는 CLEVER Driver의 App Store Connect 심사와 Unlisted 정식 배포 정본이다.
+EAS 빌드 명령과 TestFlight 업로드의 간단한 실행 절차는 옆 세션이 준비 중인
+`docs/ios-release.md`가 소유하고, 이 문서는 개인정보·심사·릴리스 게이트를 소유한다.
 배포 변경은 `EVNSolution/clever-change-control#240`과
 `EVNSolution/clever-driver-app#29`에 연결한다.
 
@@ -29,10 +31,14 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 | 항목 | 현재 근거 | 판정 |
 | --- | --- | --- |
 | iOS 앱 ID | `com.evnsolution.clever.driver` | 준비됨 |
-| 앱 버전 | `0.1.7`, iOS build `1` | 제출 직전 최종 확인 필요 |
+| 앱 버전 | `dev`는 `0.1.8`, 옆 세션 후보는 `0.1.9`, iOS build `1` | 통합·제출 직전 최종 확인 필요 |
 | EAS 빌드 프로필 | `production`은 `distribution: store`, `autoIncrement: true` | 준비됨 |
-| EAS 프로젝트 | 저장소가 아직 어떤 EAS 프로젝트에도 연결되지 않음 | 차단 |
-| EAS 소유 계정 | 로그인 계정에 `cline12`, `evandsolution`이 모두 존재 | 조직 소유권 확정 필요 |
+| iOS 네이티브 peer 의존성 | `expo-font ~56.0.7`을 직접 설치해 SDK 56 단일 버전으로 정렬 | 준비됨 |
+| Expo 런타임 건전성 | Expo Doctor 20/21 통과, SDK 56 Hermes V1 메모리 회귀 탐지 | 차단 |
+| 프로덕션 의존성 감사 | `npm audit --omit=dev`에서 Expo/Metro 계열 high 10건 | 차단 |
+| EAS 프로젝트 | `@evandsolution/clever-driver-app`, ID `f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd` 생성됨 | 통합 대기 |
+| EAS 소유 계정 | 조직 계정 `evandsolution`으로 생성됨 | 준비됨 |
+| EAS iOS 빌드 | 프로젝트의 iOS build history가 비어 있음 | 차단 |
 | Apple Developer 팀 | 팀 ID, 조직 가입 상태, 계약 상태를 현재 저장소에서 확인할 수 없음 | 차단 |
 | App Store Connect 앱 | Apple ID/`ascAppId`가 없음 | 차단 |
 | 앱 아이콘 | 저장소에 iOS용 1024×1024 불투명 원본이 없음 | 차단 |
@@ -50,18 +56,46 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 
 ## 1. 조직 소유권과 EAS 연결
 
-EAS 프로젝트를 개인 계정에 임의로 만들지 않는다. `evandsolution`이 승인된 조직
-정본인지 확인한 뒤에만 다음 명령을 실행한다.
+옆 세션이 EAS 프로젝트를 조직 계정 `evandsolution`에 생성했다. 새 프로젝트를
+다시 만들지 않는다. 해당 세션의 `app.json` 변경을 통합한 뒤 다음 명령으로 owner,
+slug와 project ID를 대조한다.
 
 ```bash
-npx eas-cli@latest init --account evandsolution --non-interactive
 npx eas-cli@latest project:info --non-interactive
+npx eas-cli@latest build:list --platform ios --limit 5 --json --non-interactive
 ```
 
-성공 후 `app.json`의 `extra.eas.projectId`와 Expo 대시보드의 owner, slug, project
-ID를 대조한다. App Store Connect 앱이 생성되면 `eas.json`의
+통합 과정에서 project ID가 누락된 경우에만 기존 프로젝트를 ID로 연결한다.
+
+```bash
+npx eas-cli@latest init \
+  --id f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd \
+  --non-interactive
+```
+
+`app.json`의 `owner`, `extra.eas.projectId`와 Expo 대시보드의 owner, slug, project
+ID가 모두 같아야 한다. App Store Connect 앱이 생성되면 `eas.json`의
 `submit.production.ios.ascAppId`를 실제 Apple ID로 설정한다. Apple ID, Team ID,
 App Store Connect API key는 저장소에 직접 기록하지 않는다.
+
+### SDK와 의존성 게이트
+
+`expo-symbols`가 요구하는 `expo-font`는 SDK 56 정렬 버전을 직접 설치해 중복을
+제거했다. Expo Doctor의 남은 실패는 현재 React Native/Hermes 버전의 알려진
+메모리 회귀이며, 공식 권고는 Expo SDK 57과 React Native 0.86.2 이상이다.
+
+`npm audit --omit=dev`의 high 결과도 Expo/Metro 변환 도구 계열에 남아 있다.
+`npm audit fix --force`는 Expo 57을 포함한 breaking upgrade를 만들기 때문에
+자동 실행하지 않는다. 옆 세션 변경 통합 뒤 별도 SDK 57 전환으로 다음을 함께
+검증한다.
+
+- MapLibre, Reanimated, Worklets와 Gesture Handler 정합성
+- iOS/Android 네이티브 빌드와 지도·드래그·권한 동작
+- Hermes 장시간 메모리 사용과 앱 재개
+- `npm audit --omit=dev` 잔여 항목의 실제 프로덕션 노출 또는 예외 근거
+
+공식 회귀 안내:
+<https://expo.dev/changelog/sdk-57#known-regressions>
 
 ## 2. Apple 앱 레코드
 
@@ -235,6 +269,8 @@ Connect의 전용 필드에만 입력한다.
 다음 항목이 모두 충족되기 전에는 App Review 제출이나 릴리스를 실행하지 않는다.
 
 - [ ] 옆 세션 소스 변경 통합 및 계약 문서 재대조
+- [ ] Expo SDK 57 전환 또는 Hermes 회귀에 대한 검증된 릴리스 예외 승인
+- [ ] 프로덕션 의존성 high 감사 결과 해소 또는 항목별 노출 근거 승인
 - [ ] EAS 조직 owner 승인과 프로젝트 연결
 - [ ] Apple Developer 조직 가입, 계약, Team ID 확인
 - [ ] App Store Connect 앱과 `ascAppId` 생성
