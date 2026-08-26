@@ -55,6 +55,20 @@ git diff --check
 Drive APK 서명이나 Routes 앱 upload keystore를 재사용하지 않는다. keystore 백업은
 Git 밖의 소유자 전용 위치에 저장하고 인증서 SHA-256을 이슈에 기록한다.
 
+Git에서 제외된 `.private/google-services.json`은 저장소나 빌드 로그에 넣지 않는다.
+EAS production 환경의 secret file 변수 `GOOGLE_SERVICES_JSON`에 등록하고,
+`app.config.js`가 로컬에서는 기존 파일을, EAS 빌드에서는 해당 비밀 파일을 사용한다.
+
+```bash
+npx eas-cli env:set production \
+  --name GOOGLE_SERVICES_JSON \
+  --value ./.private/google-services.json \
+  --type file \
+  --visibility secret \
+  --scope project \
+  --non-interactive
+```
+
 원격 versionCode가 아직 없다면 현재 앱 versionCode에서 시작하도록 설정한다. production
 프로필은 `autoIncrement`이므로 실제 후보의 versionCode는 빌드 결과에서 다시 읽는다.
 

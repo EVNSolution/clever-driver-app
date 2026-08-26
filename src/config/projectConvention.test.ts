@@ -86,4 +86,12 @@ test('keeps Google Play submissions on internal testing until promotion', () => 
 
   assert.equal(easConfig.build.production.android.buildType, 'app-bundle');
   assert.equal(easConfig.submit.production.android.track, 'internal');
+
+  const dynamicConfig = readFileSync(
+    new URL('../../app.config.js', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(dynamicConfig, /process\.env\.GOOGLE_SERVICES_JSON/);
+  assert.match(dynamicConfig, /appConfig\.android\.googleServicesFile/);
 });
