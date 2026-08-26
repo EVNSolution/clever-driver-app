@@ -4,7 +4,8 @@
     "owner": "evandsolution",
     "slug": "clever-driver-app",
     "scheme": "clever-driver",
-    "version": "0.1.9",
+    "version": "0.1.10",
+    "icon": "./assets/branding/driver-app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -18,10 +19,11 @@
     "android": {
       "package": "com.evnsolution.clever.driver",
       "predictiveBackGestureEnabled": true,
-      "versionCode": 10,
+      "versionCode": 11,
       "googleServicesFile": "./.private/google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#C7D833"
+        "foregroundImage": "./assets/branding/driver-app-icon-foreground.png",
+        "backgroundColor": "#0B57D0"
       },
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
