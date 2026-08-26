@@ -11,6 +11,7 @@ const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), '
   scripts?: Record<string, string>;
 };
 const policy = readFileSync(join(projectRoot, 'docs/android-drive-release.md'), 'utf8');
+const buildRunbook = readFileSync(join(projectRoot, 'docs/android-build-runbook.md'), 'utf8');
 const publishScript = readFileSync(join(projectRoot, 'scripts/publish-android-drive-release.sh'), 'utf8');
 
 describe('Android Google Drive release policy', () => {
@@ -21,8 +22,15 @@ describe('Android Google Drive release policy', () => {
     );
     assert.equal(
       packageJson.scripts?.['build:android:release:apk'],
-      'npx expo prebuild --platform android && cd android && ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a',
+      'NODE_ENV=production npx expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease --build-cache -PreactNativeArchitectures=armeabi-v7a,arm64-v8a',
     );
+  });
+
+  it('documents the persistent cached build path and slow-build response', () => {
+    assert.match(buildRunbook, /영구 릴리스 작업공간/u);
+    assert.match(buildRunbook, /npm run build:android:release:apk -- --profile/u);
+    assert.match(buildRunbook, /Configuration Cache/u);
+    assert.match(buildRunbook, /20분/u);
   });
 
   it('keeps one stable Drive file identity and replaces content only', () => {
@@ -75,5 +83,7 @@ describe('Android Google Drive release policy', () => {
       /https:\/\/drive\.usercontent\.google\.com\/download\?id=1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y&export=download&confirm=t/u,
     );
     assert.match(agents, /기존 Drive 파일 ID의 APK 내용만 교체/u);
+    assert.match(agents, /docs\/android-build-runbook\.md/u);
+    assert.match(agents, /영구 릴리스 작업공간/u);
   });
 });
