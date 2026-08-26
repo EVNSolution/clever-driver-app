@@ -22,7 +22,7 @@ describe('Android Google Drive release policy', () => {
     );
     assert.equal(
       packageJson.scripts?.['build:android:release:apk'],
-      'NODE_ENV=production npx expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease --build-cache -PreactNativeArchitectures=armeabi-v7a,arm64-v8a',
+      "export NODE_ENV=production && npx expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease --build-cache -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxMetaspaceSize=1g' -PreactNativeArchitectures=armeabi-v7a,arm64-v8a",
     );
   });
 
@@ -30,6 +30,7 @@ describe('Android Google Drive release policy', () => {
     assert.match(buildRunbook, /영구 릴리스 작업공간/u);
     assert.match(buildRunbook, /npm run build:android:release:apk -- --profile/u);
     assert.match(buildRunbook, /Configuration Cache/u);
+    assert.match(buildRunbook, /MaxMetaspaceSize=1g/u);
     assert.match(buildRunbook, /20분/u);
   });
 
