@@ -16,6 +16,19 @@
 준비되면 자신의 계정에 자동 연결된 배송 업무를 확인하며, 배송지 단위로
 업무를 안전하게 재분배할 수 있는 iOS/Android 앱을 만든다.
 
+## 네이티브 배포 계약
+
+- CLEVER Driver는 iOS와 Android 네이티브 앱으로만 제공한다. 웹앱과 PWA는
+  설치 대안이나 운영 폴백으로 만들지 않는다.
+- iOS 현장 파일럿은 TestFlight 외부 테스트로 배포하고, 정식 운영은 검색과
+  차트에 노출되지 않는 Unlisted App Store 배포를 사용한다.
+- iOS Ad Hoc 빌드는 등록된 내부 QA 기기에서만 사용한다. 배송원 정식 배포나
+  Apple Developer Enterprise 배포로 확장하지 않는다.
+- Unlisted App 설치 링크를 가진 사람도 DSV 서버가 승인한 계정과 배송 권한이
+  없으면 운영 데이터에 접근할 수 없다. 설치 링크는 인증이나 권한의 근거가 아니다.
+- 첫 App Store 버전은 수동 릴리스로 제출하고, Unlisted 배포 승인 전에는
+  공개 릴리스하지 않는다.
+
 ## 확정된 제품 계약
 
 1. 앱, 호스팅과 API 계약은 `CLEVER Routes`와 분리한다.

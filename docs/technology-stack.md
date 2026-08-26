@@ -20,7 +20,8 @@
 | 지도 스타일 | OpenFreeMap Liberty | Routes의 기본 미리보기 스타일과 정렬 |
 | 제스처 | React Native Gesture Handler | 드래그 입력을 네이티브 UI 스레드에서 처리 |
 | 애니메이션 | React Native Reanimated + Worklets | React 재렌더 없이 주문 위치를 UI 스레드에서 전환 |
-| 배포 준비 | EAS preview/production profiles | 내부 APK와 스토어 빌드 분리 |
+| Android 배포 | EAS/Gradle release APK + 고정 Google Drive 파일 | 직접 설치 APK 정본과 업데이트 서명 유지 |
+| iOS 배포 | EAS production + TestFlight + Unlisted App Store | 파일럿과 정식 비공개 링크 배포를 분리 |
 
 ## 현재 제외
 
@@ -28,6 +29,9 @@
 - API 클라이언트 라이브러리: 현재 승인된 인증 호출은 표준 `fetch`로 충분하다.
 - 내비게이션 라이브러리: 승인된 두 화면은 최상위 상태 전환으로 충분하다.
 - 백그라운드 위치 추적, 경로 계산, 알림: 현재 범위에 포함되지 않는다.
+- 웹앱과 PWA: 네이티브 권한·지도·증빙 기능의 배포 대안으로 만들지 않는다.
+- iOS Ad Hoc 정식 배포와 Enterprise 배포: 내부 QA가 아닌 배송원 운영 경로로
+  사용하지 않는다.
 
 ## 지도 경계
 
