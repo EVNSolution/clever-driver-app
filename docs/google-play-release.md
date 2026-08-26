@@ -8,6 +8,7 @@
 - EAS 프로젝트: `@evandsolution/clever-driver-app`
 - EAS 프로젝트 ID: `f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd`
 - 최초 트랙: Google Play internal testing
+- internal 참여 링크: `https://play.google.com/apps/internaltest/4700236589179130460`
 - 관련 이슈: `EVNSolution/clever-driver-app#37`
 - change control: `EVNSolution/clever-change-control#240`
 
@@ -90,10 +91,22 @@ npm run build:android:play
 ## internal testing 게시와 검증
 
 `eas.json`의 submit production 프로필은 실수로 production에 올리지 않도록
-`track: internal`을 고정한다. Google 서비스 계정 키를 새로 만들지 않고 기존
-`clever-routes-play-publisher@clever-routes-prod.iam.gserviceaccount.com`의
-Android Publisher 권한을 사용한다. Driver 앱 접근 권한을 먼저 확인한 뒤 로컬 gcloud
-impersonation과 Android Publisher API로 AAB를 internal track에 올린다.
+`track: internal`을 고정한다. 기존 Routes 게시용 서비스 계정은 Driver 앱 접근 권한을
+받기 전까지 사용하지 않는다. 최초 internal 게시처럼 Play Console에서 직접 올리거나,
+명시적으로 Driver 앱 권한을 부여한 뒤에만 Android Publisher API 자동화를 사용한다.
+
+### 2026-08-26 최초 internal 후보
+
+- 상태: 활성, 내부 테스터에게 제공됨
+- 버전: `0.1.10 (13)`
+- source: `9072b2284dfe6aca389acb9bb268d6f62fd250ee`
+- EAS build: `82f218fe-80ae-4684-9dcf-4d8c705243ee`
+- AAB SHA-256: `72039d6c9826c229b59b29afb630a3695e3d84835e70b5c77865258fd7389659`
+- upload certificate SHA-256: `10:CC:17:26:41:CB:6C:83:E1:76:1C:6A:FE:F7:05:3E:A8:16:06:32:FF:6C:3C:06:B7:AA:6C:6B:1F:89:3B:E4`
+- Play App Signing SHA-256: `F1:0F:84:8A:8A:57:68:45:10:11:9F:05:E6:2D:DA:6B:38:95:8C:79:61:A4:6D:C8:D2:8A:A3:92:A0:CF:EF:B2`
+- Play 확인값: minSdk 24, targetSdk 36, ABI 4개, 신규 설치 크기 22.4MB
+- 테스터: 기존 `CLEVER` 목록 2명
+- 남은 검증: 실제 기기 설치와 기능 점검
 
 게시 뒤 Play Console 또는 Publisher API에서 release status와 versionCode를 다시 읽고,
 테스터 계정으로 internal 링크를 수락하여 Play가 서명한 앱을 설치한다. 실제 기기에서
