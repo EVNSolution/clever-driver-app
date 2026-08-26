@@ -19,6 +19,10 @@ describe('Android Google Drive release policy', () => {
       packageJson.scripts?.['release:android:drive'],
       'bash scripts/publish-android-drive-release.sh',
     );
+    assert.equal(
+      packageJson.scripts?.['build:android:release:apk'],
+      'npx expo prebuild --platform android && cd android && ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a',
+    );
   });
 
   it('keeps one stable Drive file identity and replaces content only', () => {
@@ -37,6 +41,8 @@ describe('Android Google Drive release policy', () => {
       /EXPECTED_SIGNER_SHA256='fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c'/u,
     );
     assert.match(publishScript, /unexpected APK signer certificate/u);
+    assert.match(publishScript, /EXPECTED_ABIS='arm64-v8a,armeabi-v7a'/u);
+    assert.match(publishScript, /APK ABIs must be/u);
     assert.match(publishScript, /versionCode cannot be lower than published versionCode/u);
     assert.match(publishScript, /published versionCode already has different APK contents/u);
     assert.match(publishScript, /publish-dsv-driver-release-state\.sh/u);

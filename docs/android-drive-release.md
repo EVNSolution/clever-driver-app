@@ -22,8 +22,8 @@ CLEVER Driver의 직접 설치 APK는 Google Drive의 파일 하나를 계속 �
 ## 버전 규칙
 
 1. `app.json`의 `expo.version`과 `android.versionCode`를 올린다.
-2. `android/app/build.gradle`의 `versionName`과 `versionCode`를 같은 값으로 맞춘다.
-3. 새 APK를 빌드하고 연결 기기에서 설치·실행을 확인한다.
+2. `npm run build:android:release:apk`로 `armeabi-v7a`와 `arm64-v8a`만 포함한 APK를 빌드한다.
+3. 생성된 `android/app/build.gradle`의 `versionName`과 `versionCode`가 같은 값인지 확인하고 연결 기기에서 설치·실행한다.
 4. `npm run release:android:drive`로 사전 점검 결과를 확인한다.
 5. `npm run release:android:drive -- --execute`로 게시한다.
 
@@ -36,6 +36,8 @@ APK와 운영 상태를 점검한다. 실제 변경은 `--execute`를 명시한 
 게시 명령은 APK에서 패키지 ID, 버전과 서명 인증서를 직접 읽는다. 위 인증서가 아닌
 APK는 기존 설치본을 업데이트할 수 없으므로 게시하지 않는다. 서명 인증서를 교체하려면
 기존 앱 제거가 필요한 별도 마이그레이션으로 다룬다.
+게시 APK에는 실제 휴대전화용 `armeabi-v7a`와 `arm64-v8a`만 허용하며,
+에뮬레이터용 `x86` 또는 `x86_64`가 포함되면 게시를 중단한다.
 
 Drive 파일의 비공개
 `appProperties.publishedVersionCode`보다 새 APK의 `versionCode`가 클 때만 기존 파일
@@ -61,6 +63,7 @@ Drive 검증이 끝나면 동일 명령이 운영 서버 컨테이너의 릴리�
 경로를 게시할 때만 `--apk`로 전달한다.
 
 ```bash
+npm run build:android:release:apk
 npm run release:android:drive
 npm run release:android:drive -- --execute
 bash scripts/publish-android-drive-release.sh --apk /absolute/path/to/app-release.apk --execute
