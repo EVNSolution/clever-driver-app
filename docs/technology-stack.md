@@ -20,7 +20,7 @@
 | 지도 스타일 | OpenFreeMap Liberty | Routes의 기본 미리보기 스타일과 정렬 |
 | 제스처 | React Native Gesture Handler | 드래그 입력을 네이티브 UI 스레드에서 처리 |
 | 애니메이션 | React Native Reanimated + Worklets | React 재렌더 없이 주문 위치를 UI 스레드에서 전환 |
-| Android 배포 | EAS/Gradle release APK + 고정 Google Drive 파일 | 직접 설치 APK 정본과 업데이트 서명 유지 |
+| Android 배포 | 고정 Google Drive APK + EAS Google Play AAB | 직접 설치 채널과 Play internal/production 승격을 분리 |
 | iOS 배포 | EAS production + TestFlight + Unlisted App Store | 파일럿과 정식 비공개 링크 배포를 분리 |
 
 ## 현재 제외

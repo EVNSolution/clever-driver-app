@@ -2,6 +2,8 @@
 
 APK 생성 환경, 성능 기준과 지연 대응은
 [`Android APK 빌드 런북`](./android-build-runbook.md)을 따른다.
+Google Play AAB와 internal testing 절차는
+[`Google Play 릴리스 런북`](./google-play-release.md)을 따른다.
 
 ## 고정 배포 계약
 
@@ -21,6 +23,11 @@ CLEVER Driver의 직접 설치 APK는 Google Drive의 파일 하나를 계속 �
 
 파일명, 파일 ID와 설치 URL은 릴리스 버전이 바뀌어도 변경하지 않는다. Google Drive
 폴더의 링크 보유자 읽기 권한을 파일이 상속하므로 파일별 공유 권한도 다시 만들지 않는다.
+
+Google Play App Signing은 이 APK의 직접 설치 서명과 별도다. Drive 설치본 위에
+Play 설치본을 덮어쓸 수 없으므로 채널 전환 시 기존 앱을 삭제하고 Play에서 다시
+설치한다. 두 채널의 서명을 같다고 가정하거나 한 채널의 산출물을 다른 채널에
+게시하지 않는다.
 
 ## 버전 규칙
 
