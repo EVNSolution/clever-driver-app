@@ -6,7 +6,6 @@ import {
   loginDriverAccount,
   refreshDriverAccountSession,
   registerDriverAccount,
-  validateDriverSignupInvite,
 } from './dsvDriverAuth';
 import { resolveDsvApiUrl } from './dsvApiUrl';
 
@@ -62,7 +61,6 @@ describe('DSV driver auth API client', () => {
       password: 'password123',
       name: '홍길동',
       phone: '01012345678',
-      signupInviteToken: null,
     });
 
     assert.deepEqual(result, SUCCESS_DATA);
@@ -76,69 +74,7 @@ describe('DSV driver auth API client', () => {
       password: 'password123',
       name: '홍길동',
       phone: '01012345678',
-      signupInviteToken: null,
     });
-  });
-
-  it('validates an invite before the app reveals registration', async () => {
-    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
-    let requestUrl = '';
-    globalThis.fetch = async (input) => {
-      requestUrl = input.toString();
-      return new Response(JSON.stringify({
-        data: {
-          invite: {
-            driverName: '홍길동',
-            expiresAt: '2026-08-05T00:00:00.000Z',
-            phoneLast4: '5678',
-          },
-        },
-        error: null,
-      }));
-    };
-
-    const invite = await validateDriverSignupInvite('A'.repeat(43));
-
-    assert.equal(requestUrl, 'https://dsv.example.test/api/dsv/driver/auth/signup-invite/validate');
-    assert.equal(invite.driverName, '홍길동');
-    assert.equal(invite.phoneLast4, '5678');
-  });
-
-  it('accepts a shop invite without pre-created driver information', async () => {
-    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
-    globalThis.fetch = async () => new Response(JSON.stringify({
-      data: {
-        invite: {
-          driverName: '',
-          expiresAt: '2026-08-05T00:00:00.000Z',
-          phoneLast4: '',
-          shopDomain: 'dsv-demo.local',
-        },
-      },
-      error: null,
-    }));
-
-    const invite = await validateDriverSignupInvite('A'.repeat(43));
-
-    assert.deepEqual(invite, {
-      driverName: '',
-      expiresAt: '2026-08-05T00:00:00.000Z',
-      phoneLast4: '',
-      shopDomain: 'dsv-demo.local',
-    });
-  });
-
-  it('turns an undeployed invite endpoint response into a stable app error', async () => {
-    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
-    globalThis.fetch = async () => new Response(JSON.stringify({ statusCode: 404 }));
-
-    await assert.rejects(
-      () => validateDriverSignupInvite('A'.repeat(43)),
-      (error) =>
-        error instanceof AuthApiError &&
-        error.code === 'INVALID_AUTH_RESPONSE' &&
-        error.message === '가입 링크를 확인하지 못했습니다. 서버 배포 상태를 확인해 주세요.',
-    );
   });
 
   it('posts login data to the approved DSV endpoint', async () => {

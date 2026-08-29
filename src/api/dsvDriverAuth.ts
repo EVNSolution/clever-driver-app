@@ -33,14 +33,6 @@ export type RegisterDriverAccountRequest = {
   password: string;
   name: string;
   phone: string;
-  signupInviteToken: string | null;
-};
-
-export type DriverSignupInvite = {
-  driverName: string;
-  expiresAt: string;
-  phoneLast4: string;
-  shopDomain?: string;
 };
 
 export type LoginDriverAccountRequest = {
@@ -67,11 +59,6 @@ type SuccessEnvelope = {
 
 type AuthEnvelope = ErrorEnvelope | SuccessEnvelope;
 
-type SignupInviteEnvelope = ErrorEnvelope | {
-  data: { invite: DriverSignupInvite };
-  error?: null;
-};
-
 export class AuthApiError extends Error {
   constructor(
     readonly code: string,
@@ -86,32 +73,6 @@ export async function registerDriverAccount(
   request: RegisterDriverAccountRequest,
 ): Promise<DriverAuthSession> {
   return postAuth('/api/dsv/driver/auth/register', request);
-}
-
-export async function validateDriverSignupInvite(
-  token: string,
-): Promise<DriverSignupInvite> {
-  const envelope = await postJson<SignupInviteEnvelope>(
-    '/api/dsv/driver/auth/signup-invite/validate',
-    { token },
-  );
-  if (envelope.data === null) {
-    throw new AuthApiError(envelope.error.code, envelope.error.message);
-  }
-  const invite = envelope.data?.invite;
-  if (
-    invite === undefined
-    || typeof invite.driverName !== 'string'
-    || typeof invite.expiresAt !== 'string'
-    || typeof invite.phoneLast4 !== 'string'
-    || (invite.shopDomain !== undefined && typeof invite.shopDomain !== 'string')
-  ) {
-    throw new AuthApiError(
-      'INVALID_AUTH_RESPONSE',
-      '가입 링크를 확인하지 못했습니다. 서버 배포 상태를 확인해 주세요.',
-    );
-  }
-  return invite;
 }
 
 export async function loginDriverAccount(

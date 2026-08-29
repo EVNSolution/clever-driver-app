@@ -19,7 +19,7 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /backgroundColor: '#0b57d0'/u);
   });
 
-  it('offers direct signup while retaining legacy invite-link compatibility', () => {
+  it('offers direct signup without legacy invite-link compatibility', () => {
     const source = readFileSync(authScreenPath, 'utf8');
     const appRoot = readFileSync(appRootPath, 'utf8');
 
@@ -29,14 +29,14 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /label="휴대전화 번호"/u);
     assert.doesNotMatch(source, /label="주민등록번호 앞 7자리"/u);
     assert.doesNotMatch(source, /residentNumberFront/u);
-    assert.match(source, /signupInviteToken/u);
+    assert.doesNotMatch(source, /signupInvite|inviteError|초대받은/u);
     assert.match(source, /회원가입/u);
     assert.match(source, /label="비밀번호 확인"/u);
     assert.doesNotMatch(source, /ModeButton/u);
     assert.doesNotMatch(source, /accessibilityRole="tab"/u);
-    assert.match(appRoot, /Linking\.getInitialURL/u);
-    assert.match(appRoot, /Linking\.addEventListener\('url'/u);
-    assert.match(appRoot, /validateDriverSignupInvite/u);
+    assert.doesNotMatch(appRoot, /signupInvite|handleSignupLink|validateDriverSignupInvite/u);
+    assert.doesNotMatch(appRoot, /Linking\.getInitialURL/u);
+    assert.doesNotMatch(appRoot, /Linking\.addEventListener\('url'/u);
   });
 
   it('uses the approved DSV authentication client', () => {

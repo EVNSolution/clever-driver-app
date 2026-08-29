@@ -17,7 +17,6 @@ import {
   loginDriverAccount,
   registerDriverAccount,
   type DriverAuthSession,
-  type DriverSignupInvite,
 } from '../../api/dsvDriverAuth';
 import {
   normalizePhoneNumber,
@@ -43,28 +42,17 @@ const EMPTY_REGISTRATION_FORM: RegistrationFormValues = {
 };
 
 type AuthEntryScreenProps = {
-  inviteError?: string | null;
   onAuthenticated?(session: DriverAuthSession): Promise<void> | void;
-  onCancelSignup?(): void;
-  signupInvite?: { invite: DriverSignupInvite; token: string } | null;
 };
 
 export function AuthEntryScreen({
-  inviteError = null,
   onAuthenticated,
-  onCancelSignup,
-  signupInvite = null,
 }: AuthEntryScreenProps) {
   const [loginForm, setLoginForm] =
     useState<LoginFormValues>(EMPTY_LOGIN_FORM);
   const [registrationForm, setRegistrationForm] =
-    useState<RegistrationFormValues>(() => ({
-      ...EMPTY_REGISTRATION_FORM,
-      name: signupInvite?.invite.driverName ?? '',
-    }));
-  const [mode, setMode] = useState<'login' | 'register'>(
-    signupInvite === null ? 'login' : 'register',
-  );
+    useState<RegistrationFormValues>(EMPTY_REGISTRATION_FORM);
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loginErrors, setLoginErrors] = useState<LoginFormErrors>({});
   const [registrationErrors, setRegistrationErrors] =
     useState<RegistrationFormErrors>({});
@@ -121,7 +109,6 @@ export function AuthEntryScreen({
         name: registrationForm.name.trim(),
         password: registrationForm.password,
         phone: registrationForm.phoneNumber,
-        signupInviteToken: signupInvite?.token ?? null,
       });
       setAuthSession(session);
       setMessage(formatAuthSuccessMessage(session));
@@ -136,9 +123,6 @@ export function AuthEntryScreen({
   }
 
   const isRegistration = mode === 'register';
-  const hasPreRegisteredDriver = signupInvite !== null
-    && signupInvite.invite.driverName.trim().length > 0
-    && signupInvite.invite.phoneLast4.length === 4;
 
   return (
     <>
@@ -166,9 +150,7 @@ export function AuthEntryScreen({
             </Text>
             <Text style={styles.formDescription}>
               {isRegistration
-                ? hasPreRegisteredDriver
-                  ? `초대받은 배송원 정보로 가입합니다. 휴대전화 끝 4자리는 ${signupInvite.invite.phoneLast4}입니다.`
-                  : '이름과 휴대전화 번호가 등록된 배송원 정보와 일치하면 자동으로 연결됩니다.'
+                ? '이름과 휴대전화 번호가 등록된 배송원 정보와 일치하면 자동으로 연결됩니다.'
                 : '가입한 아이디와 비밀번호를 입력해 주세요.'}
             </Text>
           </View>
@@ -316,12 +298,6 @@ export function AuthEntryScreen({
             </Text>
           ) : null}
 
-          {!isRegistration && inviteError !== null ? (
-            <Text accessibilityRole="alert" style={styles.formMessage}>
-              {inviteError}
-            </Text>
-          ) : null}
-
           {authSession?.account.connectionStatus === 'LINKED' ? (
             <Text style={styles.linkedDriverText}>
               연결된 배송원 {authSession.account.linkedDrivers.length}명
@@ -347,7 +323,6 @@ export function AuthEntryScreen({
                 setMode('login');
                 setMessage(null);
                 setRegistrationErrors({});
-                onCancelSignup?.();
               }}
               style={({ pressed }) => [
                 styles.cancelButton,
