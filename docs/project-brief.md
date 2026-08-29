@@ -62,11 +62,13 @@
 - 같은 배차의 다른 배송원에게 배송지 묶음 전달
 - 동시 확보 충돌 안내
 
-각 기능은 DSV API 계약이 승인된 작업 단위에서 순차적으로 구현한다. 승인된
-인증 계약은 기본 운영 주소 `https://clever-route-api.cleversystem.ai`의
-`/api/dsv/driver/auth/signup-invite/validate`, `/api/dsv/driver/auth/register`,
-`/api/dsv/driver/auth/login`으로 연결한다. 앱은 localhost 또는 `127.0.0.1`
-개발을 위한 `EXPO_PUBLIC_DSV_API_BASE_URL` 재정의를 제외하고 HTTPS 주소만 허용한다.
+각 기능은 DSV API 계약이 승인된 작업 단위에서 순차적으로 구현한다. 현행 가입과
+로그인 계약은 기본 운영 주소 `https://clever-route-api.cleversystem.ai`의
+`/api/dsv/driver/auth/register`, `/api/dsv/driver/auth/login`으로 연결한다.
+`/api/dsv/driver/auth/signup-invite/validate`는 설치된 구버전 앱의 기존 딥링크를
+처리하기 위한 호환 엔드포인트이며, 신규 가입에 초대 링크를 발급하거나 요구하지
+않는다. 앱은 localhost 또는 `127.0.0.1` 개발을 위한
+`EXPO_PUBLIC_DSV_API_BASE_URL` 재정의를 제외하고 HTTPS 주소만 허용한다.
 
 인증 응답의 access token과 계정 연결 상태는 화면 메모리에만 유지한다.
 30일 refresh token과 만료 시각은 Expo SecureStore에 저장하여 앱 재실행 시
