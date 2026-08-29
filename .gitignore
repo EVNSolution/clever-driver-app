@@ -11,6 +11,14 @@ coverage/
 /android/
 /ios/
 /.private/
+/deliverables/
+/tmp/
+
+google-services.json
+service-account*.json
+firebase-adminsdk*.json
+credentials.json
+*.credentials.json
 
 *.jks
 *.keystore
