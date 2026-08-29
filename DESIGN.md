@@ -201,7 +201,7 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 
 - Expo SDK 56, React Native 0.85, TypeScript strict를 유지한다.
 - 회원가입 UI는 이름, 휴대전화 번호, 로그인 아이디, 비밀번호와 비밀번호 확인만
-  제공한다. 구버전 서버 계약의 `residentNumberFront`에는 `null`을 전달한다.
+  제공하고 가입 요청에도 이름, 휴대전화 번호, 로그인 아이디와 비밀번호만 전송한다.
 - 지도는 Routes와 같은 `@maplibre/maplibre-react-native` 11.3.4와
   `https://tiles.openfreemap.org/styles/liberty` 스타일을 사용한다.
 - 주문 목록은 경로 범위 토큰으로 승인된 DSV API만 호출하며, 클라이언트가

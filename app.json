@@ -3,8 +3,7 @@
     "name": "CLEVER Driver",
     "owner": "evandsolution",
     "slug": "clever-driver-app",
-    "scheme": "clever-driver",
-    "version": "0.1.10",
+    "version": "0.1.11",
     "icon": "./assets/branding/driver-app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -19,7 +18,7 @@
     "android": {
       "package": "com.evnsolution.clever.driver",
       "predictiveBackGestureEnabled": true,
-      "versionCode": 11,
+      "versionCode": 12,
       "googleServicesFile": "./.private/google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/driver-app-icon-foreground.png",
