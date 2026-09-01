@@ -78,6 +78,19 @@ describe('driver page refresh', () => {
     assert.match(workspace, /const \[lastRouteUpdatedAt, setLastRouteUpdatedAt\]/u);
     assert.match(workspace, /setLastRouteUpdatedAt\(new Date\(\)\)/u);
     assert.match(workspace, /onRefresh=\{refreshRoute\}/u);
+    assert.match(
+      workspace,
+      /const canPullRefresh =\s*state === 'select' \|\| state === 'empty'/u,
+    );
+    assert.match(
+      workspace,
+      /refreshControl=\{canPullRefresh \? \([\s\S]*?<DriverRefreshControl[\s\S]*?onRefresh=\{onRefresh\}/u,
+    );
+    assert.match(workspace, /alwaysBounceVertical=\{canPullRefresh\}/u);
+    assert.match(
+      workspace,
+      /selectedRoutePlanId === undefined &&\s*!isPullRefreshingRouteRef\.current/u,
+    );
     assert.match(space, /setLastUpdatedAt\(new Date\(\)\)/u);
   });
 });
