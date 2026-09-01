@@ -18,8 +18,8 @@ import { openDestinationMap } from '../../platform/destinationMap';
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import { useAppDialog } from './AppDialog';
 import {
-  DriverAndroidRefreshUpdatedAt,
   DriverRefreshControl,
+  DriverRefreshUpdatedAt,
 } from './DriverRefreshControl';
 import { DeliveryProofModal } from './DeliveryProofModal';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
@@ -197,7 +197,6 @@ export function DeliveryMapScreen({
           contentContainerStyle={styles.deliveryPanelContent}
           refreshControl={(
             <DriverRefreshControl
-              lastUpdatedAt={lastUpdatedAt}
               onRefresh={onRefresh}
               refreshing={refreshing}
             />
@@ -205,7 +204,7 @@ export function DeliveryMapScreen({
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >
-          <DriverAndroidRefreshUpdatedAt
+          <DriverRefreshUpdatedAt
             lastUpdatedAt={lastUpdatedAt}
             refreshing={refreshing}
           />

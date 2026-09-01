@@ -42,18 +42,20 @@ describe('driver page refresh', () => {
     assert.match(refreshControl, /<RefreshControl/u);
     assert.match(refreshControl, /\.\.\.nativeProps/u);
     assert.match(refreshControl, /formatDriverRefreshUpdatedAt/u);
-    assert.match(refreshControl, /Platform\.OS !== 'android' \|\| !refreshing/u);
+    assert.match(refreshControl, /if \(!refreshing\) return null/u);
+    assert.doesNotMatch(refreshControl, /title=/u);
+    assert.doesNotMatch(refreshControl, /titleColor=/u);
     assert.doesNotMatch(refreshControl, /DriverRefreshStatus/u);
     assert.doesNotMatch(refreshControl, />새로고침</u);
 
     assert.match(delivery, /refreshControl=\{[\s\S]*<DriverRefreshControl/u);
-    assert.match(delivery, /<DriverAndroidRefreshUpdatedAt/u);
+    assert.match(delivery, /<DriverRefreshUpdatedAt/u);
     assert.doesNotMatch(delivery, /<DriverRefreshStatus/u);
     assert.match(map, /refreshControl=\{[\s\S]*<DriverRefreshControl/u);
-    assert.match(map, /<DriverAndroidRefreshUpdatedAt/u);
+    assert.match(map, /<DriverRefreshUpdatedAt/u);
     assert.doesNotMatch(map, /<DriverRefreshStatus/u);
     assert.match(space, /refreshControl=\{[\s\S]*<DriverRefreshControl/u);
-    assert.match(space, /<DriverAndroidRefreshUpdatedAt/u);
+    assert.match(space, /<DriverRefreshUpdatedAt/u);
     assert.doesNotMatch(space, /<DriverRefreshStatus/u);
 
     assert.match(workspace, /const \[lastRouteUpdatedAt, setLastRouteUpdatedAt\]/u);
