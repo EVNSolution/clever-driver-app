@@ -28,6 +28,7 @@ import { useAppDialog } from './AppDialog';
 import {
   DriverRefreshControl,
   DriverRefreshUpdatedAt,
+  useDriverRefreshFeedback,
 } from './DriverRefreshControl';
 
 type SpaceSection = 'mine' | 'available';
@@ -48,6 +49,7 @@ export function DeliverySpaceScreen({
   const [space, setSpace] = useState<DriverDeliverySpace | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshFeedback = useDriverRefreshFeedback(isRefreshing);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [message, setMessage] = useState<string>();
   const [activeDestinationId, setActiveDestinationId] = useState<string>();
@@ -307,17 +309,19 @@ export function DeliverySpaceScreen({
       ) : (
         <ScrollView
           contentContainerStyle={styles.listContent}
+          onScroll={refreshFeedback.onScroll}
           refreshControl={(
             <DriverRefreshControl
               onRefresh={() => void refresh()}
               refreshing={isRefreshing}
             />
           )}
+          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
         >
           <DriverRefreshUpdatedAt
             lastUpdatedAt={lastUpdatedAt}
-            refreshing={isRefreshing}
+            visible={refreshFeedback.visible}
           />
           {section === 'mine' && (space?.incomingHandoffs.length ?? 0) > 0 ? (
             <HandoffPanel

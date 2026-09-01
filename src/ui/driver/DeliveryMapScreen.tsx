@@ -20,6 +20,7 @@ import { useAppDialog } from './AppDialog';
 import {
   DriverRefreshControl,
   DriverRefreshUpdatedAt,
+  useDriverRefreshFeedback,
 } from './DriverRefreshControl';
 import { DeliveryProofModal } from './DeliveryProofModal';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
@@ -57,6 +58,7 @@ export function DeliveryMapScreen({
   timezone,
 }: DeliveryMapScreenProps) {
   const { dialog, showDialog } = useAppDialog();
+  const refreshFeedback = useDriverRefreshFeedback(refreshing);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [proofDelivery, setProofDelivery] = useState<{
@@ -195,18 +197,20 @@ export function DeliveryMapScreen({
       <View style={styles.detailsArea}>
         <ScrollView
           contentContainerStyle={styles.deliveryPanelContent}
+          onScroll={refreshFeedback.onScroll}
           refreshControl={(
             <DriverRefreshControl
               onRefresh={onRefresh}
               refreshing={refreshing}
             />
           )}
+          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >
           <DriverRefreshUpdatedAt
             lastUpdatedAt={lastUpdatedAt}
-            refreshing={refreshing}
+            visible={refreshFeedback.visible}
           />
           <Text style={styles.panelLabel}>지금 가는 배송지</Text>
           <View style={styles.destinationRow}>
