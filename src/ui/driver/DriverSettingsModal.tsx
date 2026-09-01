@@ -252,6 +252,7 @@ export function DriverSettingsModal({
           <ScrollView
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
+            style={styles.contentScroll}
           >
             <View style={styles.permissionList}>
               <PermissionRow
@@ -488,6 +489,9 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 4,
+  },
+  contentScroll: {
+    flexShrink: 1,
   },
   header: {
     alignItems: 'center',

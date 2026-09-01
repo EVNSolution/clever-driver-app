@@ -365,6 +365,12 @@ describe('authenticated driver screens', () => {
     assert.match(source, /style=\{styles\.root\}/u);
   });
 
+  it('does not apply the production Android update gate to QA packages', () => {
+    const source = readFileSync(join(appDirectory, 'AppRoot.tsx'), 'utf8');
+
+    assert.match(source, /isProductionDriverAndroidPackage/u);
+  });
+
   it('keeps a full-width pan-only map fixed above the scrolling editor list', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
@@ -585,6 +591,14 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(settings, /\(\$\{versionCode\}\)/u);
     assert.match(settings, /fetchDriverAndroidAppRelease/u);
     assert.match(settings, /readInstalledDriverAppVersion/u);
+    assert.match(
+      settings,
+      /<ScrollView[\s\S]{0,180}style=\{styles\.contentScroll\}/u,
+    );
+    assert.match(
+      settings,
+      /contentScroll:\s*\{[\s\S]{0,80}flexShrink:\s*1/u,
+    );
   });
 
   it('lets an authenticated driver initiate full account deletion from settings', () => {

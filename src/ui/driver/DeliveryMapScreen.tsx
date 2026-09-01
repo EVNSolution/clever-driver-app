@@ -17,7 +17,10 @@ import {
 import { openDestinationMap } from '../../platform/destinationMap';
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import { useAppDialog } from './AppDialog';
-import { DriverRefreshControl } from './DriverRefreshControl';
+import {
+  DriverAndroidRefreshUpdatedAt,
+  DriverRefreshControl,
+} from './DriverRefreshControl';
 import { DeliveryProofModal } from './DeliveryProofModal';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
@@ -202,6 +205,10 @@ export function DeliveryMapScreen({
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >
+          <DriverAndroidRefreshUpdatedAt
+            lastUpdatedAt={lastUpdatedAt}
+            refreshing={refreshing}
+          />
           <Text style={styles.panelLabel}>지금 가는 배송지</Text>
           <View style={styles.destinationRow}>
             {summary === null ? null : (
