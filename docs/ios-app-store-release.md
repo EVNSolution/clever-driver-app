@@ -31,27 +31,27 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 | 항목 | 현재 근거 | 판정 |
 | --- | --- | --- |
 | iOS 앱 ID | `com.evnsolution.clever.driver` | 준비됨 |
-| 앱 버전 | `0.1.11`, 최신 TestFlight build `8` 처리 완료 | build `8` 실기기 회귀 확인 필요 |
+| 앱 버전 | `0.1.11`, App Store 후보 build `9` 처리 완료 | build `9` 실기기 회귀 확인 필요 |
 | EAS 빌드 프로필 | `production`은 `distribution: store`, `autoIncrement: true` | 준비됨 |
 | iOS 네이티브 peer 의존성 | `expo-font ~56.0.7`을 직접 설치해 SDK 56 단일 버전으로 정렬 | 준비됨 |
 | Expo 런타임 건전성 | SDK 56 빌드와 TestFlight 실기기 실행 확인, 알려진 Hermes 회귀는 SDK 57 전환 작업으로 분리 | 출시 후 업그레이드 |
 | 프로덕션 의존성 감사 | Expo fingerprint/Metro 빌드 도구 경로 high 10건, 앱 입력에서 직접 호출하지 않음 | 강제 수정 없이 SDK 57 전환에서 해소 |
 | EAS 프로젝트 | `@evandsolution/clever-driver-app`, ID `f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd` 연결 확인 | 준비됨 |
 | EAS 소유 계정 | 조직 계정 `evandsolution`으로 생성됨 | 준비됨 |
-| EAS iOS 빌드 | build `83be13cd-f021-4a54-87cf-3242bd410ab5`, source `6a4900da5e97b058969d034f707c13b60a0e449c` | build `8` 업로드·처리 완료 |
-| Apple Developer 팀 | `EV&Solution Co.,Ltd (Company/Organization)` 팀으로 build `8` 서명·제출 성공 | 팀원 역할은 계정 관리자가 정리 중 |
+| EAS iOS 빌드 | build `00b48de4-cb61-4404-92c2-7ac7cc8d759e`, source `99e02bbd2da1a79714af86b3bb70325d935c8b7d` | build `9` App Store Connect 업로드 완료 |
+| Apple Developer 팀 | `EV&Solution Co.,Ltd (Company/Organization)` 팀으로 build `9` 서명·제출 성공 | 팀원 역할은 계정 관리자가 정리 중 |
 | 로컬 Apple 도구 | Xcode 26.6 활성화, iOS 26.5 Simulator runtime 설치 | 로컬 Simulator·실기기 QA 가능 |
 | 로컬 코드서명 | 유효 code-signing identity 2개, 로컬 provisioning profile 없음 | 정식 배포는 EAS remote credentials 사용 |
 | App Store Connect 앱 | Apple ID/`ascAppId` `6806955523` | 준비됨 |
-| 앱 아이콘 | `assets/branding/driver-app-icon.png`를 TestFlight build에서 처리 확인 | 최종 스크린샷에서 시각 확인 |
+| 앱 아이콘 | 1024px 불투명 원본과 build `9` 내장 아이콘을 IPA에서 시각·알파 검증 | 준비됨 |
 | 개인정보처리방침 | Driver 전용 `/driver-app/privacy` 운영 배포, 공개 `200` 확인 | 준비됨 |
 | 지원 URL | Driver 전용 `/driver-app/support` 운영 배포, 공개 `200` 확인 | 준비됨 |
 | 계정 삭제 | 설정 화면에서 서버 삭제 요청을 시작하고 활성 배송 오류를 안내 | 새 iOS build 실기기 확인 필요 |
-| 리뷰 계정 | 만료되지 않고 실제 기능을 볼 수 있는 비식별 데모 계정이 없음 | 차단 |
-| 스크린샷 | iPhone 6.9형 세트가 없음 | 차단 |
+| 리뷰 계정 | 비식별 데모 계정을 App Store Connect 전용 로그인 필드에 저장 | 준비됨 |
+| 스크린샷 | 1320×2868 불투명 PNG 8장을 iPhone 6.9형 슬롯에 순서대로 업로드 | 준비됨 |
 | 실기기 | 사용자가 TestFlight 설치·실행 성공을 확인 | 새 build 회귀 확인 필요 |
 
-현재 제출 증적 정리는 `cc-240-unlisted-submission-evidence` 격리 브랜치가 소유한다.
+현재 제출 증적 정리는 `cc-240-app-store-submit` 격리 브랜치가 소유한다.
 기존 `dev` 작업공간의 미추적 Android Gradle 캐시는 수정하거나 정리하지 않는다.
 체크리스트는 최종 커밋과 새 TestFlight 바이너리를 기준으로 다시 확인한다.
 
@@ -66,6 +66,19 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 - 서버 운영 배포 workflow: `33458622620`
 - 개인정보처리방침 SHA-256: `378f71abceeaab1ee03ef3333fd3a1e77cdd73e9003b99dc80bb771e6fa098bd`
 - 지원 페이지 SHA-256: `b0ae9a0efe70d0b0beec4af03316cfd8e7f4e153665a97d21693b542fd2dcb23`
+
+### build 9 App Store 후보 증적
+
+- 앱 source: `99e02bbd2da1a79714af86b3bb70325d935c8b7d`
+- EAS build: `00b48de4-cb61-4404-92c2-7ac7cc8d759e`
+- App Store Connect 제출: `2d69a1fc-698c-4fd1-a30e-1390434a0691`
+- IPA SHA-256: `8a996cbcdeb6d5fa6b7b9c8ff325ba7a068e47281ab3ebc8737d80c270075e42`
+- IPA 검증: bundle `com.evnsolution.clever.driver`, version `0.1.11`, build `9`
+- 코드서명: `iPhone Distribution: EV&Solution Co.,Ltd (B3Y2USSAS9)`
+- 내장 아이콘: `AppIcon60x60@2x.png`, 알파 최솟값·최댓값 모두 `255`
+- Apple 상태: 업로드·처리 완료, TestFlight `제출 준비 완료`
+- App Store Connect 표시: build `9` 연결 후 앱 제목과 빌드 자산에 트럭 아이콘 반영 확인
+- iPhone 6.9형 스크린샷: 1320×2868 불투명 PNG 8장 업로드 완료
 
 EAS remote credentials로 조직 Apple Team의 Distribution 인증서와 provisioning
 profile을 사용했고 두 자격 증명은 2027-08-31까지 유효하다. 비밀 키, 인증서 파일과
@@ -298,16 +311,16 @@ Connect의 전용 필드에만 입력한다.
 - [x] SDK 56 TestFlight 실기기 실행 확인, SDK 57 전환은 후속 작업으로 분리
 - [x] high 감사 항목이 Expo/Metro 빌드 도구 경로임을 확인하고 강제 수정하지 않음
 - [x] EAS 조직 owner와 프로젝트 연결 확인
-- [x] Apple Developer 조직 Team으로 production build `8` 서명·제출 확인
+- [x] Apple Developer 조직 Team으로 production build `9` 서명·제출 확인
 - [x] 조직용 Apple Distribution/EAS remote signing credentials 준비
 - [x] App Store Connect 앱과 `ascAppId` 생성
 - [x] 최종 앱 아이콘 적용
 - [x] 계정 삭제 UI와 서버 오류 처리 로컬 검증
 - [x] Driver 개인정보처리방침 공개 URL 배포·확인
 - [x] 실제 연락처가 있는 Driver Support URL 배포·확인
-- [ ] 비식별·비만료 App Review 계정 준비
+- [x] 비식별·비만료 App Review 계정 준비·전용 필드 저장
 - [ ] App Privacy 답변 확정
-- [ ] iPhone 6.9형 스크린샷 준비
+- [x] iPhone 6.9형 스크린샷 준비·업로드
 - [x] 계정 삭제 UI를 포함한 새 EAS production 빌드 성공
 - [x] 기존 TestFlight build 설치·실행 확인
 - [ ] 새 TestFlight build에서 로그인·권한·지도·증빙·계정 삭제 검증
