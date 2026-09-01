@@ -7,6 +7,7 @@ type DriverEventEnvelope = {
 
 type RouteLifecycleEventType =
   | 'PICKUP_COMPLETED'
+  | 'ROUTE_COMPLETED'
   | 'ROUTE_STARTED'
   | 'TIME_CONSTRAINT_ACKNOWLEDGED';
 
@@ -18,7 +19,11 @@ async function recordRouteLifecycleEvent(
 ): Promise<void> {
   const eventName = eventType === 'ROUTE_STARTED'
     ? 'started'
-    : eventType === 'PICKUP_COMPLETED' ? 'pickup' : `time:${deliveryStopId}`;
+    : eventType === 'PICKUP_COMPLETED'
+      ? 'pickup'
+      : eventType === 'ROUTE_COMPLETED'
+        ? 'completed'
+        : `time:${deliveryStopId}`;
   const response = await fetch(resolveDsvApiUrl('/driver/events'), {
     body: JSON.stringify({
       clientEventId: `${routePlanId}:${eventName}:${Date.now()}`,
@@ -37,7 +42,11 @@ async function recordRouteLifecycleEvent(
   const envelope = (await response.json()) as DriverEventEnvelope;
   if (!response.ok || envelope.data === null) {
     throw new Error(
-      envelope.error?.message ?? '배송 시작 상태를 저장하지 못했습니다.',
+      envelope.error?.message ?? (
+        eventType === 'ROUTE_COMPLETED'
+          ? '배차 완료 상태를 저장하지 못했습니다.'
+          : '배송 시작 상태를 저장하지 못했습니다.'
+      ),
     );
   }
 }
@@ -80,6 +89,13 @@ export async function startDriverDeliveryRoute(
 ): Promise<void> {
   await recordRouteLifecycleEvent(accessToken, routePlanId, 'ROUTE_STARTED');
   await recordRouteLifecycleEvent(accessToken, routePlanId, 'PICKUP_COMPLETED');
+}
+
+export async function completeDriverDeliveryRoute(
+  accessToken: string,
+  routePlanId: string,
+): Promise<void> {
+  await recordRouteLifecycleEvent(accessToken, routePlanId, 'ROUTE_COMPLETED');
 }
 
 export async function completeDriverDeliveryDestination(

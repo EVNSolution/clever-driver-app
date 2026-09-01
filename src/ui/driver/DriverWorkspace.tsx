@@ -15,6 +15,7 @@ import type { DriverAuthSession } from '../../api/dsvDriverAuth';
 import {
   acknowledgeDriverTimeConstraint,
   completeDriverDeliveryDestination,
+  completeDriverDeliveryRoute,
   markDriverOrderMessageRead,
   startDriverDeliveryRoute,
 } from '../../api/dsvDriverEvents';
@@ -24,12 +25,20 @@ import {
 } from '../../api/dsvDriverProofMedia';
 import {
   DriverRouteApiError,
+  loadDriverCompletedRouteHistory,
   loadDriverDeliveryRoute,
+  loadDriverDeliveryRouteChoices,
   updateDriverDestinationNotes,
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
+  type DriverCompletedRouteHistory,
+  type DriverRouteExecutionStatus,
 } from '../../api/dsvDriverRoute';
-import type { DeliveryOrder } from '../../domain/delivery/deliveryPlan';
+import {
+  completesDeliveryRoute,
+  isTerminalDeliveryStatus,
+  type DeliveryOrder,
+} from '../../domain/delivery/deliveryPlan';
 import type {
   DestinationNotes,
   DestinationNoteValues,
@@ -41,6 +50,7 @@ import { DriverSettingsModal } from './DriverSettingsModal';
 import { DeliverySpaceScreen } from './DeliverySpaceScreen';
 
 type DriverWorkspaceTab = 'delivery' | 'map';
+type DriverRouteGroup = 'active' | 'terminal';
 
 type DriverWorkspaceProps = {
   authSession: DriverAuthSession;
@@ -58,18 +68,26 @@ export function DriverWorkspace({
   const [isSequenceEditing, setIsSequenceEditing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
+  const [routeChoices, setRouteChoices] =
+    useState<DriverDeliveryRouteChoice[]>([]);
+  const terminalRoutesRef = useRef<Record<string, DriverDeliveryRoute>>({});
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
+  const [routeGroup, setRouteGroup] = useState<DriverRouteGroup>('active');
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [isRefreshingRoute, setIsRefreshingRoute] = useState(false);
   const [lastRouteUpdatedAt, setLastRouteUpdatedAt] = useState<Date | null>(null);
   const [selectedRoutePlanId, setSelectedRoutePlanId] = useState<string>();
   const [loadErrorMessage, setLoadErrorMessage] = useState<string>();
-  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'empty' | 'error'>(
+  const [loadState, setLoadState] = useState<
+    'loading' | 'select' | 'ready' | 'empty' | 'error'
+  >(
     'loading',
   );
   const lastRootBackAtRef = useRef<number | null>(null);
   const driverName =
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
+  const isRouteReadOnly = route !== null &&
+    routeStatusGroup(route.executionStatus) === 'terminal';
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -112,22 +130,99 @@ export function DriverWorkspace({
   useEffect(() => {
     let isActive = true;
 
-    void loadDriverDeliveryRoute(
-      authSession.accessToken,
-      selectedRoutePlanId,
-    ).then((nextRoute) => {
-      if (!isActive) {
-        return;
-      }
+    if (selectedRoutePlanId === undefined) {
+      void Promise.resolve().then(() => {
+        if (isActive) setLoadState('loading');
+      });
+    }
+    const cachedTerminalRoute = selectedRoutePlanId === undefined
+      ? undefined
+      : terminalRoutesRef.current[selectedRoutePlanId];
+    const routeRequest = selectedRoutePlanId === undefined
+      ? loadDriverDeliveryRouteChoices(authSession.accessToken)
+        .then(async (nextRouteChoices) => {
+          const historyAccessRoute = nextRouteChoices[0];
+          const historyRoutes = historyAccessRoute === undefined
+            ? []
+            : await loadDriverCompletedRouteHistory(
+                historyAccessRoute.routeAccessToken,
+              )
+              .then((history) => history.map((summary) => (
+                completedRouteFromHistory(
+                  summary,
+                  historyAccessRoute,
+                  nextRouteChoices,
+                )
+              )))
+              .catch(() => []);
+          const reconciledRoutes = await reconcileCompletedRoutes(
+            authSession.accessToken,
+            nextRouteChoices,
+          );
+          if (!isActive) return;
+          const completedRoutes = [...historyRoutes, ...reconciledRoutes];
+          if (completedRoutes.length > 0) {
+            terminalRoutesRef.current = {
+              ...terminalRoutesRef.current,
+              ...Object.fromEntries(completedRoutes.map((completedRoute) => [
+                completedRoute.routePlanId,
+                completedRoute,
+              ])),
+            };
+          }
+          const mergedRouteChoices = mergeRouteChoices(
+            nextRouteChoices,
+            Object.values(terminalRoutesRef.current),
+          );
+          setRouteChoices(mergedRouteChoices);
+          setRoute(null);
+          setOrders([]);
+          setLoadErrorMessage(undefined);
+          setLoadState(mergedRouteChoices.length === 0 ? 'empty' : 'select');
+        })
+      : (cachedTerminalRoute === undefined
+          ? loadDriverDeliveryRoute(authSession.accessToken, selectedRoutePlanId)
+          : Promise.resolve(cachedTerminalRoute)
+        ).then(async (loadedRoute) => {
+        let nextRoute = loadedRoute;
+        if (
+          nextRoute.executionStatus === 'IN_PROGRESS' &&
+          completesDeliveryRoute(nextRoute.orders, [])
+        ) {
+          await completeDriverDeliveryRoute(
+            nextRoute.routeAccessToken,
+            nextRoute.routePlanId,
+          );
+          nextRoute = completedDeliveryRoute(nextRoute, nextRoute.orders);
+        }
+        if (!isActive) return;
+        if (routeStatusGroup(nextRoute.executionStatus) === 'terminal') {
+          if (terminalRoutesRef.current[nextRoute.routePlanId] !== nextRoute) {
+            terminalRoutesRef.current = {
+              ...terminalRoutesRef.current,
+              [nextRoute.routePlanId]: nextRoute,
+            };
+          }
+          setRouteGroup('terminal');
+        }
+        setRoute(nextRoute);
+        setRouteChoices(mergeRouteChoices(
+          nextRoute.availableRoutes,
+          [
+            ...Object.values(terminalRoutesRef.current),
+            ...(routeStatusGroup(nextRoute.executionStatus) === 'terminal'
+              ? [nextRoute]
+              : []),
+          ],
+        ));
+        setOrders(nextRoute.orders);
+        setIsSequenceEditing(false);
+        setLoadErrorMessage(undefined);
+        setLastRouteUpdatedAt(new Date());
+        setLoadState('ready');
+      });
 
-      setRoute(nextRoute);
-      setOrders(nextRoute?.orders ?? []);
-      setIsSequenceEditing(false);
-      setLoadErrorMessage(undefined);
-      setSelectedRoutePlanId(nextRoute?.routePlanId);
-      setLastRouteUpdatedAt(new Date());
-      setLoadState(nextRoute === null ? 'empty' : 'ready');
-    }).catch((error: unknown) => {
+    void routeRequest.catch((error: unknown) => {
       if (!isActive) {
         return;
       }
@@ -145,7 +240,12 @@ export function DriverWorkspace({
     return () => {
       isActive = false;
     };
-  }, [authSession.accessToken, loadAttempt, refreshRequestKey, selectedRoutePlanId]);
+  }, [
+    authSession.accessToken,
+    loadAttempt,
+    refreshRequestKey,
+    selectedRoutePlanId,
+  ]);
 
   function retryRouteLoad() {
     setLoadState('loading');
@@ -153,7 +253,7 @@ export function DriverWorkspace({
   }
 
   function refreshRoute() {
-    if (isRefreshingRoute || loadState === 'loading') return;
+    if (isRouteReadOnly || isRefreshingRoute || loadState === 'loading') return;
 
     setIsRefreshingRoute(true);
     setLoadAttempt((attempt) => attempt + 1);
@@ -166,7 +266,21 @@ export function DriverWorkspace({
 
     setLoadState('loading');
     setIsSequenceEditing(false);
+    setIsDeliverySpaceOpen(false);
+    setRoute(null);
+    setOrders([]);
     setSelectedRoutePlanId(routePlanId);
+  }
+
+  function selectRouteGroup(nextGroup: DriverRouteGroup) {
+    if (nextGroup === routeGroup) return;
+    setIsSequenceEditing(false);
+    setIsDeliverySpaceOpen(false);
+    setRoute(null);
+    setOrders([]);
+    setSelectedRoutePlanId(undefined);
+    setLoadState('select');
+    setRouteGroup(nextGroup);
   }
 
   function resetRootBackPress() {
@@ -189,18 +303,52 @@ export function DriverWorkspace({
     setIsDeliverySpaceOpen(false);
   }
 
-  async function completeDelivery(destinationId: string, deliveryStopIds: string[]) {
+  async function completeDelivery(
+    destinationId: string,
+    deliveryStopIds: string[],
+  ): Promise<boolean> {
     if (route === null) {
-      return;
+      return false;
     }
 
+    const completesRoute = completesDeliveryRoute(orders, deliveryStopIds);
     await completeDriverDeliveryDestination(
       route.routeAccessToken,
       route.routeId,
       destinationId,
       deliveryStopIds,
     );
-    setLoadAttempt((attempt) => attempt + 1);
+    if (!completesRoute) {
+      setLoadAttempt((attempt) => attempt + 1);
+    }
+    return completesRoute;
+  }
+
+  async function completeRoute() {
+    if (route === null || isRouteReadOnly) return;
+
+    await completeDriverDeliveryRoute(
+      route.routeAccessToken,
+      route.routePlanId,
+    );
+    const completedRoute = completedDeliveryRoute(route, orders);
+    terminalRoutesRef.current = {
+      ...terminalRoutesRef.current,
+      [completedRoute.routePlanId]: completedRoute,
+    };
+    setRouteChoices((currentChoices) => mergeRouteChoices(
+      currentChoices.filter(({ routePlanId }) => (
+        routePlanId !== completedRoute.routePlanId
+      )),
+      [completedRoute],
+    ));
+    setRoute(completedRoute);
+    setOrders(completedRoute.orders);
+    setIsSequenceEditing(false);
+    setIsDeliverySpaceOpen(false);
+    setLastRouteUpdatedAt(new Date());
+    setRouteGroup('terminal');
+    setLoadState('ready');
   }
 
   async function startDelivery() {
@@ -312,6 +460,18 @@ export function DriverWorkspace({
       </View>
 
       <View style={styles.screenArea}>
+        {activeTab === 'delivery' &&
+        loadState !== 'loading' &&
+        !isDeliverySpaceOpen &&
+        routeChoices.length > 0 ? (
+          <RouteDateSelector
+            onSelect={selectRoute}
+            onGroupSelect={selectRouteGroup}
+            routeGroup={routeGroup}
+            routes={routeChoices}
+            selectedRoutePlanId={selectedRoutePlanId}
+          />
+        ) : null}
         {loadState !== 'ready' || route === null ? (
           <RouteLoadState
             message={loadErrorMessage}
@@ -328,38 +488,35 @@ export function DriverWorkspace({
                 onBack={closeDeliverySpace}
               />
             ) : activeTab === 'delivery' ? (
-              <>
-                <RouteDateSelector
-                  onSelect={selectRoute}
-                  routes={route.availableRoutes}
-                  selectedRoutePlanId={route.routePlanId}
-                />
-                <DeliveryScreen
-                  deliveryDate={route.deliveryDate}
-                  destinationNotesById={route.destinationNotesById}
-                  isEditing={isSequenceEditing}
-                  lastUpdatedAt={lastRouteUpdatedAt}
-                  nextDeliveryStopId={route.nextDeliveryStopId}
-                  onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
-                  onEditingChange={changeSequenceEditing}
-                  onOpenDeliverySpace={openDeliverySpace}
-                  onOrdersChange={setOrders}
-                  onReadDriverMessage={readDriverMessage}
-                  onRefresh={refreshRoute}
-                  onSaveDestinationNotes={saveDestinationNotes}
-                  orders={orders}
-                  refreshing={isRefreshingRoute}
-                  serverRouteGeometry={route.serverRouteGeometry}
-                  timezone={route.timezone}
-                />
-              </>
+              <DeliveryScreen
+                deliveryDate={route.deliveryDate}
+                destinationNotesById={route.destinationNotesById}
+                historySummary={route.historySummary}
+                isEditing={isSequenceEditing}
+                isReadOnly={isRouteReadOnly}
+                lastUpdatedAt={lastRouteUpdatedAt}
+                nextDeliveryStopId={route.nextDeliveryStopId}
+                onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
+                onEditingChange={changeSequenceEditing}
+                onOpenDeliverySpace={openDeliverySpace}
+                onOrdersChange={setOrders}
+                onReadDriverMessage={readDriverMessage}
+                onRefresh={refreshRoute}
+                onSaveDestinationNotes={saveDestinationNotes}
+                orders={orders}
+                refreshing={isRefreshingRoute}
+                serverRouteGeometry={route.serverRouteGeometry}
+                timezone={route.timezone}
+              />
             ) : (
               <DeliveryMapScreen
                 depotCoordinate={route.depotCoordinate}
                 etaStatus={route.etaStatus}
+                isReadOnly={isRouteReadOnly}
                 lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onCompleteDelivery={completeDelivery}
+                onCompleteRoute={completeRoute}
                 onStartDelivery={startDelivery}
                 onRefresh={refreshRoute}
                 onUploadProof={uploadDeliveryProof}
@@ -419,25 +576,123 @@ export function DriverWorkspace({
   );
 }
 
+function completedDeliveryRoute(
+  route: DriverDeliveryRoute,
+  orders: DeliveryOrder[],
+): DriverDeliveryRoute {
+  return {
+    ...route,
+    executionStatus: 'COMPLETED',
+    nextDeliveryStopId: null,
+    orders: orders.map((order) => (
+      isTerminalDeliveryStatus(order.status)
+        ? order
+        : { ...order, status: 'DELIVERED' }
+    )),
+  };
+}
+
+function completedRouteFromHistory(
+  summary: DriverCompletedRouteHistory,
+  accessRoute: DriverDeliveryRouteChoice,
+  availableRoutes: DriverDeliveryRouteChoice[],
+): DriverDeliveryRoute {
+  return {
+    availableRoutes,
+    deliveryDate: summary.deliveryDate,
+    depotCoordinate: null,
+    destinationNotesById: {},
+    etaStatus: 'READY',
+    executionStatus: 'COMPLETED',
+    historySummary: summary,
+    nextDeliveryStopId: null,
+    orders: [],
+    pickupCompletedAt: null,
+    routeAccessToken: accessRoute.routeAccessToken,
+    routeContext: summary.routePlanId,
+    routeId: summary.routePlanId,
+    routeName: summary.routeName,
+    routePlanId: summary.routePlanId,
+    serverRouteGeometry: null,
+    timezone: summary.timezone,
+  };
+}
+
+async function reconcileCompletedRoutes(
+  accountAccessToken: string,
+  routeChoices: DriverDeliveryRouteChoice[],
+): Promise<DriverDeliveryRoute[]> {
+  const candidates = routeChoices.filter(({ executionStatus }) => (
+    executionStatus === 'IN_PROGRESS'
+  ));
+  const reconciledRoutes = await Promise.all(candidates.map(async (choice) => {
+    try {
+      // ponytail: active route counts are small; reuse the existing verified loader.
+      const route = await loadDriverDeliveryRoute(
+        accountAccessToken,
+        choice.routePlanId,
+      );
+      if (!completesDeliveryRoute(route.orders, [])) return null;
+      await completeDriverDeliveryRoute(
+        route.routeAccessToken,
+        route.routePlanId,
+      );
+      return completedDeliveryRoute(route, route.orders);
+    } catch {
+      return null;
+    }
+  }));
+
+  return reconciledRoutes.filter(
+    (route): route is DriverDeliveryRoute => route !== null,
+  );
+}
+
+function mergeRouteChoices(
+  serverChoices: DriverDeliveryRouteChoice[],
+  terminalRoutes: DriverDeliveryRoute[],
+): DriverDeliveryRouteChoice[] {
+  const choicesById = new Map(serverChoices.map((choice) => [
+    choice.routePlanId,
+    choice,
+  ]));
+  for (const terminalRoute of terminalRoutes) {
+    choicesById.set(terminalRoute.routePlanId, {
+      deliveryDate: terminalRoute.deliveryDate,
+      executionStatus: terminalRoute.executionStatus,
+      routeAccessToken: terminalRoute.routeAccessToken,
+      routeContext: terminalRoute.routeContext,
+      routeName: terminalRoute.routeName,
+      routePlanId: terminalRoute.routePlanId,
+    });
+  }
+
+  return [...choicesById.values()].sort((left, right) => (
+    right.deliveryDate.localeCompare(left.deliveryDate) ||
+    left.routeName.localeCompare(right.routeName)
+  ));
+}
+
 function RouteDateSelector({
+  onGroupSelect,
   onSelect,
+  routeGroup,
   routes,
   selectedRoutePlanId,
 }: {
+  onGroupSelect(group: DriverRouteGroup): void;
   onSelect(routePlanId: string): void;
+  routeGroup: DriverRouteGroup;
   routes: DriverDeliveryRouteChoice[];
-  selectedRoutePlanId: string;
+  selectedRoutePlanId?: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const selectedRoute =
-    routes.find((routeChoice) => (
-      routeChoice.routePlanId === selectedRoutePlanId
-    )) ?? routes[0];
-
-  if (selectedRoute === undefined) {
-    return null;
-  }
-  const selectedDeliveryDate = selectedRoute.deliveryDate;
+  const visibleRoutes = routes.filter(({ executionStatus }) => (
+    routeStatusGroup(executionStatus) === routeGroup
+  ));
+  const selectedRoute = visibleRoutes.find((routeChoice) => (
+    routeChoice.routePlanId === selectedRoutePlanId
+  ));
 
   function selectRoute(routePlanId: string) {
     onSelect(routePlanId);
@@ -446,10 +701,29 @@ function RouteDateSelector({
 
   return (
     <View style={styles.dateAccordion}>
+      <View accessibilityRole="tablist" style={styles.routeGroupTabs}>
+        <RouteGroupButton
+          isSelected={routeGroup === 'active'}
+          label="진행 배차"
+          onPress={() => onGroupSelect('active')}
+        />
+        <RouteGroupButton
+          isSelected={routeGroup === 'terminal'}
+          label="종료 배차"
+          onPress={() => onGroupSelect('terminal')}
+        />
+      </View>
+
       <Pressable
-        accessibilityLabel={`배송 날짜 ${formatDeliveryDate(selectedDeliveryDate)} 목록 ${isExpanded ? '접기' : '펼치기'}`}
+        accessibilityLabel={selectedRoute === undefined
+          ? `배송 날짜 선택 목록 ${isExpanded ? '접기' : '펼치기'}`
+          : `배송 날짜 ${formatDeliveryDate(selectedRoute.deliveryDate)} 목록 ${isExpanded ? '접기' : '펼치기'}`}
         accessibilityRole="button"
-        accessibilityState={{ expanded: isExpanded }}
+        accessibilityState={{
+          disabled: visibleRoutes.length === 0,
+          expanded: isExpanded,
+        }}
+        disabled={visibleRoutes.length === 0}
         onPress={() => setIsExpanded((expanded) => !expanded)}
         style={({ pressed }) => [
           styles.dateAccordionHeader,
@@ -460,10 +734,16 @@ function RouteDateSelector({
           <Text style={styles.dateAccordionLabel}>배송 날짜</Text>
           <View style={styles.dateAccordionValueRow}>
             <Text style={styles.dateAccordionValue}>
-              {formatDeliveryDate(selectedDeliveryDate)}
+              {selectedRoute === undefined
+                ? '배송 날짜 선택'
+                : formatDeliveryDate(selectedRoute.deliveryDate)}
             </Text>
             <Text numberOfLines={1} style={styles.dateAccordionMeta}>
-              {selectedRoute.routeName}
+              {selectedRoute === undefined
+                ? visibleRoutes.length === 0
+                  ? '이 상태의 배차는 조회되지 않습니다.'
+                  : '날짜를 선택해 주세요.'
+                : `${selectedRoute.routeName} · ${routeStatusLabel(selectedRoute.executionStatus)}`}
             </Text>
           </View>
         </View>
@@ -475,16 +755,16 @@ function RouteDateSelector({
       {isExpanded ? (
         <ScrollView
           nestedScrollEnabled
-          showsVerticalScrollIndicator={routes.length > 3}
+          showsVerticalScrollIndicator={visibleRoutes.length > 3}
           style={styles.dateAccordionList}
         >
-          {routes.map((routeChoice) => {
+          {visibleRoutes.map((routeChoice) => {
             const isSelected = routeChoice.routePlanId === selectedRoutePlanId;
             const deliveryDate = routeChoice.deliveryDate;
 
             return (
               <Pressable
-                accessibilityLabel={`${formatDeliveryDate(deliveryDate)} 배송 선택`}
+                accessibilityLabel={`${formatDeliveryDate(deliveryDate)} ${routeStatusLabel(routeChoice.executionStatus)} 배송 선택`}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
                 key={routeChoice.routePlanId}
@@ -503,7 +783,7 @@ function RouteDateSelector({
                     {formatDeliveryDate(deliveryDate)}
                   </Text>
                   <Text numberOfLines={1} style={styles.dateAccordionOptionMeta}>
-                    {routeChoice.routeName}
+                    {routeChoice.routeName} · {routeStatusLabel(routeChoice.executionStatus)}
                   </Text>
                 </View>
                 {isSelected ? (
@@ -514,8 +794,60 @@ function RouteDateSelector({
           })}
         </ScrollView>
       ) : null}
+
     </View>
   );
+}
+
+function RouteGroupButton({
+  isSelected,
+  label,
+  onPress,
+}: {
+  isSelected: boolean;
+  label: string;
+  onPress(): void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isSelected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.routeGroupTab,
+        isSelected && styles.routeGroupTabSelected,
+        pressed && styles.buttonPressed,
+      ]}
+    >
+      <Text style={[
+        styles.routeGroupTabText,
+        isSelected && styles.routeGroupTabTextSelected,
+      ]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function routeStatusGroup(
+  status: DriverRouteExecutionStatus,
+): DriverRouteGroup {
+  return status === 'READY' || status === 'IN_PROGRESS'
+    ? 'active'
+    : 'terminal';
+}
+
+function routeStatusLabel(status: DriverRouteExecutionStatus): string {
+  switch (status) {
+    case 'READY':
+      return '진행 전';
+    case 'IN_PROGRESS':
+      return '진행 중';
+    case 'COMPLETED':
+      return '완료';
+    case 'CANCELLED':
+      return '취소';
+  }
 }
 
 function RouteLoadState({
@@ -525,9 +857,22 @@ function RouteLoadState({
 }: {
   message?: string;
   onRetry(): void;
-  state: 'loading' | 'ready' | 'empty' | 'error';
+  state: 'loading' | 'select' | 'ready' | 'empty' | 'error';
 }) {
   const isLoading = state === 'loading';
+
+  if (state === 'select') {
+    return (
+      <View style={styles.routeState}>
+        <View style={styles.routePlaceholderIcon}>
+          <DeliveryPackageIcon isSelected={false} />
+        </View>
+        <Text style={styles.routePlaceholderText}>
+          배송 날짜를 선택해 주세요
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.routeState}>
@@ -758,6 +1103,36 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginLeft: 12,
   },
+  routeGroupTabs: {
+    backgroundColor: '#f2f4f7',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 3,
+  },
+  routeGroupTab: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 36,
+  },
+  routeGroupTabSelected: {
+    backgroundColor: '#ffffff',
+    borderColor: '#b2ccff',
+    borderWidth: 1,
+  },
+  routeGroupTabText: {
+    color: '#667085',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  routeGroupTabTextSelected: {
+    color: '#0b57d0',
+  },
   routeState: {
     alignItems: 'center',
     flex: 1,
@@ -767,6 +1142,17 @@ const styles = StyleSheet.create({
   },
   routeStateTitle: {
     color: '#475467',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  routePlaceholderIcon: {
+    marginBottom: 14,
+    opacity: 0.3,
+    transform: [{ scale: 2.6 }],
+  },
+  routePlaceholderText: {
+    color: '#98a2b3',
     fontSize: 14,
     fontWeight: '700',
     textAlign: 'center',

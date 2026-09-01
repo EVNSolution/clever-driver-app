@@ -1,17 +1,9 @@
-import { useCallback, useState } from 'react';
 import {
   RefreshControl,
-  StyleSheet,
-  Text,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   type RefreshControlProps,
 } from 'react-native';
 
-import {
-  formatDriverRefreshUpdatedAt,
-  isDriverRefreshPulling,
-} from './driverRefresh';
+import { formatDriverRefreshUpdatedAt } from './driverRefresh';
 
 type DriverRefreshProps = {
   lastUpdatedAt: Date | null;
@@ -21,7 +13,7 @@ type DriverRefreshProps = {
 
 type DriverRefreshControlProps = Pick<
   DriverRefreshProps,
-  'onRefresh' | 'refreshing'
+  'lastUpdatedAt' | 'onRefresh' | 'refreshing'
 > & Omit<
   RefreshControlProps,
   | 'colors'
@@ -34,6 +26,7 @@ type DriverRefreshControlProps = Pick<
 >;
 
 export function DriverRefreshControl({
+  lastUpdatedAt,
   onRefresh,
   refreshing,
   ...nativeProps
@@ -46,40 +39,8 @@ export function DriverRefreshControl({
       progressBackgroundColor="#ffffff"
       refreshing={refreshing}
       tintColor="#0b57d0"
+      title={formatDriverRefreshUpdatedAt(lastUpdatedAt)}
+      titleColor="#667085"
     />
   );
 }
-
-export function useDriverRefreshFeedback(refreshing: boolean) {
-  const [isPulling, setIsPulling] = useState(false);
-  const onScroll = useCallback((
-    event: NativeSyntheticEvent<NativeScrollEvent>,
-  ) => {
-    setIsPulling(isDriverRefreshPulling(event.nativeEvent.contentOffset.y));
-  }, []);
-
-  return { onScroll, visible: refreshing || isPulling };
-}
-
-export function DriverRefreshUpdatedAt({
-  lastUpdatedAt,
-  visible,
-}: Pick<DriverRefreshProps, 'lastUpdatedAt'> & { visible: boolean }) {
-  if (!visible) return null;
-
-  return (
-    <Text accessibilityLiveRegion="polite" style={styles.updatedAt}>
-      {formatDriverRefreshUpdatedAt(lastUpdatedAt)}
-    </Text>
-  );
-}
-
-const styles = StyleSheet.create({
-  updatedAt: {
-    color: '#667085',
-    fontSize: 11,
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    textAlign: 'center',
-  },
-});

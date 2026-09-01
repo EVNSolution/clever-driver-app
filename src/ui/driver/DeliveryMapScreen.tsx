@@ -17,20 +17,18 @@ import {
 import { openDestinationMap } from '../../platform/destinationMap';
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import { useAppDialog } from './AppDialog';
-import {
-  DriverRefreshControl,
-  DriverRefreshUpdatedAt,
-  useDriverRefreshFeedback,
-} from './DriverRefreshControl';
+import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryProofModal } from './DeliveryProofModal';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
 type DeliveryMapScreenProps = {
   depotCoordinate: DeliveryCoordinate | null;
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
+  isReadOnly: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
-  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<void>;
+  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<boolean>;
+  onCompleteRoute(): Promise<void>;
   onStartDelivery(): Promise<void>;
   onRefresh(): void;
   onUploadProof(
@@ -46,9 +44,11 @@ type DeliveryMapScreenProps = {
 export function DeliveryMapScreen({
   depotCoordinate,
   etaStatus,
+  isReadOnly,
   lastUpdatedAt,
   nextDeliveryStopId,
   onCompleteDelivery,
+  onCompleteRoute,
   onStartDelivery,
   onRefresh,
   onUploadProof,
@@ -58,16 +58,18 @@ export function DeliveryMapScreen({
   timezone,
 }: DeliveryMapScreenProps) {
   const { dialog, showDialog } = useAppDialog();
-  const refreshFeedback = useDriverRefreshFeedback(refreshing);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [proofDelivery, setProofDelivery] = useState<{
+    completesRoute: boolean;
     deliveryStopId: string;
     destinationName: string;
   } | null>(null);
   const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
+  const totalBoxes = orders.reduce((total, order) => total + order.shippedBoxes, 0);
   const isCompletionDisabled =
-    etaStatus === 'PRE_PICKUP' || summary === null || isCompleting || isStarting;
+    isReadOnly || etaStatus === 'PRE_PICKUP' || summary === null ||
+    isCompleting || isStarting;
 
   async function handleOpenMap() {
     if (summary === null) return;
@@ -95,8 +97,9 @@ export function DeliveryMapScreen({
           onPress: () => {
             setIsCompleting(true);
             void onCompleteDelivery(summary.destinationId, summary.deliveryStopIds)
-              .then(() => {
+              .then((completesRoute) => {
                 setProofDelivery({
+                  completesRoute,
                   deliveryStopId: summary.deliveryStopId,
                   destinationName: summary.destinationName,
                 });
@@ -120,6 +123,25 @@ export function DeliveryMapScreen({
       title: '배송 완료',
       tone: 'success',
     });
+  }
+
+  function closeProofDelivery() {
+    const completesRoute = proofDelivery?.completesRoute === true;
+    setProofDelivery(null);
+    if (!completesRoute) return;
+
+    setIsCompleting(true);
+    void onCompleteRoute()
+      .catch((error: unknown) => {
+        showDialog({
+          message: error instanceof Error
+            ? error.message
+            : '배차 완료 상태를 저장하지 못했습니다.',
+          title: '배차 완료 실패',
+          tone: 'danger',
+        });
+      })
+      .finally(() => setIsCompleting(false));
   }
 
   function confirmDeliveryStart() {
@@ -169,7 +191,7 @@ export function DeliveryMapScreen({
           <DeliveryAttentionBanner summary={summary} timezone={timezone} />
         )}
 
-        {etaStatus === 'PRE_PICKUP' && orders.length > 0 ? (
+        {!isReadOnly && etaStatus === 'PRE_PICKUP' && orders.length > 0 ? (
           <View pointerEvents="box-none" style={styles.startOverlay}>
             <Pressable
               accessibilityRole="button"
@@ -197,22 +219,19 @@ export function DeliveryMapScreen({
       <View style={styles.detailsArea}>
         <ScrollView
           contentContainerStyle={styles.deliveryPanelContent}
-          onScroll={refreshFeedback.onScroll}
           refreshControl={(
             <DriverRefreshControl
+              lastUpdatedAt={lastUpdatedAt}
               onRefresh={onRefresh}
               refreshing={refreshing}
             />
           )}
-          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >
-          <DriverRefreshUpdatedAt
-            lastUpdatedAt={lastUpdatedAt}
-            visible={refreshFeedback.visible}
-          />
-          <Text style={styles.panelLabel}>지금 가는 배송지</Text>
+          <Text style={styles.panelLabel}>
+            {isReadOnly ? '완료된 배차' : '지금 가는 배송지'}
+          </Text>
           <View style={styles.destinationRow}>
             {summary === null ? null : (
               <View style={styles.destinationSequenceBadge}>
@@ -222,7 +241,9 @@ export function DeliveryMapScreen({
               </View>
             )}
             <Text numberOfLines={1} style={styles.destinationName}>
-              {summary?.destinationName ?? '배송 시작 전입니다'}
+              {summary?.destinationName ?? (
+                isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
+              )}
             </Text>
             {summary === null ? null : (
               <Text numberOfLines={2} style={styles.destinationAddress}>
@@ -232,17 +253,25 @@ export function DeliveryMapScreen({
           </View>
 
           <View style={styles.metrics}>
-            <DeliveryMetric label="주문 수" value={`${summary?.orderCount ?? 0}건`} />
+            <DeliveryMetric
+              label="주문 수"
+              value={`${isReadOnly ? orders.length : summary?.orderCount ?? 0}건`}
+            />
             <View style={styles.metricDivider} />
-            <DeliveryMetric label="박스 수" value={`${summary?.boxCount ?? 0}개`} />
+            <DeliveryMetric
+              label="박스 수"
+              value={`${isReadOnly ? totalBoxes : summary?.boxCount ?? 0}개`}
+            />
             <View style={styles.metricDivider} />
             <DeliveryMetric
               label="ETA"
-              value={formatEta(
-                summary?.estimatedArrivalAt ?? null,
-                timezone,
-                etaStatus,
-              )}
+              value={isReadOnly
+                ? '종료'
+                : formatEta(
+                    summary?.estimatedArrivalAt ?? null,
+                    timezone,
+                    etaStatus,
+                  )}
             />
           </View>
 
@@ -267,7 +296,7 @@ export function DeliveryMapScreen({
           )}
         </ScrollView>
 
-        <View style={styles.actionFooter}>
+        {!isReadOnly ? <View style={styles.actionFooter}>
           <View style={styles.actionButtons}>
           <Pressable
             accessibilityRole="button"
@@ -300,13 +329,13 @@ export function DeliveryMapScreen({
             )}
           </Pressable>
           </View>
-        </View>
+        </View> : null}
       </View>
 
       {proofDelivery === null ? null : (
         <DeliveryProofModal
           destinationName={proofDelivery.destinationName}
-          onClose={() => setProofDelivery(null)}
+          onClose={closeProofDelivery}
           onUpload={(photo) => (
             onUploadProof(proofDelivery.deliveryStopId, photo)
           )}

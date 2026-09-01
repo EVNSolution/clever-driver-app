@@ -492,9 +492,21 @@ function findNearestRouteCoordinateIndex(
   return nearestIndex;
 }
 
-function isTerminalDeliveryStatus(status: string | undefined): boolean {
+export function isTerminalDeliveryStatus(status: string | undefined): boolean {
   return status !== undefined &&
     ['CANCELLED', 'DELIVERED', 'FAILED', 'SKIPPED'].includes(status);
+}
+
+export function completesDeliveryRoute(
+  orders: DeliveryOrder[],
+  completedDeliveryStopIds: string[],
+): boolean {
+  if (orders.length === 0) return false;
+
+  const completedStopIds = new Set(completedDeliveryStopIds);
+  return orders.every(({ id, status }) => (
+    completedStopIds.has(id) || isTerminalDeliveryStatus(status)
+  ));
 }
 
 export function buildCurrentDeliverySummary(

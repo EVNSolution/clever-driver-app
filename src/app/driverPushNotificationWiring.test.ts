@@ -28,7 +28,7 @@ describe('Driver push notification lifecycle wiring', () => {
     assert.match(source, /refreshRequestKey,/u);
     assert.match(
       source,
-      /authSession\.accessToken, loadAttempt, refreshRequestKey, selectedRoutePlanId/u,
+      /authSession\.accessToken,[\s\S]{0,160}loadAttempt,[\s\S]{0,160}refreshRequestKey,[\s\S]{0,160}selectedRoutePlanId/u,
     );
   });
 

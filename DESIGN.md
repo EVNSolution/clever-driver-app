@@ -3,7 +3,7 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-08-24
+- Last refreshed: 2026-09-01
 - Primary product surfaces: DSV 배송원 인증, 배송, 지도
 - Evidence reviewed: `docs/project-brief.md`, `docs/technology-stack.md`,
   `docs/code-organization.md`, `src/ui/auth/AuthEntryScreen.tsx`,
@@ -11,6 +11,7 @@
   `src/ui/driver/DriverSettingsModal.tsx`,
   `src/ui/driver/DeliveryScreen.tsx`,
   `src/ui/driver/DestinationNotesSheet.tsx`,
+  `src/api/dsvDriverRoute.ts`,
   `../clever-routes-app/src/app/NativeRouteMapPreview.tsx`,
   `../clever-routes-app/src/app/routeMapGeoJson.ts`
 
@@ -36,6 +37,8 @@ Shopify, 상점 관리자 또는 Routes 전용 인증 개념은 화면에 노출
 - 플랫폼에 따라 앱 경고·확인 화면의 모양과 행동이 달라지지 않게 한다.
 - 배송원이 배송지명·주소 영역에서 고정 배송지 정보를 확인하고, 일반 메모,
   점심시간, 점심시간 입장 가능 여부와 필수 도착 시간을 기록한다.
+- 배송원이 배차 진행 상태를 먼저 고르고, 그 안에서 날짜별 배차를 명시적으로
+  선택한다. 앱은 첫 주문이나 첫 배차를 자동 선택하지 않는다.
 
 Non-goals: Android 시스템 권한 창이나 외부 지도 앱 선택기처럼 OS가 소유하는
 화면을 앱 디자인으로 위장하지 않는다.
@@ -67,6 +70,11 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 하단 탭은 위 두 화면만 전환한다. 별도 내비게이션 라이브러리는 도입하지 않고
 앱 조립 계층의 단순 상태로 전환한다.
 
+상단 선택기는 배차 상태 그룹과 배송 날짜를 함께 소유한다. 앱 최초 진입에는
+선택된 날짜가 없으며 작업 영역을 비워 둔다. 정보 위계는 `진행 배차`와
+`종료 배차` 그룹 선택이 먼저이고, 그 아래에서 배송 날짜를 선택한다. 각 날짜
+항목에는 서버 배차 상태를 `진행 전`, `진행 중`, `완료`, `취소`로 표시한다.
+
 ## Design principles
 
 - 주문 조회와 주문 순서 편집을 화면 상태로 분리한다.
@@ -83,6 +91,14 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 - 배송·지도·주문 목록은 화면 상단에서 아래로 당겨 최신 서버 데이터를 조회한다.
   마지막 갱신 시각은 당기는 동안에만 보이며 성공한 응답 뒤에만 변경한다.
 - 순서 편집 중에는 편집 초안을 잃지 않도록 새로고침을 노출하지 않는다.
+- 배송 날짜는 사용자가 명시적으로 선택한다. 첫 번째 배차나 첫 번째 주문 ID를
+  클라이언트 기본값으로 사용하지 않는다.
+- 상태 구분은 주문 단위가 아니라 배차 전체의 실행 상태를 따른다. 같은 배차의
+  주문이나 배송지를 개별 상태 필터로 나누지 않는다.
+- 마지막 남은 배송지의 모든 주문이 완료되면 앱은 서버에 `ROUTE_COMPLETED`를
+  기록하고 현재 배차를 즉시 `종료 배차`의 `완료`로 옮긴다. 완료 배차는 같은 앱
+  세션에서 주문·배송지 정보를 읽기 전용으로 다시 볼 수 있다. 앱 재시작 뒤의 과거
+  완료·취소 배차 목록은 별도 서버 이력 조회 계약이 생기기 전에는 복원하지 않는다.
 
 ## Visual language
 
@@ -112,6 +128,8 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 
 - 작업 헤더: 배송원 이름, 미리보기 상태, 로그아웃
 - 배송 헤더: 주문 수, 박스 수, `순서 편집` 액션
+- 배송 날짜 선택기: 미선택 상태, `진행 배차`/`종료 배차` 그룹, 날짜별 정확한
+  배차 상태
 - 주문 목록: `내 배송`과 `공용 배송`을 한 페이지 안에서 전환
 - 주문 목록의 선택된 배차 날짜는 `내 배송`·`공용 배송` 탭보다 위에서
   두 목록에 공통으로 적용되는 기준 정보로 표시한다.
@@ -168,6 +186,10 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 
 ## Interaction states
 
+- 최초 진입: 상단 배송 날짜 선택기만 표시하고 배송·지도 작업 영역은 비워 둔다.
+- 날짜 선택: 선택한 배차 전체를 조회하며 배차 안의 주문을 상태로 다시 나누지
+  않는다.
+- 상태 전환: 다른 배차 상태 그룹으로 이동할 때 날짜 선택과 작업 화면을 비운다.
 - 기본: SellerOrderKey 기준 주문 행 표시
 - 순서 편집 진입: 현재 주문 순서를 편집 초안으로 복사
 - 핸들 탭: 이동 대상 주문을 선택 상태로 표시
@@ -211,6 +233,9 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
   `destinationName`, `conditionCode`, `shippedBoxes`, `address`, `customerCode`,
   `sellerOrderKey`, `notes`, `destinationId` 구조를 따른다.
 - 일반 목록과 순서 편집 모두 SellerOrderKey 주문 1건을 한 행·카드로 유지한다.
+- 배차 상태는 서버의 `companyGuidance.executionStatus`를 그대로 사용한다.
+  클라이언트가 주문 ID, 주문 상태, 배열 순서 또는 날짜로 배차 상태를 추측하지
+  않는다.
 - 같은 `destinationId`의 주문도 각각 독립적인 방문 순서를 가진다. 단, 배정 변경은
   기존 제품 계약대로 배송지 묶음 단위다.
 - 서버 저장 계약이 정해지면 편집 결과는 `route_plan_stops.sequence`와 revision
@@ -232,6 +257,7 @@ Success signals: 확인·경고·오류·성공 메시지가 같은 카드, 버�
 
 ## Open questions
 
+- [ ] 완료·취소 배차 기록을 계정 인증으로 조회할 서버 계약
 - [ ] 배송원별 배정 배송지와 주문을 제공할 DSV API 계약
 - [ ] 순서 확정의 저장 단위, 낙관적 잠금과 충돌 응답 계약
 - [ ] 배송원 계정에 배정된 경로 geometry를 제공할 driver-scoped DSV API 계약
