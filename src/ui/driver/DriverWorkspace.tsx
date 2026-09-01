@@ -375,10 +375,12 @@ export function DriverWorkspace({
 
       {isSettingsOpen ? (
         <DriverSettingsModal
+          accessToken={authSession.accessToken}
           onClose={() => {
             resetRootBackPress();
             setIsSettingsOpen(false);
           }}
+          onAccountDeletionRequested={onLogout}
         />
       ) : null}
 

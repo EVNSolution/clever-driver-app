@@ -8,12 +8,17 @@ import {
   PermissionsAndroid,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  DriverAccountApiError,
+  requestDriverAccountDeletion,
+} from '../../api/dsvDriverAccount';
 import { fetchDriverAndroidAppRelease } from '../../api/dsvDriverAppRelease';
 import { DRIVER_APP_INSTALL_PAGE_URL } from '../../config/driverAppInstall';
 import type { DriverAppRelease } from '../../domain/appUpdate/driverAppUpdate';
@@ -35,7 +40,9 @@ const INITIAL_PERMISSION: PermissionState = {
 };
 
 type DriverSettingsModalProps = {
+  accessToken: string;
   onClose(): void;
+  onAccountDeletionRequested(): void;
 };
 
 type VersionCheckState =
@@ -43,7 +50,11 @@ type VersionCheckState =
   | { kind: 'ready'; installed: InstalledDriverAppVersion; release: DriverAppRelease }
   | { kind: 'unavailable'; installed: InstalledDriverAppVersion | null };
 
-export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
+export function DriverSettingsModal({
+  accessToken,
+  onAccountDeletionRequested,
+  onClose,
+}: DriverSettingsModalProps) {
   const { dialog, showDialog } = useAppDialog();
   const insets = useSafeAreaInsets();
   const [permissions, setPermissions] = useState<Record<PermissionKey, PermissionState>>({
@@ -53,6 +64,7 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
   });
   const [requestingPermission, setRequestingPermission] =
     useState<PermissionKey | null>(null);
+  const [isRequestingDeletion, setIsRequestingDeletion] = useState(false);
   const [versionCheck, setVersionCheck] = useState<VersionCheckState>({
     installed: readInstalledDriverAppVersion(),
     kind: 'checking',
@@ -157,6 +169,53 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
     }
   }
 
+  function confirmAccountDeletion() {
+    showDialog({
+      actions: [
+        { label: '취소', tone: 'secondary' },
+        {
+          label: '삭제 요청',
+          onPress: () => void submitAccountDeletionRequest(),
+          tone: 'danger',
+        },
+      ],
+      message: '계정 전체 삭제를 요청합니다. 진행 중인 배송이 있으면 요청할 수 없으며, 접수 후 이 기기에서 로그아웃됩니다.',
+      title: '계정을 삭제하시겠습니까?',
+      tone: 'danger',
+    });
+  }
+
+  async function submitAccountDeletionRequest() {
+    if (isRequestingDeletion) return;
+    setIsRequestingDeletion(true);
+    try {
+      await requestDriverAccountDeletion(accessToken);
+      showDialog({
+        actions: [{
+          label: '확인',
+          onPress: onAccountDeletionRequested,
+          tone: 'primary',
+        }],
+        dismissible: false,
+        message: '계정 삭제 요청을 접수했습니다. 삭제 처리는 요청 접수 후 진행됩니다. 확인을 누르면 로그아웃됩니다.',
+        title: '삭제 요청이 접수되었습니다',
+        tone: 'success',
+      });
+    } catch (error) {
+      const hasActiveRoute = error instanceof DriverAccountApiError
+        && error.code === 'ACCOUNT_DELETION_ACTIVE_ROUTE';
+      showDialog({
+        message: hasActiveRoute
+          ? '진행 중인 배송을 완료하거나 반납한 뒤 다시 요청해 주세요.'
+          : '계정 삭제 요청을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        title: hasActiveRoute ? '진행 중인 배송이 있습니다' : '삭제 요청 오류',
+        tone: hasActiveRoute ? 'warning' : 'danger',
+      });
+    } finally {
+      setIsRequestingDeletion(false);
+    }
+  }
+
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible>
       <View style={styles.backdrop}>
@@ -175,7 +234,7 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
           <View style={styles.header}>
             <View>
               <Text style={styles.title}>환경설정</Text>
-              <Text style={styles.subtitle}>앱 권한</Text>
+              <Text style={styles.subtitle}>권한·버전·계정</Text>
             </View>
             <Pressable
               accessibilityLabel="환경설정 닫기"
@@ -190,83 +249,108 @@ export function DriverSettingsModal({ onClose }: DriverSettingsModalProps) {
             </Pressable>
           </View>
 
-          <View style={styles.permissionList}>
-            <PermissionRow
-              description="지도에서 현재 위치를 표시합니다."
-              isRequesting={requestingPermission === 'location'}
-              label="위치"
-              onPress={() => void requestPermission('location')}
-              permission={permissions.location}
-            />
-            <PermissionRow
-              description="배송 완료 증빙을 촬영합니다."
-              isRequesting={requestingPermission === 'camera'}
-              label="카메라"
-              onPress={() => void requestPermission('camera')}
-              permission={permissions.camera}
-            />
-            <PermissionRow
-              description="배송 완료 증빙 사진을 선택합니다."
-              isRequesting={requestingPermission === 'photos'}
-              label="사진 앨범"
-              onPress={() => void requestPermission('photos')}
-              permission={permissions.photos}
-            />
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void openAppSettings()}
-            style={({ pressed }) => [
-              styles.systemSettingsButton,
-              pressed && styles.buttonPressed,
-            ]}
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.systemSettingsText}>기기 설정에서 권한 관리</Text>
-          </Pressable>
+            <View style={styles.permissionList}>
+              <PermissionRow
+                description="지도에서 현재 위치를 표시합니다."
+                isRequesting={requestingPermission === 'location'}
+                label="위치"
+                onPress={() => void requestPermission('location')}
+                permission={permissions.location}
+              />
+              <PermissionRow
+                description="배송 완료 증빙을 촬영합니다."
+                isRequesting={requestingPermission === 'camera'}
+                label="카메라"
+                onPress={() => void requestPermission('camera')}
+                permission={permissions.camera}
+              />
+              <PermissionRow
+                description="배송 완료 증빙 사진을 선택합니다."
+                isRequesting={requestingPermission === 'photos'}
+                label="사진 앨범"
+                onPress={() => void requestPermission('photos')}
+                permission={permissions.photos}
+              />
+            </View>
 
-          <View style={styles.updateSection}>
-            <View style={styles.updateHeader}>
-              <Text style={styles.updateTitle}>업데이트 확인</Text>
-              <VersionStatus state={versionCheck} />
-            </View>
-            <View style={styles.versionList}>
-              <VersionRow
-                label="최신 버전"
-                value={versionCheck.kind === 'ready'
-                  ? versionCheck.release.latestVersionName
-                  : versionCheck.kind === 'checking' ? '확인 중' : '확인 불가'}
-              />
-              <VersionRow
-                label="기기 버전"
-                value={versionCheck.installed === null
-                  ? '확인 불가'
-                  : versionCheck.installed.versionName}
-              />
-            </View>
             <Pressable
               accessibilityRole="button"
-              disabled={versionCheck.kind === 'checking'}
-              onPress={() => {
-                if (isUpdateAvailable(versionCheck)) void openUpdateLink();
-                else void checkAppVersion();
-              }}
+              onPress={() => void openAppSettings()}
               style={({ pressed }) => [
-                styles.updateButton,
-                isUpdateAvailable(versionCheck) && styles.updateButtonAvailable,
+                styles.systemSettingsButton,
                 pressed && styles.buttonPressed,
               ]}
             >
-              <Text style={[
-                styles.updateButtonText,
-                isUpdateAvailable(versionCheck) && styles.updateButtonTextAvailable,
-              ]}>
-                {versionCheck.kind === 'checking'
-                  ? '버전 확인 중'
-                  : isUpdateAvailable(versionCheck) ? '업데이트 링크 열기' : '버전 다시 확인'}
-              </Text>
+              <Text style={styles.systemSettingsText}>기기 설정에서 권한 관리</Text>
             </Pressable>
-          </View>
+
+            <View style={styles.updateSection}>
+              <View style={styles.updateHeader}>
+                <Text style={styles.updateTitle}>업데이트 확인</Text>
+                <VersionStatus state={versionCheck} />
+              </View>
+              <View style={styles.versionList}>
+                <VersionRow
+                  label="최신 버전"
+                  value={versionCheck.kind === 'ready'
+                    ? versionCheck.release.latestVersionName
+                    : versionCheck.kind === 'checking' ? '확인 중' : '확인 불가'}
+                />
+                <VersionRow
+                  label="기기 버전"
+                  value={versionCheck.installed === null
+                    ? '확인 불가'
+                    : versionCheck.installed.versionName}
+                />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                disabled={versionCheck.kind === 'checking'}
+                onPress={() => {
+                  if (isUpdateAvailable(versionCheck)) void openUpdateLink();
+                  else void checkAppVersion();
+                }}
+                style={({ pressed }) => [
+                  styles.updateButton,
+                  isUpdateAvailable(versionCheck) && styles.updateButtonAvailable,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={[
+                  styles.updateButtonText,
+                  isUpdateAvailable(versionCheck) && styles.updateButtonTextAvailable,
+                ]}>
+                  {versionCheck.kind === 'checking'
+                    ? '버전 확인 중'
+                    : isUpdateAvailable(versionCheck) ? '업데이트 링크 열기' : '버전 다시 확인'}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.accountSection}>
+              <Text style={styles.accountTitle}>계정 관리</Text>
+              <Text style={styles.accountDescription}>
+                CLEVER Driver 계정과 연결된 데이터 삭제를 요청합니다.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isRequestingDeletion}
+                onPress={confirmAccountDeletion}
+                style={({ pressed }) => [
+                  styles.accountDeletionButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.accountDeletionButtonText}>
+                  {isRequestingDeletion ? '삭제 요청 중' : '계정 삭제 요청'}
+                </Text>
+              </Pressable>
+            </View>
+          </ScrollView>
         </View>
       </View>
       {dialog}
@@ -398,8 +482,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    maxHeight: '92%',
     paddingHorizontal: 20,
     paddingTop: 18,
+  },
+  content: {
+    paddingBottom: 4,
   },
   header: {
     alignItems: 'center',
@@ -579,6 +667,40 @@ const styles = StyleSheet.create({
   },
   updateButtonTextAvailable: {
     color: '#ffffff',
+  },
+  accountSection: {
+    borderColor: '#fecdca',
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 18,
+    padding: 14,
+  },
+  accountTitle: {
+    color: '#101828',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  accountDescription: {
+    color: '#667085',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  accountDeletionButton: {
+    alignItems: 'center',
+    backgroundColor: '#fff5f4',
+    borderColor: '#f04438',
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginTop: 12,
+    minHeight: 42,
+  },
+  accountDeletionButtonText: {
+    color: '#b42318',
+    fontSize: 12,
+    fontWeight: '900',
   },
   buttonPressed: {
     opacity: 0.75,

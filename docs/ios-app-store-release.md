@@ -1,7 +1,7 @@
 # iOS TestFlight and Unlisted App Store release
 
 이 문서는 CLEVER Driver의 App Store Connect 심사와 Unlisted 정식 배포 정본이다.
-EAS 빌드 명령과 TestFlight 업로드의 간단한 실행 절차는 옆 세션이 준비 중인
+EAS 빌드 명령과 TestFlight 업로드의 간단한 실행 절차는
 `docs/ios-release.md`가 소유하고, 이 문서는 개인정보·심사·릴리스 게이트를 소유한다.
 배포 변경은 `EVNSolution/clever-change-control#240`과
 `EVNSolution/clever-driver-app#29`에 연결한다.
@@ -26,41 +26,39 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 - 수동 릴리스: <https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/select-an-app-store-version-release-option>
 - EAS iOS 제출: <https://docs.expo.dev/submit/ios/>
 
-## 2026-08-26 준비 상태
+## 2026-09-01 준비 상태
 
 | 항목 | 현재 근거 | 판정 |
 | --- | --- | --- |
 | iOS 앱 ID | `com.evnsolution.clever.driver` | 준비됨 |
-| 앱 버전 | `dev`는 `0.1.8`, 옆 세션 후보는 `0.1.9`, iOS build `1` | 통합·제출 직전 최종 확인 필요 |
+| 앱 버전 | `0.1.11`, TestFlight build `4` 설치 확인 | 새 계정 삭제 UI를 포함한 build 필요 |
 | EAS 빌드 프로필 | `production`은 `distribution: store`, `autoIncrement: true` | 준비됨 |
 | iOS 네이티브 peer 의존성 | `expo-font ~56.0.7`을 직접 설치해 SDK 56 단일 버전으로 정렬 | 준비됨 |
-| Expo 런타임 건전성 | Expo Doctor 20/21 통과, SDK 56 Hermes V1 메모리 회귀 탐지 | 차단 |
-| 프로덕션 의존성 감사 | `npm audit --omit=dev`에서 Expo/Metro 계열 high 10건 | 차단 |
-| EAS 프로젝트 | `@evandsolution/clever-driver-app`, ID `f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd` 생성됨 | 통합 대기 |
+| Expo 런타임 건전성 | SDK 56 빌드와 TestFlight 실기기 실행 확인, 알려진 Hermes 회귀는 SDK 57 전환 작업으로 분리 | 출시 후 업그레이드 |
+| 프로덕션 의존성 감사 | Expo fingerprint/Metro 빌드 도구 경로 high 10건, 앱 입력에서 직접 호출하지 않음 | 강제 수정 없이 SDK 57 전환에서 해소 |
+| EAS 프로젝트 | `@evandsolution/clever-driver-app`, ID `f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd` 연결 확인 | 준비됨 |
 | EAS 소유 계정 | 조직 계정 `evandsolution`으로 생성됨 | 준비됨 |
-| EAS iOS 빌드 | 프로젝트의 iOS build history가 비어 있음 | 차단 |
-| Apple Developer 팀 | 팀 ID, 조직 가입 상태, 계약 상태를 현재 저장소에서 확인할 수 없음 | 차단 |
+| EAS iOS 빌드 | build `887d2744-531d-42b1-9d75-728ff023ac26`, source `bab870acb9194b02720449e7ebf3f2ae6cb31e4e` | 기존 TestFlight 증적 |
+| Apple Developer 팀 | App Store Connect 앱과 TestFlight 접근 성공, 팀 권한은 계정 관리자가 정리 중 | 제출 전 역할 확인 필요 |
 | 로컬 Apple 도구 | 전체 Xcode가 없고 Command Line Tools만 활성화됨 | 로컬 archive/Simulator 차단 |
 | 로컬 코드서명 | 개발용 identity 1개, Distribution identity와 provisioning profile 없음 | 로컬 배포 차단 |
-| App Store Connect 앱 | Apple ID/`ascAppId`가 없음 | 차단 |
-| 앱 아이콘 | 저장소에 iOS용 1024×1024 불투명 원본이 없음 | 차단 |
-| 개인정보처리방침 | 공개 URL은 `200`이지만 운영자·문의 채널이 미확정인 초안 | 차단 |
-| 지원 URL | 실제 연락처가 있는 공개 Driver 지원 페이지가 없음 | 차단 |
-| 계정 삭제 | 서버 요청 API는 존재하지만 앱 설정 화면에서 시작할 수 없음 | 차단 |
+| App Store Connect 앱 | Apple ID/`ascAppId` `6806955523` | 준비됨 |
+| 앱 아이콘 | `assets/branding/driver-app-icon.png`를 TestFlight build에서 처리 확인 | 최종 스크린샷에서 시각 확인 |
+| 개인정보처리방침 | Driver 전용 `/driver-app/privacy` 구현 | 서버 배포 후 공개 `200` 확인 필요 |
+| 지원 URL | Driver 전용 `/driver-app/support` 구현 | 서버 배포 후 공개 `200` 확인 필요 |
+| 계정 삭제 | 설정 화면에서 서버 삭제 요청을 시작하고 활성 배송 오류를 안내 | 새 iOS build 실기기 확인 필요 |
 | 리뷰 계정 | 만료되지 않고 실제 기능을 볼 수 있는 비식별 데모 계정이 없음 | 차단 |
 | 스크린샷 | iPhone 6.9형 세트가 없음 | 차단 |
-| 실기기 | 실제 iPhone TestFlight 설치·실행 증거가 없음 | 차단 |
+| 실기기 | 사용자가 TestFlight 설치·실행 성공을 확인 | 새 build 회귀 확인 필요 |
 
-별도 활성 워크트리가 회원가입, HTTPS 설치 페이지, 업데이트 안내와 초기 iOS
-빌드 변경을 소유한다. 그 작업이 끝나기 전에는 같은 소스 파일을 수정하거나 해당
-워크트리를 정리하지 않는다. 이 문서의 체크리스트는 최종 통합된 소스와 바이너리를
-기준으로 다시 확인한다.
+현재 Unlisted 제출 변경은 `cc-240-unlisted-release` 격리 워크트리가 소유한다.
+기존 `dev` 작업공간의 미추적 Android Gradle 캐시는 수정하거나 정리하지 않는다.
+체크리스트는 최종 커밋과 새 TestFlight 바이너리를 기준으로 다시 확인한다.
 
 ## 1. 조직 소유권과 EAS 연결
 
-옆 세션이 EAS 프로젝트를 조직 계정 `evandsolution`에 생성했다. 새 프로젝트를
-다시 만들지 않는다. 해당 세션의 `app.json` 변경을 통합한 뒤 다음 명령으로 owner,
-slug와 project ID를 대조한다.
+EAS 프로젝트는 조직 계정 `evandsolution`에 연결되어 있다. 새 프로젝트를
+다시 만들지 않는다. 다음 명령으로 owner, slug와 project ID를 대조한다.
 
 ```bash
 npx eas-cli@latest project:info --non-interactive
@@ -94,7 +92,7 @@ iOS runtime을 설치한 뒤 진행한다.
 
 `npm audit --omit=dev`의 high 결과도 Expo/Metro 변환 도구 계열에 남아 있다.
 `npm audit fix --force`는 Expo 57을 포함한 breaking upgrade를 만들기 때문에
-자동 실행하지 않는다. 옆 세션 변경 통합 뒤 별도 SDK 57 전환으로 다음을 함께
+자동 실행하지 않는다. 별도 SDK 57 전환에서 다음을 함께
 검증한다.
 
 - MapLibre, Reanimated, Worklets와 Gesture Handler 정합성
@@ -126,7 +124,7 @@ iOS runtime을 설치한 뒤 진행한다.
 
 ## 3. TestFlight 파일럿
 
-1. 옆 세션 변경을 통합하고 깨끗한 릴리스 커밋에서 전체 검증을 통과한다.
+1. 깨끗한 릴리스 커밋에서 전체 검증을 통과한다.
 2. EAS/Apple 조직 소유권과 서명 자격 증명을 확인한다.
 3. 아래 명령으로 store 서명 빌드를 만들고 App Store Connect에 업로드한다.
 4. 외부 테스트 그룹 `DSV Driver Pilot`을 만들고 첫 빌드를 Beta App Review에
@@ -168,9 +166,14 @@ Content-Type: application/json
 
 ### 개인정보처리방침과 지원 URL
 
-현재 `https://clever-route-api.cleversystem.ai/privacy`는 접근 가능하지만
-운영자와 문의 채널이 확정되지 않은 공개 초안이다. 제출 전 최소한 다음 내용을
-운영/법무가 승인해야 한다.
+Driver 전용 제출 URL은 다음과 같다. 서버 변경이 배포된 뒤 공개 `200` 응답과
+본문 연락처를 다시 검증한다.
+
+- 개인정보처리방침: `https://clever-route-api.cleversystem.ai/driver-app/privacy`
+- 지원: `https://clever-route-api.cleversystem.ai/driver-app/support`
+
+문서에는 기존 회사 개인정보처리방침의 운영자·책임자 연락처와 다음 내용을
+반영한다.
 
 - 정확한 법인 운영자명과 주소
 - 개인정보·지원·삭제 요청 연락처
@@ -201,7 +204,7 @@ App Review에는 만료되지 않는 데모 계정을 제공한다. 실제 배�
 ## 5. App Privacy 초안
 
 아래 표는 현재 `dev` 소스의 데이터 흐름을 기준으로 한 기술 초안이다. App Store
-Connect 답변은 옆 세션 변경과 서버 운영 정책을 반영해 운영/법무가 최종 승인한다.
+Connect 답변은 최종 바이너리와 서버 운영 정책을 반영해 운영/법무가 최종 승인한다.
 
 | Apple 데이터 유형 | 현재 앱 동작 | 초안 |
 | --- | --- | --- |
@@ -276,23 +279,23 @@ Connect의 전용 필드에만 입력한다.
 
 다음 항목이 모두 충족되기 전에는 App Review 제출이나 릴리스를 실행하지 않는다.
 
-- [ ] 옆 세션 소스 변경 통합 및 계약 문서 재대조
-- [ ] Expo SDK 57 전환 또는 Hermes 회귀에 대한 검증된 릴리스 예외 승인
-- [ ] 프로덕션 의존성 high 감사 결과 해소 또는 항목별 노출 근거 승인
-- [ ] EAS 조직 owner 승인과 프로젝트 연결
+- [x] 릴리스 소스와 계약 문서 재대조
+- [x] SDK 56 TestFlight 실기기 실행 확인, SDK 57 전환은 후속 작업으로 분리
+- [x] high 감사 항목이 Expo/Metro 빌드 도구 경로임을 확인하고 강제 수정하지 않음
+- [x] EAS 조직 owner와 프로젝트 연결 확인
 - [ ] Apple Developer 조직 가입, 계약, Team ID 확인
 - [ ] 조직용 Apple Distribution/EAS remote signing credentials 준비
-- [ ] App Store Connect 앱과 `ascAppId` 생성
-- [ ] 최종 앱 아이콘 적용
-- [ ] 계정 삭제 UI와 서버 오류 처리 검증
-- [ ] 운영/법무 승인 개인정보처리방침 공개
-- [ ] 실제 연락처가 있는 Support URL 공개
+- [x] App Store Connect 앱과 `ascAppId` 생성
+- [x] 최종 앱 아이콘 적용
+- [x] 계정 삭제 UI와 서버 오류 처리 로컬 검증
+- [ ] Driver 개인정보처리방침 공개 URL 배포·확인
+- [ ] 실제 연락처가 있는 Driver Support URL 배포·확인
 - [ ] 비식별·비만료 App Review 계정 준비
 - [ ] App Privacy 답변 확정
 - [ ] iPhone 6.9형 스크린샷 준비
-- [ ] EAS production 빌드 성공
-- [ ] TestFlight 외부 Beta Review 승인
-- [ ] 실제 iPhone 설치·로그인·권한·지도·증빙 검증
+- [ ] 계정 삭제 UI를 포함한 새 EAS production 빌드 성공
+- [x] 기존 TestFlight build 설치·실행 확인
+- [ ] 새 TestFlight build에서 로그인·권한·지도·증빙·계정 삭제 검증
 - [ ] App Review 제출 시 수동 릴리스 선택
 - [ ] Unlisted 요청 승인과 배포 방식 표시 확인
 - [ ] 승인 뒤에만 정식 버전 수동 릴리스

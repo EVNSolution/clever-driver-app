@@ -11,6 +11,7 @@ type ExpoConfig = {
     version: string;
     ios: {
       bundleIdentifier: string;
+      infoPlist: { ITSAppUsesNonExemptEncryption: boolean };
     };
     android: {
       blockedPermissions: string[];
@@ -42,6 +43,7 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     appConfig.expo.android.package,
     appConfig.expo.ios.bundleIdentifier,
   );
+  assert.equal(appConfig.expo.ios.infoPlist.ITSAppUsesNonExemptEncryption, false);
   assert.equal(appConfig.expo.icon, './assets/branding/driver-app-icon.png');
   assert.ok(
     appConfig.expo.android.blockedPermissions.includes(
@@ -78,11 +80,15 @@ test('keeps signed iOS candidates on reviewed EAS profiles', () => {
       preview: { distribution: string };
       production: { credentialsSource: string; distribution: string };
     };
+    submit: {
+      production: { ios: { ascAppId: string } };
+    };
   };
 
   assert.equal(easConfig.build.preview.distribution, 'internal');
   assert.equal(easConfig.build.production.distribution, 'store');
   assert.equal(easConfig.build.production.credentialsSource, 'remote');
+  assert.equal(easConfig.submit.production.ios.ascAppId, '6806955523');
 });
 
 test('keeps Google Play submissions on internal testing until promotion', () => {
