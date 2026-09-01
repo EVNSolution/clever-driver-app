@@ -1,4 +1,10 @@
-import { RefreshControl, type RefreshControlProps } from 'react-native';
+import {
+  Platform,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  type RefreshControlProps,
+} from 'react-native';
 
 import { formatDriverRefreshUpdatedAt } from './driverRefresh';
 
@@ -38,3 +44,26 @@ export function DriverRefreshControl({
     />
   );
 }
+
+export function DriverAndroidRefreshUpdatedAt({
+  lastUpdatedAt,
+  refreshing,
+}: Pick<DriverRefreshProps, 'lastUpdatedAt' | 'refreshing'>) {
+  if (Platform.OS !== 'android' || !refreshing) return null;
+
+  return (
+    <Text accessibilityLiveRegion="polite" style={styles.androidUpdatedAt}>
+      {formatDriverRefreshUpdatedAt(lastUpdatedAt)}
+    </Text>
+  );
+}
+
+const styles = StyleSheet.create({
+  androidUpdatedAt: {
+    color: '#667085',
+    fontSize: 11,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    textAlign: 'center',
+  },
+});

@@ -25,7 +25,10 @@ import {
   type DriverDeliverySpace,
 } from '../../api/dsvDriverDeliverySpace';
 import { useAppDialog } from './AppDialog';
-import { DriverRefreshControl } from './DriverRefreshControl';
+import {
+  DriverAndroidRefreshUpdatedAt,
+  DriverRefreshControl,
+} from './DriverRefreshControl';
 
 type SpaceSection = 'mine' | 'available';
 
@@ -313,6 +316,10 @@ export function DeliverySpaceScreen({
           )}
           showsVerticalScrollIndicator={false}
         >
+          <DriverAndroidRefreshUpdatedAt
+            lastUpdatedAt={lastUpdatedAt}
+            refreshing={isRefreshing}
+          />
           {section === 'mine' && (space?.incomingHandoffs.length ?? 0) > 0 ? (
             <HandoffPanel
               activeHandoffId={activeHandoffId}

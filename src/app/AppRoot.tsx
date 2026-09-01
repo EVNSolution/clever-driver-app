@@ -31,7 +31,10 @@ import {
   readDriverAuthRefreshToken,
   saveDriverAuthSession,
 } from '../auth/driverAuthSessionStore';
-import { DRIVER_APP_INSTALL_PAGE_URL } from '../config/driverAppInstall';
+import {
+  DRIVER_APP_INSTALL_PAGE_URL,
+  isProductionDriverAndroidPackage,
+} from '../config/driverAppInstall';
 import {
   classifyDriverAppUpdate,
   retainDriverAppUpdateAfterLookupFailure,
@@ -50,8 +53,12 @@ import { AuthEntryScreen } from '../ui/auth/AuthEntryScreen';
 import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
 
 const INSTALLED_APP_VERSION = readInstalledDriverAppVersion();
+const CAN_CHECK_ANDROID_APP_UPDATE =
+  Platform.OS === 'android'
+  && INSTALLED_APP_VERSION !== null
+  && isProductionDriverAndroidPackage(INSTALLED_APP_VERSION.packageId);
 const INITIAL_APP_UPDATE_STATE: DriverAppUpdateState =
-  Platform.OS === 'android' && INSTALLED_APP_VERSION !== null
+  CAN_CHECK_ANDROID_APP_UPDATE
     ? { kind: 'checking' }
     : { kind: 'unavailable' };
 const APP_UPDATE_RECHECK_INTERVAL_MS = 5 * 60 * 1_000;
@@ -73,7 +80,7 @@ export function AppRoot() {
   const isMounted = useRef(true);
 
   const checkForAppUpdate = useCallback(async (force = false) => {
-    if (INSTALLED_APP_VERSION === null || Platform.OS !== 'android') {
+    if (!CAN_CHECK_ANDROID_APP_UPDATE || INSTALLED_APP_VERSION === null) {
       return;
     }
     const now = Date.now();
