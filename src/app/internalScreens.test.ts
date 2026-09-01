@@ -581,10 +581,15 @@ describe('authenticated driver screens', () => {
     assert.match(settings, /사진 앨범/u);
     assert.match(settings, /PermissionsAndroid\.check/u);
     assert.match(settings, /LocationManager\.requestPermissions/u);
+    assert.match(settings, /canAskAgain: Platform\.OS !== 'ios'/u);
+    assert.match(settings, /showOpenSettingsDialog\(key\)/u);
     assert.match(settings, /getCameraPermissionsAsync/u);
     assert.match(settings, /getMediaLibraryPermissionsAsync/u);
     assert.match(settings, /Linking\.openSettings/u);
     assert.match(settings, /업데이트 확인/u);
+    assert.match(settings, /앱 버전/u);
+    assert.match(settings, /설치됨/u);
+    assert.match(settings, /Platform\.OS === 'android'/u);
     assert.match(settings, /최신 버전/u);
     assert.match(settings, /기기 버전/u);
     assert.doesNotMatch(settings, /formatVersion/u);

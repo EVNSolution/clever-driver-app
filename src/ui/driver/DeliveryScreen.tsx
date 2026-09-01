@@ -42,8 +42,8 @@ import {
 } from '../../domain/delivery/sortableOrder';
 import { useAppDialog } from './AppDialog';
 import {
-  DriverAndroidRefreshUpdatedAt,
   DriverRefreshControl,
+  DriverRefreshUpdatedAt,
 } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
@@ -202,14 +202,13 @@ export function DeliveryScreen({
         ref={deliveryScrollRef}
         refreshControl={(
           <DriverRefreshControl
-            lastUpdatedAt={lastUpdatedAt}
             onRefresh={onRefresh}
             refreshing={refreshing}
           />
         )}
         showsVerticalScrollIndicator={false}
       >
-      <DriverAndroidRefreshUpdatedAt
+      <DriverRefreshUpdatedAt
         lastUpdatedAt={lastUpdatedAt}
         refreshing={refreshing}
       />

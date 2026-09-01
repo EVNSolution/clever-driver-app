@@ -1,5 +1,4 @@
 import {
-  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -14,7 +13,10 @@ type DriverRefreshProps = {
   refreshing: boolean;
 };
 
-type DriverRefreshControlProps = DriverRefreshProps & Omit<
+type DriverRefreshControlProps = Pick<
+  DriverRefreshProps,
+  'onRefresh' | 'refreshing'
+> & Omit<
   RefreshControlProps,
   | 'colors'
   | 'onRefresh'
@@ -26,7 +28,6 @@ type DriverRefreshControlProps = DriverRefreshProps & Omit<
 >;
 
 export function DriverRefreshControl({
-  lastUpdatedAt,
   onRefresh,
   refreshing,
   ...nativeProps
@@ -39,27 +40,25 @@ export function DriverRefreshControl({
       progressBackgroundColor="#ffffff"
       refreshing={refreshing}
       tintColor="#0b57d0"
-      title={formatDriverRefreshUpdatedAt(lastUpdatedAt)}
-      titleColor="#667085"
     />
   );
 }
 
-export function DriverAndroidRefreshUpdatedAt({
+export function DriverRefreshUpdatedAt({
   lastUpdatedAt,
   refreshing,
 }: Pick<DriverRefreshProps, 'lastUpdatedAt' | 'refreshing'>) {
-  if (Platform.OS !== 'android' || !refreshing) return null;
+  if (!refreshing) return null;
 
   return (
-    <Text accessibilityLiveRegion="polite" style={styles.androidUpdatedAt}>
+    <Text accessibilityLiveRegion="polite" style={styles.updatedAt}>
       {formatDriverRefreshUpdatedAt(lastUpdatedAt)}
     </Text>
   );
 }
 
 const styles = StyleSheet.create({
-  androidUpdatedAt: {
+  updatedAt: {
     color: '#667085',
     fontSize: 11,
     paddingHorizontal: 18,

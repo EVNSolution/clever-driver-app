@@ -1,6 +1,6 @@
 import { LocationManager } from '@maplibre/maplibre-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AppState,
   Linking,
@@ -64,6 +64,7 @@ export function DriverSettingsModal({
   });
   const [requestingPermission, setRequestingPermission] =
     useState<PermissionKey | null>(null);
+  const refreshLocationOnActive = useRef(false);
   const [isRequestingDeletion, setIsRequestingDeletion] = useState(false);
   const [versionCheck, setVersionCheck] = useState<VersionCheckState>({
     installed: readInstalledDriverAppVersion(),
@@ -71,12 +72,21 @@ export function DriverSettingsModal({
   });
 
   useEffect(() => {
-    void readPermissionSnapshot().then(setPermissions).catch(() => undefined);
-    void checkAppVersion();
+    void refreshPermissions();
+    if (Platform.OS === 'android') void checkAppVersion();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void readPermissionSnapshot().then(setPermissions).catch(() => undefined);
-        void checkAppVersion();
+        if (Platform.OS === 'ios' && refreshLocationOnActive.current) {
+          refreshLocationOnActive.current = false;
+          void requestLocationPermission()
+            .then((granted) => refreshPermissions(
+              locationPermissionState(granted),
+            ))
+            .catch(() => refreshPermissions());
+        } else {
+          void refreshPermissions();
+        }
+        if (Platform.OS === 'android') void checkAppVersion();
       }
     });
     return () => subscription.remove();
@@ -110,10 +120,25 @@ export function DriverSettingsModal({
     }
   }
 
-  async function openAppSettings() {
+  async function refreshPermissions(location?: PermissionState) {
+    try {
+      const snapshot = await readPermissionSnapshot();
+      setPermissions((current) => ({
+        ...snapshot,
+        location: location
+          ?? (Platform.OS === 'ios' ? current.location : snapshot.location),
+      }));
+    } catch {
+      // Keep the last visible permission state when the OS query is unavailable.
+    }
+  }
+
+  async function openAppSettings(permissionKey?: PermissionKey) {
+    refreshLocationOnActive.current = permissionKey === 'location';
     try {
       await Linking.openSettings();
     } catch {
+      refreshLocationOnActive.current = false;
       showDialog({
         message: '기기 설정에서 CLEVER Driver 권한을 확인해 주세요.',
         title: '설정을 열 수 없습니다',
@@ -122,13 +147,13 @@ export function DriverSettingsModal({
     }
   }
 
-  function showOpenSettingsDialog() {
+  function showOpenSettingsDialog(permissionKey: PermissionKey) {
     showDialog({
       actions: [
         { label: '취소', tone: 'secondary' },
         {
           label: '설정 열기',
-          onPress: () => void openAppSettings(),
+          onPress: () => void openAppSettings(permissionKey),
           tone: 'primary',
         },
       ],
@@ -141,7 +166,7 @@ export function DriverSettingsModal({
   async function requestPermission(key: PermissionKey) {
     if (requestingPermission !== null) return;
     if (permissions[key].status === 'granted' || !permissions[key].canAskAgain) {
-      await openAppSettings();
+      await openAppSettings(key);
       return;
     }
 
@@ -153,11 +178,16 @@ export function DriverSettingsModal({
           ? await ImagePicker.requestCameraPermissionsAsync()
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
       const granted = typeof result === 'boolean' ? result : result.granted;
-      const canAskAgain = typeof result === 'boolean' ? true : result.canAskAgain;
+      const canAskAgain = typeof result === 'boolean'
+        ? Platform.OS !== 'ios'
+        : result.canAskAgain;
+      const location = typeof result === 'boolean'
+        ? locationPermissionState(granted)
+        : undefined;
       if (!granted && !canAskAgain) {
-        showOpenSettingsDialog();
+        showOpenSettingsDialog(key);
       }
-      setPermissions(await readPermissionSnapshot());
+      await refreshPermissions(location);
     } catch {
       showDialog({
         message: '기기 설정에서 앱 권한을 확인해 주세요.',
@@ -289,48 +319,65 @@ export function DriverSettingsModal({
               <Text style={styles.systemSettingsText}>기기 설정에서 권한 관리</Text>
             </Pressable>
 
-            <View style={styles.updateSection}>
-              <View style={styles.updateHeader}>
-                <Text style={styles.updateTitle}>업데이트 확인</Text>
-                <VersionStatus state={versionCheck} />
+            {Platform.OS === 'android' ? (
+              <View style={styles.updateSection}>
+                <View style={styles.updateHeader}>
+                  <Text style={styles.updateTitle}>업데이트 확인</Text>
+                  <VersionStatus state={versionCheck} />
+                </View>
+                <View style={styles.versionList}>
+                  <VersionRow
+                    label="최신 버전"
+                    value={versionCheck.kind === 'ready'
+                      ? versionCheck.release.latestVersionName
+                      : versionCheck.kind === 'checking' ? '확인 중' : '확인 불가'}
+                  />
+                  <VersionRow
+                    label="기기 버전"
+                    value={versionCheck.installed === null
+                      ? '확인 불가'
+                      : versionCheck.installed.versionName}
+                  />
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={versionCheck.kind === 'checking'}
+                  onPress={() => {
+                    if (isUpdateAvailable(versionCheck)) void openUpdateLink();
+                    else void checkAppVersion();
+                  }}
+                  style={({ pressed }) => [
+                    styles.updateButton,
+                    isUpdateAvailable(versionCheck) && styles.updateButtonAvailable,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={[
+                    styles.updateButtonText,
+                    isUpdateAvailable(versionCheck) && styles.updateButtonTextAvailable,
+                  ]}>
+                    {versionCheck.kind === 'checking'
+                      ? '버전 확인 중'
+                      : isUpdateAvailable(versionCheck) ? '업데이트 링크 열기' : '버전 다시 확인'}
+                  </Text>
+                </Pressable>
               </View>
-              <View style={styles.versionList}>
-                <VersionRow
-                  label="최신 버전"
-                  value={versionCheck.kind === 'ready'
-                    ? versionCheck.release.latestVersionName
-                    : versionCheck.kind === 'checking' ? '확인 중' : '확인 불가'}
-                />
-                <VersionRow
-                  label="기기 버전"
-                  value={versionCheck.installed === null
-                    ? '확인 불가'
-                    : versionCheck.installed.versionName}
-                />
+            ) : (
+              <View style={styles.updateSection}>
+                <View style={styles.updateHeader}>
+                  <Text style={styles.updateTitle}>앱 버전</Text>
+                  <Text style={[styles.updateStatus, styles.updateStatusCurrent]}>
+                    설치됨
+                  </Text>
+                </View>
+                <View style={styles.versionList}>
+                  <VersionRow
+                    label="기기 버전"
+                    value={versionCheck.installed?.versionName ?? '알 수 없음'}
+                  />
+                </View>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                disabled={versionCheck.kind === 'checking'}
-                onPress={() => {
-                  if (isUpdateAvailable(versionCheck)) void openUpdateLink();
-                  else void checkAppVersion();
-                }}
-                style={({ pressed }) => [
-                  styles.updateButton,
-                  isUpdateAvailable(versionCheck) && styles.updateButtonAvailable,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Text style={[
-                  styles.updateButtonText,
-                  isUpdateAvailable(versionCheck) && styles.updateButtonTextAvailable,
-                ]}>
-                  {versionCheck.kind === 'checking'
-                    ? '버전 확인 중'
-                    : isUpdateAvailable(versionCheck) ? '업데이트 링크 열기' : '버전 다시 확인'}
-                </Text>
-              </Pressable>
-            </View>
+            )}
 
             <View style={styles.accountSection}>
               <Text style={styles.accountTitle}>계정 관리</Text>
@@ -438,6 +485,13 @@ function PermissionRow({
       </Pressable>
     </View>
   );
+}
+
+function locationPermissionState(granted: boolean): PermissionState {
+  return {
+    canAskAgain: Platform.OS !== 'ios',
+    status: granted ? 'granted' : 'denied',
+  };
 }
 
 async function readLocationPermission(): Promise<PermissionState> {

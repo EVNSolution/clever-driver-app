@@ -26,8 +26,8 @@ import {
 } from '../../api/dsvDriverDeliverySpace';
 import { useAppDialog } from './AppDialog';
 import {
-  DriverAndroidRefreshUpdatedAt,
   DriverRefreshControl,
+  DriverRefreshUpdatedAt,
 } from './DriverRefreshControl';
 
 type SpaceSection = 'mine' | 'available';
@@ -309,14 +309,13 @@ export function DeliverySpaceScreen({
           contentContainerStyle={styles.listContent}
           refreshControl={(
             <DriverRefreshControl
-              lastUpdatedAt={lastUpdatedAt}
               onRefresh={() => void refresh()}
               refreshing={isRefreshing}
             />
           )}
           showsVerticalScrollIndicator={false}
         >
-          <DriverAndroidRefreshUpdatedAt
+          <DriverRefreshUpdatedAt
             lastUpdatedAt={lastUpdatedAt}
             refreshing={isRefreshing}
           />
