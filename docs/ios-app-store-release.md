@@ -46,6 +46,9 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 | 앱 아이콘 | 1024px 불투명 원본과 build `9` 내장 아이콘을 IPA에서 시각·알파 검증 | 준비됨 |
 | 개인정보처리방침 | Driver 전용 `/driver-app/privacy` 운영 배포, 공개 `200` 확인 | 준비됨 |
 | 지원 URL | Driver 전용 `/driver-app/support` 운영 배포, 공개 `200` 확인 | 준비됨 |
+| App Privacy | 실제 데이터 흐름 기준 7개 유형을 설정하고 App Store Connect에 게시 | 게시 완료 |
+| App Review | 버전 `0.1.11` build `9`, review submission `1912981e-1948-48ba-8b55-1b9ce1fd9acd` | 심사 대기 중 |
+| Unlisted 요청 | Apple Developer 요청 양식 제출 확인 화면 도달 | 승인 대기 중 |
 | 계정 삭제 | 설정 화면에서 서버 삭제 요청을 시작하고 활성 배송 오류를 안내 | 새 iOS build 실기기 확인 필요 |
 | 리뷰 계정 | 비식별 데모 계정을 App Store Connect 전용 로그인 필드에 저장 | 준비됨 |
 | 스크린샷 | 1320×2868 불투명 PNG 8장을 iPhone 6.9형 슬롯에 순서대로 업로드 | 준비됨 |
@@ -79,6 +82,23 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 - Apple 상태: 업로드·처리 완료, TestFlight `제출 준비 완료`
 - App Store Connect 표시: build `9` 연결 후 앱 제목과 빌드 자산에 트럭 아이콘 반영 확인
 - iPhone 6.9형 스크린샷: 1320×2868 불투명 PNG 8장 업로드 완료
+
+### App Review와 Unlisted 요청 증적
+
+- App Store Connect 가격: 무료, 기준 국가 대한민국
+- 앱 사용 가능 지역: 대한민국 1개 지역
+- 추가 플랫폼: Apple Silicon Mac과 Apple Vision Pro 배포 제외
+- 배포 방식: `Public` 선택, Apple School Manager 할인 제외
+- 버전 출시 방식: 수동 릴리스 유지
+- App Privacy 게시: 2026-09-01, 이름·전화번호·사진 또는 비디오·기타 사용자 콘텐츠·사용자 ID·제품 상호 작용·기타 진단 데이터
+- App Review 제출: 버전 `0.1.11`, build `9`, review submission `1912981e-1948-48ba-8b55-1b9ce1fd9acd`
+- App Review 상태: `심사 대기 중`
+- Unlisted 요청: 2026-09-01 Apple Developer 양식 제출, `Thank you for your submission` 확인
+- 남은 외부 게이트: App Review 승인과 Unlisted 승인
+
+Unlisted 승인을 확인하기 전에는 App Store Connect에서 정식 버전을 수동 출시하지
+않는다. 요청 확인 화면에는 별도 요청 번호가 표시되지 않았으므로 Apple의 상태
+업데이트 이메일과 `가격 및 사용 가능 여부`의 배포 방식 변경을 함께 확인한다.
 
 EAS remote credentials로 조직 Apple Team의 Distribution 인증서와 provisioning
 profile을 사용했고 두 자격 증명은 2027-08-31까지 유효하다. 비밀 키, 인증서 파일과
@@ -229,21 +249,24 @@ App Review에는 만료되지 않는 데모 계정을 제공한다. 실제 배�
 현재 회원가입은 로그인 화면의 `회원가입` 버튼에서 이름과 휴대전화 번호로
 진행한다. App Review에는 이미 생성된 만료되지 않는 데모 계정을 제공한다.
 
-## 5. App Privacy 초안
+## 5. App Privacy 제출 기준
 
-아래 표는 현재 `dev` 소스의 데이터 흐름을 기준으로 한 기술 초안이다. App Store
-Connect 답변은 최종 바이너리와 서버 운영 정책을 반영해 운영/법무가 최종 승인한다.
+아래 표는 App Store 후보 build `9`와 현재 서버 운영 정책을 기준으로 2026-09-01
+App Store Connect에 게시한 답변이다. 앱 또는 서버의 수집 동작이 바뀌면 출시 전에
+공개 답변과 개인정보처리방침을 함께 갱신한다.
 
-| Apple 데이터 유형 | 현재 앱 동작 | 초안 |
+| Apple 데이터 유형 | 현재 앱 동작 | 게시 답변 |
 | --- | --- | --- |
 | 이름 | 가입/계정 연결을 위해 서버 전송 | 사용자와 연결, App Functionality |
 | 전화번호 | 가입/계정 연결을 위해 서버 전송 | 사용자와 연결, App Functionality |
 | User ID | 로그인 ID와 서버 계정 ID 사용 | 사용자와 연결, App Functionality |
 | 사진 또는 비디오 | 배송 완료 증빙 사진 업로드 | 사용자와 연결, App Functionality |
+| 기타 사용자 콘텐츠 | 배송 메모와 현장 입력을 서버 전송 | 사용자와 연결, App Functionality |
+| 제품 상호 작용 | 배송 시작·완료 등 업무 이벤트를 서버 전송 | 사용자와 연결, App Functionality |
+| 기타 진단 데이터 | 운영 오류·접근 로그를 서버에 보관 | 사용자와 연결하지 않음, App Functionality |
 | 정확한 위치 | 지도 화면에서 현재 위치를 기기 안에서만 표시 | 현재 소스 기준 수집하지 않음 |
 | Device ID/푸시 토큰 | 현재 구현은 Android 전용 | iOS 수집 없음, 최종 바이너리 재확인 |
-| 배송 이벤트 | 시작·완료 시각과 배차/배송지 식별자를 서버 전송 | Apple 분류와 보관 목적 확정 필요 |
-| 진단/광고/추적 | 분석·광고 SDK 없음 | 수집/추적 없음, 의존성 재확인 |
+| 광고·추적 | 광고 SDK와 사용자 추적 없음 | 추적 목적으로 사용하지 않음 |
 
 최종 가입 화면이 주민등록번호 앞자리 같은 추가 정보를 수집하면 이 표와 공개
 개인정보처리방침을 먼저 갱신하고 민감정보 수집의 법적 근거와 최소성을 별도로
@@ -319,11 +342,13 @@ Connect의 전용 필드에만 입력한다.
 - [x] Driver 개인정보처리방침 공개 URL 배포·확인
 - [x] 실제 연락처가 있는 Driver Support URL 배포·확인
 - [x] 비식별·비만료 App Review 계정 준비·전용 필드 저장
-- [ ] App Privacy 답변 확정
+- [x] App Privacy 답변 확정·게시
 - [x] iPhone 6.9형 스크린샷 준비·업로드
 - [x] 계정 삭제 UI를 포함한 새 EAS production 빌드 성공
 - [x] 기존 TestFlight build 설치·실행 확인
 - [ ] 새 TestFlight build에서 로그인·권한·지도·증빙·계정 삭제 검증
-- [ ] App Review 제출 시 수동 릴리스 선택
+- [x] App Review 제출 시 수동 릴리스 선택
+- [x] App Review 제출 및 `심사 대기 중` 상태 확인
+- [x] Unlisted 요청 양식 제출 확인
 - [ ] Unlisted 요청 승인과 배포 방식 표시 확인
 - [ ] 승인 뒤에만 정식 버전 수동 릴리스
