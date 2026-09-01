@@ -50,6 +50,16 @@ test('keeps the CLEVER Driver app identity consistent', () => {
       'android.permission.SYSTEM_ALERT_WINDOW',
     ),
   );
+  assert.ok(
+    appConfig.expo.android.blockedPermissions.includes(
+      'android.permission.READ_EXTERNAL_STORAGE',
+    ),
+  );
+  assert.ok(
+    appConfig.expo.android.blockedPermissions.includes(
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+    ),
+  );
   assert.deepEqual(appConfig.expo.android.adaptiveIcon, {
     backgroundColor: '#0B57D0',
     foregroundImage: './assets/branding/driver-app-icon-foreground.png',

@@ -579,6 +579,7 @@ describe('authenticated driver screens', () => {
     assert.match(proofModal, /사진 촬영/u);
     assert.match(proofModal, /앨범에서 선택/u);
     assert.match(proofModal, /requestCameraPermissionsAsync/u);
+    assert.match(proofModal, /Platform\.OS !== 'android'/u);
     assert.match(proofModal, /launchCameraAsync/u);
     assert.match(proofModal, /launchImageLibraryAsync/u);
     assert.match(proofModal, /<Image/u);
