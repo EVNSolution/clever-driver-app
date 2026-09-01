@@ -587,6 +587,23 @@ describe('authenticated driver screens', () => {
     assert.match(settings, /readInstalledDriverAppVersion/u);
   });
 
+  it('lets an authenticated driver initiate full account deletion from settings', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const settings = readFileSync(
+      join(appDirectory, '../ui/driver/DriverSettingsModal.tsx'),
+      'utf8',
+    );
+
+    assert.match(workspace, /accessToken=\{authSession\.accessToken\}/u);
+    assert.match(workspace, /onAccountDeletionRequested=\{onLogout\}/u);
+    assert.match(settings, /requestDriverAccountDeletion/u);
+    assert.match(settings, /계정 삭제 요청/u);
+    assert.match(settings, /ACCOUNT_DELETION_ACTIVE_ROUTE/u);
+  });
+
   it('uses the CLEVER dialog instead of Android alert dialogs', () => {
     const dialog = readFileSync(
       join(appDirectory, '../ui/driver/AppDialog.tsx'),
