@@ -31,17 +31,17 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 | 항목 | 현재 근거 | 판정 |
 | --- | --- | --- |
 | iOS 앱 ID | `com.evnsolution.clever.driver` | 준비됨 |
-| 앱 버전 | `0.1.11`, 계정 삭제 UI를 포함한 TestFlight build `5` 처리 완료 | 새 build 실기기 회귀 확인 필요 |
+| 앱 버전 | `0.1.11`, 최신 TestFlight build `8` 처리 완료 | build `8` 실기기 회귀 확인 필요 |
 | EAS 빌드 프로필 | `production`은 `distribution: store`, `autoIncrement: true` | 준비됨 |
 | iOS 네이티브 peer 의존성 | `expo-font ~56.0.7`을 직접 설치해 SDK 56 단일 버전으로 정렬 | 준비됨 |
 | Expo 런타임 건전성 | SDK 56 빌드와 TestFlight 실기기 실행 확인, 알려진 Hermes 회귀는 SDK 57 전환 작업으로 분리 | 출시 후 업그레이드 |
 | 프로덕션 의존성 감사 | Expo fingerprint/Metro 빌드 도구 경로 high 10건, 앱 입력에서 직접 호출하지 않음 | 강제 수정 없이 SDK 57 전환에서 해소 |
 | EAS 프로젝트 | `@evandsolution/clever-driver-app`, ID `f0feb2b9-2a77-4fe0-8ae7-27b5b5ecbacd` 연결 확인 | 준비됨 |
 | EAS 소유 계정 | 조직 계정 `evandsolution`으로 생성됨 | 준비됨 |
-| EAS iOS 빌드 | build `b6d29b64-9fb3-485e-aa2c-f08a22ca4a85`, source `4e1a8b69d1ecfce98f340e06134725bbc56c357a` | build `5` 업로드·처리 완료 |
-| Apple Developer 팀 | `EV&Solution Co.,Ltd (Company/Organization)` 팀으로 build `5` 서명·제출 성공 | 팀원 역할은 계정 관리자가 정리 중 |
-| 로컬 Apple 도구 | 전체 Xcode가 없고 Command Line Tools만 활성화됨 | 로컬 archive/Simulator 차단 |
-| 로컬 코드서명 | 개발용 identity 1개, Distribution identity와 provisioning profile 없음 | 로컬 배포 차단 |
+| EAS iOS 빌드 | build `83be13cd-f021-4a54-87cf-3242bd410ab5`, source `6a4900da5e97b058969d034f707c13b60a0e449c` | build `8` 업로드·처리 완료 |
+| Apple Developer 팀 | `EV&Solution Co.,Ltd (Company/Organization)` 팀으로 build `8` 서명·제출 성공 | 팀원 역할은 계정 관리자가 정리 중 |
+| 로컬 Apple 도구 | Xcode 26.6 활성화, iOS 26.5 Simulator runtime 설치 | 로컬 Simulator·실기기 QA 가능 |
+| 로컬 코드서명 | 유효 code-signing identity 2개, 로컬 provisioning profile 없음 | 정식 배포는 EAS remote credentials 사용 |
 | App Store Connect 앱 | Apple ID/`ascAppId` `6806955523` | 준비됨 |
 | 앱 아이콘 | `assets/branding/driver-app-icon.png`를 TestFlight build에서 처리 확인 | 최종 스크린샷에서 시각 확인 |
 | 개인정보처리방침 | Driver 전용 `/driver-app/privacy` 운영 배포, 공개 `200` 확인 | 준비됨 |
@@ -55,11 +55,12 @@ Unlisted App도 App Review를 통과해야 한다. App Store Connect에서는 �
 기존 `dev` 작업공간의 미추적 Android Gradle 캐시는 수정하거나 정리하지 않는다.
 체크리스트는 최종 커밋과 새 TestFlight 바이너리를 기준으로 다시 확인한다.
 
-### build 5와 운영 배포 증적
+### build 8과 운영 배포 증적
 
-- 앱 source: `4e1a8b69d1ecfce98f340e06134725bbc56c357a`
-- EAS build: `b6d29b64-9fb3-485e-aa2c-f08a22ca4a85`
-- App Store Connect 제출: `9282da6f-dc6f-462f-ab22-3f5760a18589`
+- 앱 source: `6a4900da5e97b058969d034f707c13b60a0e449c`
+- dev merge: `5b1c808c2d71f91e12a98582932d692d10a22b4c`
+- EAS build: `83be13cd-f021-4a54-87cf-3242bd410ab5`
+- App Store Connect 제출: `94bd47be-b914-4948-83c5-19bcdad9b2d7`
 - TestFlight 상태: `VALID`, 내부 테스트 중, 외부 Beta Review 제출 가능
 - 서버 source: `cdc19fff57722ac2bdbdecbc642021de2406f2ee`
 - 서버 운영 배포 workflow: `33458622620`
@@ -93,11 +94,10 @@ ID가 모두 같아야 한다. App Store Connect 앱이 생성되면 `eas.json`�
 `submit.production.ios.ascAppId`를 실제 Apple ID로 설정한다. Apple ID, Team ID,
 App Store Connect API key는 저장소에 직접 기록하지 않는다.
 
-현재 Mac은 전체 Xcode가 아니라 Command Line Tools만 활성화돼 있고, 조직용
-Apple Distribution identity와 provisioning profile도 없다. 로컬 개인 개발 identity를
-정식 배포에 재사용하지 않는다. 최초 TestFlight 후보는 승인된 조직 Apple Team과 EAS
-remote credentials로 만들고, 로컬 Simulator 캡처가 필요하면 별도로 전체 Xcode와 해당
-iOS runtime을 설치한 뒤 진행한다.
+현재 Mac은 Xcode 26.6과 iOS 26.5 Simulator runtime이 활성화돼 있다. 로컬
+provisioning profile은 없으므로 로컬 identity를 정식 배포에 재사용하지 않는다.
+TestFlight와 App Store 후보는 승인된 조직 Apple Team과 EAS remote credentials로
+만들고, 로컬 Xcode는 Simulator·실기기 QA에만 사용한다.
 
 ### SDK와 의존성 게이트
 
@@ -298,7 +298,7 @@ Connect의 전용 필드에만 입력한다.
 - [x] SDK 56 TestFlight 실기기 실행 확인, SDK 57 전환은 후속 작업으로 분리
 - [x] high 감사 항목이 Expo/Metro 빌드 도구 경로임을 확인하고 강제 수정하지 않음
 - [x] EAS 조직 owner와 프로젝트 연결 확인
-- [x] Apple Developer 조직 Team으로 production build 서명·제출 확인
+- [x] Apple Developer 조직 Team으로 production build `8` 서명·제출 확인
 - [x] 조직용 Apple Distribution/EAS remote signing credentials 준비
 - [x] App Store Connect 앱과 `ascAppId` 생성
 - [x] 최종 앱 아이콘 적용
