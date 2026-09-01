@@ -1,11 +1,17 @@
+import { useCallback, useState } from 'react';
 import {
   RefreshControl,
   StyleSheet,
   Text,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type RefreshControlProps,
 } from 'react-native';
 
-import { formatDriverRefreshUpdatedAt } from './driverRefresh';
+import {
+  formatDriverRefreshUpdatedAt,
+  isDriverRefreshPulling,
+} from './driverRefresh';
 
 type DriverRefreshProps = {
   lastUpdatedAt: Date | null;
@@ -44,11 +50,22 @@ export function DriverRefreshControl({
   );
 }
 
+export function useDriverRefreshFeedback(refreshing: boolean) {
+  const [isPulling, setIsPulling] = useState(false);
+  const onScroll = useCallback((
+    event: NativeSyntheticEvent<NativeScrollEvent>,
+  ) => {
+    setIsPulling(isDriverRefreshPulling(event.nativeEvent.contentOffset.y));
+  }, []);
+
+  return { onScroll, visible: refreshing || isPulling };
+}
+
 export function DriverRefreshUpdatedAt({
   lastUpdatedAt,
-  refreshing,
-}: Pick<DriverRefreshProps, 'lastUpdatedAt' | 'refreshing'>) {
-  if (!refreshing) return null;
+  visible,
+}: Pick<DriverRefreshProps, 'lastUpdatedAt'> & { visible: boolean }) {
+  if (!visible) return null;
 
   return (
     <Text accessibilityLiveRegion="polite" style={styles.updatedAt}>
@@ -62,7 +79,7 @@ const styles = StyleSheet.create({
     color: '#667085',
     fontSize: 11,
     paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingTop: 16,
     textAlign: 'center',
   },
 });

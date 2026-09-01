@@ -44,6 +44,7 @@ import { useAppDialog } from './AppDialog';
 import {
   DriverRefreshControl,
   DriverRefreshUpdatedAt,
+  useDriverRefreshFeedback,
 } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
@@ -100,6 +101,7 @@ export function DeliveryScreen({
   timezone,
 }: DeliveryScreenProps) {
   const { dialog, showDialog } = useAppDialog();
+  const refreshFeedback = useDriverRefreshFeedback(refreshing);
   const deliveryScrollRef = useRef<ScrollView>(null);
   const orderListTopRef = useRef(0);
   const revealedDeliveryStopIdRef = useRef<string | null>(null);
@@ -199,6 +201,7 @@ export function DeliveryScreen({
     <>
       <ScrollView
         contentContainerStyle={styles.deliveryContent}
+        onScroll={refreshFeedback.onScroll}
         ref={deliveryScrollRef}
         refreshControl={(
           <DriverRefreshControl
@@ -206,12 +209,13 @@ export function DeliveryScreen({
             refreshing={refreshing}
           />
         )}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-      <DriverRefreshUpdatedAt
-        lastUpdatedAt={lastUpdatedAt}
-        refreshing={refreshing}
-      />
+        <DriverRefreshUpdatedAt
+          lastUpdatedAt={lastUpdatedAt}
+          visible={refreshFeedback.visible}
+        />
       <View style={styles.deliveryHeader}>
         <View style={styles.deliveryHeadingCopy}>
           <Text style={styles.title}>

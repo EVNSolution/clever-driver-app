@@ -4,7 +4,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
-import { formatDriverRefreshUpdatedAt } from './driverRefresh';
+import {
+  formatDriverRefreshUpdatedAt,
+  isDriverRefreshPulling,
+} from './driverRefresh';
 
 const driverUiDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +18,12 @@ describe('driver page refresh', () => {
       '마지막 갱신 2026.08.24 09:05:07',
     );
     assert.equal(formatDriverRefreshUpdatedAt(null), '마지막 갱신 —');
+  });
+
+  it('shows refresh feedback while the list is being pulled down', () => {
+    assert.equal(isDriverRefreshPulling(-13), true);
+    assert.equal(isDriverRefreshPulling(-12), false);
+    assert.equal(isDriverRefreshPulling(0), false);
   });
 
   it('offers pull refresh without a persistent refresh status block', () => {
@@ -42,19 +51,23 @@ describe('driver page refresh', () => {
     assert.match(refreshControl, /<RefreshControl/u);
     assert.match(refreshControl, /\.\.\.nativeProps/u);
     assert.match(refreshControl, /formatDriverRefreshUpdatedAt/u);
-    assert.match(refreshControl, /if \(!refreshing\) return null/u);
+    assert.match(refreshControl, /useDriverRefreshFeedback/u);
+    assert.match(refreshControl, /if \(!visible\) return null/u);
     assert.doesNotMatch(refreshControl, /title=/u);
     assert.doesNotMatch(refreshControl, /titleColor=/u);
     assert.doesNotMatch(refreshControl, /DriverRefreshStatus/u);
     assert.doesNotMatch(refreshControl, />새로고침</u);
 
     assert.match(delivery, /refreshControl=\{[\s\S]*<DriverRefreshControl/u);
+    assert.match(delivery, /onScroll=\{refreshFeedback\.onScroll\}/u);
     assert.match(delivery, /<DriverRefreshUpdatedAt/u);
     assert.doesNotMatch(delivery, /<DriverRefreshStatus/u);
     assert.match(map, /refreshControl=\{[\s\S]*<DriverRefreshControl/u);
+    assert.match(map, /onScroll=\{refreshFeedback\.onScroll\}/u);
     assert.match(map, /<DriverRefreshUpdatedAt/u);
     assert.doesNotMatch(map, /<DriverRefreshStatus/u);
     assert.match(space, /refreshControl=\{[\s\S]*<DriverRefreshControl/u);
+    assert.match(space, /onScroll=\{refreshFeedback\.onScroll\}/u);
     assert.match(space, /<DriverRefreshUpdatedAt/u);
     assert.doesNotMatch(space, /<DriverRefreshStatus/u);
 
