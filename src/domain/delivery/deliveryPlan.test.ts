@@ -5,6 +5,7 @@ import {
   buildCurrentDeliverySummary,
   buildDeliveryDestinationPoints,
   buildDeliveryRouteVisualState,
+  completesDeliveryRoute,
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
   PREVIEW_DELIVERY_DATE,
@@ -217,6 +218,22 @@ describe('delivery order plan', () => {
       ),
       ['completed', 'current', 'upcoming'],
     );
+  });
+
+  it('completes a route only when the submitted destination closes every remaining stop', () => {
+    const [firstOrder, secondOrder, thirdOrder] = PREVIEW_DELIVERY_ORDERS;
+    assert.ok(firstOrder);
+    assert.ok(secondOrder);
+    assert.ok(thirdOrder);
+    const orders = [
+      { ...firstOrder, status: 'DELIVERED' },
+      { ...secondOrder, status: 'READY' },
+      { ...thirdOrder, status: 'CANCELLED' },
+    ];
+
+    assert.equal(completesDeliveryRoute(orders, [secondOrder.id]), true);
+    assert.equal(completesDeliveryRoute(orders, []), false);
+    assert.equal(completesDeliveryRoute([], []), false);
   });
 
   it('summarizes the server-selected next stop destination', () => {

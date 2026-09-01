@@ -14,7 +14,11 @@ import { resolveDsvApiUrl } from './dsvApiUrl';
 const DSV_DEFAULT_TIMEZONE = 'Asia/Seoul';
 
 type RouteChoice = {
-  companyGuidance: { deliveryDate: string; routeName: string };
+  companyGuidance: {
+    deliveryDate: string;
+    executionStatus: DriverRouteExecutionStatus;
+    routeName: string;
+  };
   driverAccess: { accessToken: string };
   routeAccess: { routeContext: string; routePlanId: string };
 };
@@ -78,6 +82,23 @@ type DestinationNotesEnvelope = {
   error?: { code: string; message: string } | null;
 };
 
+type DriverRouteHistoryEnvelope = {
+  data: {
+    routes: {
+      completedAt: string | null;
+      completedStopCount: number;
+      deliveryDate: string;
+      failedStopCount: number;
+      name: string;
+      routePlanId: string;
+      status: 'active' | 'completed' | 'pending';
+      stopCount: number;
+      timezone: string;
+    }[];
+  } | null;
+  error?: { code: string; message: string } | null;
+};
+
 type AssignedRouteEnvelope = {
   data: {
     status: string;
@@ -108,6 +129,8 @@ export type DriverDeliveryRoute = {
   depotCoordinate: DeliveryCoordinate | null;
   destinationNotesById: Record<string, DestinationNotes>;
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
+  executionStatus: DriverRouteExecutionStatus;
+  historySummary?: DriverCompletedRouteHistory;
   nextDeliveryStopId: string | null;
   orders: DeliveryOrder[];
   pickupCompletedAt: string | null;
@@ -115,16 +138,36 @@ export type DriverDeliveryRoute = {
   routeName: string;
   routePlanId: string;
   routeAccessToken: string;
+  routeContext: string;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
 };
 
 export type DriverDeliveryRouteChoice = {
   deliveryDate: string;
+  executionStatus: DriverRouteExecutionStatus;
   routeAccessToken: string;
   routeContext: string;
   routeName: string;
   routePlanId: string;
+};
+
+export type DriverRouteExecutionStatus =
+  | 'READY'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type DriverCompletedRouteHistory = {
+  completedAt: string | null;
+  completedStopCount: number;
+  deliveryDate: string;
+  executionStatus: 'COMPLETED';
+  failedStopCount: number;
+  routeName: string;
+  routePlanId: string;
+  stopCount: number;
+  timezone: string;
 };
 
 export class DriverRouteApiError extends Error {
@@ -136,15 +179,18 @@ export class DriverRouteApiError extends Error {
 
 export async function loadDriverDeliveryRoute(
   accountAccessToken: string,
-  selectedRoutePlanId?: string,
-): Promise<DriverDeliveryRoute | null> {
+  selectedRoutePlanId: string,
+): Promise<DriverDeliveryRoute> {
   const routeChoices = await loadDriverDeliveryRouteChoices(accountAccessToken);
-  const routeChoice =
-    routeChoices.find(({ routePlanId }) => routePlanId === selectedRoutePlanId) ??
-    routeChoices[0];
+  const routeChoice = routeChoices.find(
+    ({ routePlanId }) => routePlanId === selectedRoutePlanId,
+  );
 
   if (routeChoice === undefined) {
-    return null;
+    throw new DriverRouteApiError(
+      'ROUTE_NOT_AVAILABLE',
+      '선택한 배송 경로를 확인할 수 없습니다.',
+    );
   }
 
   const query = new URLSearchParams({
@@ -165,10 +211,12 @@ export async function loadDriverDeliveryRoute(
       depotCoordinate: null,
       destinationNotesById: {},
       etaStatus: 'PRE_PICKUP',
+      executionStatus: routeChoice.executionStatus,
       nextDeliveryStopId: null,
       orders: [],
       pickupCompletedAt: null,
       routeAccessToken: routeChoice.routeAccessToken,
+      routeContext: routeChoice.routeContext,
       routeId: routeChoice.routePlanId,
       routeName: routeChoice.routeName,
       routePlanId: routeChoice.routePlanId,
@@ -196,11 +244,8 @@ export async function loadDriverDeliveryRoute(
       mapServerDestinationNotes(stop.destinationNotes),
     ])),
     etaStatus,
-    nextDeliveryStopId:
-      route.etaSnapshot?.nextStopEta?.deliveryStopId ??
-      route.stops.find(({ status }) => !isTerminalStopStatus(status))
-        ?.deliveryStopId ??
-      null,
+    executionStatus: routeChoice.executionStatus,
+    nextDeliveryStopId: route.etaSnapshot?.nextStopEta?.deliveryStopId ?? null,
     orders: route.stops.map((stop) => mapAssignedRouteStop(
       stop,
       etaSnapshot?.nextStopEta?.deliveryStopId === stop.deliveryStopId
@@ -212,6 +257,7 @@ export async function loadDriverDeliveryRoute(
     routeName: route.name,
     routePlanId: routeChoice.routePlanId,
     routeAccessToken: routeChoice.routeAccessToken,
+    routeContext: routeChoice.routeContext,
     serverRouteGeometry: readServerRouteGeometry(route.routeGeometry),
     timezone: normalizeDsvTimezone(route.timezone),
     availableRoutes: routeChoices,
@@ -309,6 +355,7 @@ export async function loadDriverDeliveryRouteChoices(
   return [...(lookupEnvelope.data.routes ?? [])]
     .map((choice) => ({
       deliveryDate: choice.companyGuidance.deliveryDate,
+      executionStatus: choice.companyGuidance.executionStatus,
       routeAccessToken: choice.driverAccess.accessToken,
       routeContext: choice.routeAccess.routeContext,
       routeName: choice.companyGuidance.routeName,
@@ -318,6 +365,30 @@ export async function loadDriverDeliveryRouteChoices(
       right.deliveryDate.localeCompare(left.deliveryDate) ||
       left.routeName.localeCompare(right.routeName),
     );
+}
+
+export async function loadDriverCompletedRouteHistory(
+  routeAccessToken: string,
+): Promise<DriverCompletedRouteHistory[]> {
+  const envelope = await requestJson<DriverRouteHistoryEnvelope>(
+    '/driver/routes?status=completed',
+    routeAccessToken,
+  );
+  if (envelope.data === null) throwEnvelopeError(envelope.error);
+
+  return envelope.data.routes
+    .filter(({ status }) => status === 'completed')
+    .map((route) => ({
+      completedAt: route.completedAt,
+      completedStopCount: route.completedStopCount,
+      deliveryDate: route.deliveryDate,
+      executionStatus: 'COMPLETED',
+      failedStopCount: route.failedStopCount,
+      routeName: route.name,
+      routePlanId: route.routePlanId,
+      stopCount: route.stopCount,
+      timezone: route.timezone,
+    }));
 }
 
 async function requestJson<T>(
@@ -407,10 +478,6 @@ function readCoordinate(
         longitude: coordinate.longitude as number,
       }
     : null;
-}
-
-function isTerminalStopStatus(status: string): boolean {
-  return ['CANCELLED', 'DELIVERED', 'FAILED', 'SKIPPED'].includes(status);
 }
 
 function formatDeliveryAddress(parts: (string | null)[]): string {

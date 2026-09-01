@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import {
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
+  loadDriverCompletedRouteHistory,
   updateDriverDestinationNotes,
 } from './dsvDriverRoute';
 
@@ -13,6 +14,39 @@ describe('DSV assigned route API client', () => {
   afterEach(() => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = ORIGINAL_BASE_URL;
     delete (globalThis as { fetch?: unknown }).fetch;
+  });
+
+  it('loads completed route history through an active route token', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let request: { input: string; init?: RequestInit } | undefined;
+    globalThis.fetch = async (input, init) => {
+      request = { input: input.toString(), init };
+      return new Response(JSON.stringify({
+        data: {
+          pageInfo: { endCursor: null, hasNextPage: false },
+          routes: [{
+            completedAt: '2026-08-26T05:00:00.000Z',
+            completedStopCount: 8,
+            deliveryDate: '2026-08-26',
+            failedStopCount: 0,
+            name: '#358',
+            routePlanId: 'route-358',
+            status: 'completed',
+            stopCount: 8,
+            timezone: 'Asia/Seoul',
+          }],
+        },
+        error: null,
+      }));
+    };
+
+    const history = await loadDriverCompletedRouteHistory('active-route-token');
+
+    assert.equal(request?.input, 'https://dsv.example.test/driver/routes?status=completed');
+    assert.equal((request?.init?.headers as Headers).get('Authorization'), 'Bearer active-route-token');
+    assert.equal(history[0]?.routeName, '#358');
+    assert.equal(history[0]?.executionStatus, 'COMPLETED');
+    assert.equal(history[0]?.stopCount, 8);
   });
 
   it('uses the account token to select a route and the scoped token to load actual stops', async () => {
@@ -35,12 +69,12 @@ describe('DSV assigned route API client', () => {
             status: 'ROUTES_FOUND',
             routes: [
               {
-                companyGuidance: { deliveryDate: '2026-07-30', routeName: '#150' },
+                companyGuidance: { deliveryDate: '2026-07-30', executionStatus: 'READY', routeName: '#150' },
                 driverAccess: { accessToken: 'older-route-token' },
                 routeAccess: { routeContext: 'older-route', routePlanId: 'older-route' },
               },
               {
-                companyGuidance: { deliveryDate: '2026-07-31', routeName: '#116' },
+                companyGuidance: { deliveryDate: '2026-07-31', executionStatus: 'IN_PROGRESS', routeName: '#116' },
                 driverAccess: { accessToken: 'selected-route-token' },
                 routeAccess: { routeContext: 'route-116', routePlanId: 'route-116' },
               },
@@ -125,7 +159,7 @@ describe('DSV assigned route API client', () => {
       }));
     };
 
-    const route = await loadDriverDeliveryRoute('account-token');
+    const route = await loadDriverDeliveryRoute('account-token', 'route-116');
 
     assert.equal(calls[0]?.input, 'https://dsv.example.test/driver/route-access/lookup');
     assert.equal(calls[0]?.init?.headers instanceof Headers, true);
@@ -133,6 +167,8 @@ describe('DSV assigned route API client', () => {
     assert.equal(calls[1]?.input, 'https://dsv.example.test/driver/assigned-route?routeContext=route-116');
     assert.equal((calls[1]?.init?.headers as Headers).get('Authorization'), 'Bearer selected-route-token');
     assert.equal(route?.deliveryDate, '2026-07-31');
+    assert.equal(route?.executionStatus, 'IN_PROGRESS');
+    assert.equal(route?.routeContext, 'route-116');
     assert.equal(route?.routePlanId, 'route-116');
     assert.equal(route?.availableRoutes.length, 2);
     assert.equal(route?.orders[0]?.destinationName, '케이팜');
@@ -194,12 +230,12 @@ describe('DSV assigned route API client', () => {
             status: 'ROUTES_FOUND',
             routes: [
               {
-                companyGuidance: { deliveryDate: '2026-07-31', routeName: '#116' },
+                companyGuidance: { deliveryDate: '2026-07-31', executionStatus: 'IN_PROGRESS', routeName: '#116' },
                 driverAccess: { accessToken: 'latest-route-token' },
                 routeAccess: { routeContext: 'route-116', routePlanId: 'route-116' },
               },
               {
-                companyGuidance: { deliveryDate: '2026-07-30', routeName: '#2' },
+                companyGuidance: { deliveryDate: '2026-07-30', executionStatus: 'READY', routeName: '#2' },
                 driverAccess: { accessToken: 'selected-route-token' },
                 routeAccess: { routeContext: 'route-2', routePlanId: 'route-2' },
               },
@@ -250,6 +286,7 @@ describe('DSV assigned route API client', () => {
     assert.equal((calls[1]?.init?.headers as Headers).get('Authorization'), 'Bearer selected-route-token');
     assert.equal(route?.deliveryDate, '2026-07-30');
     assert.equal(route?.routePlanId, 'route-2');
+    assert.equal(route?.nextDeliveryStopId, null);
   });
 
   it('exposes server route choices for date selection', async () => {
@@ -260,12 +297,12 @@ describe('DSV assigned route API client', () => {
         status: 'ROUTES_FOUND',
         routes: [
           {
-            companyGuidance: { deliveryDate: '2026-07-30', routeName: '#2' },
+            companyGuidance: { deliveryDate: '2026-07-30', executionStatus: 'READY', routeName: '#2' },
             driverAccess: { accessToken: 'older-token' },
             routeAccess: { routeContext: 'older-context', routePlanId: 'older-id' },
           },
           {
-            companyGuidance: { deliveryDate: '2026-07-31', routeName: '#116' },
+            companyGuidance: { deliveryDate: '2026-07-31', executionStatus: 'IN_PROGRESS', routeName: '#116' },
             driverAccess: { accessToken: 'newer-token' },
             routeAccess: { routeContext: 'newer-context', routePlanId: 'newer-id' },
           },
@@ -282,6 +319,7 @@ describe('DSV assigned route API client', () => {
     ]);
     assert.equal(routeChoices[0]?.routeContext, 'newer-context');
     assert.equal(routeChoices[0]?.routeName, '#116');
+    assert.equal(routeChoices[0]?.executionStatus, 'IN_PROGRESS');
   });
 
   it('preserves an empty vehicle-backed route so shared orders remain reachable', async () => {
@@ -293,7 +331,7 @@ describe('DSV assigned route API client', () => {
         data: {
           status: 'ROUTES_FOUND',
           routes: [{
-            companyGuidance: { deliveryDate: '2026-08-07', routeName: '#205' },
+            companyGuidance: { deliveryDate: '2026-08-07', executionStatus: 'READY', routeName: '#205' },
             driverAccess: { accessToken: 'empty-route-token' },
             routeAccess: { routeContext: 'route-205', routePlanId: 'route-205' },
           }],
@@ -305,7 +343,7 @@ describe('DSV assigned route API client', () => {
       }));
     };
 
-    const route = await loadDriverDeliveryRoute('account-token');
+    const route = await loadDriverDeliveryRoute('account-token', 'route-205');
 
     assert.equal(route?.deliveryDate, '2026-08-07');
     assert.equal(route?.routeName, '#205');
@@ -315,14 +353,38 @@ describe('DSV assigned route API client', () => {
     assert.equal(route?.availableRoutes.length, 1);
   });
 
-  it('returns null when the linked account has no active route', async () => {
+  it('returns no choices when the linked account has no active route', async () => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
     globalThis.fetch = async () => new Response(JSON.stringify({
       data: { status: 'ROUTES_FOUND', routes: [] },
       error: null,
     }));
 
-    assert.equal(await loadDriverDeliveryRoute('account-token'), null);
+    assert.deepEqual(await loadDriverDeliveryRouteChoices('account-token'), []);
+  });
+
+  it('does not silently replace an unavailable explicit route selection', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      data: {
+        status: 'ROUTES_FOUND',
+        routes: [{
+          companyGuidance: { deliveryDate: '2026-08-07', executionStatus: 'READY', routeName: '#205' },
+          driverAccess: { accessToken: 'route-token' },
+          routeAccess: { routeContext: 'route-205', routePlanId: 'route-205' },
+        }],
+      },
+      error: null,
+    }));
+
+    await assert.rejects(
+      loadDriverDeliveryRoute('account-token', 'missing-route'),
+      (error: unknown) => (
+        error instanceof Error &&
+        error.name === 'DriverRouteApiError' &&
+        error.message === '선택한 배송 경로를 확인할 수 없습니다.'
+      ),
+    );
   });
 
   it('patches only changed destination note fields and uses server timestamps', async () => {

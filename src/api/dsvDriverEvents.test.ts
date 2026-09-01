@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import {
   acknowledgeDriverTimeConstraint,
   completeDriverDeliveryDestination,
+  completeDriverDeliveryRoute,
   markDriverOrderMessageRead,
   startDriverDeliveryRoute,
 } from './dsvDriverEvents';
@@ -77,6 +78,23 @@ describe('DSV driver events API client', () => {
     }
     const pickupBody = JSON.parse(requests[1]?.init?.body as string) as Record<string, unknown>;
     assert.match(pickupBody.clientEventId as string, /^route-1:pickup:/u);
+  });
+
+  it('records route completion after the last destination is delivered', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    let request: { input: string; init?: RequestInit } | undefined;
+    globalThis.fetch = async (input, init) => {
+      request = { input: input.toString(), init };
+      return new Response(JSON.stringify({ data: { eventId: 'event-1' }, error: null }));
+    };
+
+    await completeDriverDeliveryRoute('route-token', 'route-1');
+
+    assert.equal(request?.input, 'https://dsv.example.test/driver/events');
+    const body = JSON.parse(request?.init?.body as string) as Record<string, unknown>;
+    assert.equal(body.eventType, 'ROUTE_COMPLETED');
+    assert.equal(body.routePlanId, 'route-1');
+    assert.match(body.clientEventId as string, /^route-1:completed:/u);
   });
 
   it('acknowledges a stop time change through the existing event endpoint', async () => {

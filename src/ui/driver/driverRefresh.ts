@@ -14,7 +14,3 @@ export function formatDriverRefreshUpdatedAt(date: Date | null): string {
 
   return `마지막 갱신 ${datePart} ${timePart}`;
 }
-
-export function isDriverRefreshPulling(contentOffsetY: number): boolean {
-  return contentOffsetY < -12;
-}

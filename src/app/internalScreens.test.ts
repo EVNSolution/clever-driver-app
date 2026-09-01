@@ -67,19 +67,54 @@ describe('authenticated driver screens', () => {
     );
 
     assert.match(source, /RouteDateSelector/u);
-    assert.match(source, /availableRoutes/u);
+    assert.match(source, /loadDriverDeliveryRouteChoices/u);
+    assert.match(source, /loadDriverCompletedRouteHistory/u);
+    assert.match(source, /routeChoices/u);
     assert.match(source, /selectedRoutePlanId/u);
+    assert.match(source, /type DriverRouteGroup = 'active' \| 'terminal'/u);
+    assert.match(source, /routeStatusGroup/u);
+    assert.match(source, /label="진행 배차"/u);
+    assert.match(source, /label="종료 배차"/u);
+    assert.match(source, /case 'READY':[\s\S]*?진행 전/u);
+    assert.match(source, /case 'IN_PROGRESS':[\s\S]*?진행 중/u);
+    assert.match(source, /case 'COMPLETED':[\s\S]*?완료/u);
+    assert.match(source, /case 'CANCELLED':[\s\S]*?취소/u);
+    assert.doesNotMatch(source, /filterDeliveryOrdersByView|DeliveryOrderView/u);
+    assert.match(source, /state: 'loading' \| 'select' \| 'ready' \| 'empty' \| 'error'/u);
     assert.match(source, /routePlanId/u);
     assert.match(source, /const \[isExpanded, setIsExpanded\] = useState\(false\)/u);
-    assert.match(source, /accessibilityState=\{\{ expanded: isExpanded \}\}/u);
+    assert.match(source, /expanded: isExpanded/u);
     assert.match(source, /setIsExpanded\(false\)/u);
     assert.match(source, /styles\.dateAccordionList/u);
     assert.doesNotMatch(source, /\n\s*horizontal\n/u);
     assert.doesNotMatch(source, /routes\.length < 2/u);
+    assert.doesNotMatch(source, /\?\? routes\[0\]/u);
     assert.doesNotMatch(source, /2026-07-31.*배송 선택/u);
     assert.doesNotMatch(routeClient, /등록된 차량이 있어야/u);
     assert.match(deliveryScreen, /이 배차에 배정된 배송이 없습니다/u);
     assert.match(deliveryScreen, /주문 목록에서 공용 배송을 확인할 수 있습니다/u);
+    assert.match(routeClient, /executionStatus: DriverRouteExecutionStatus/u);
+    assert.match(source, /completeDriverDeliveryRoute/u);
+    assert.match(source, /completesDeliveryRoute/u);
+    assert.match(source, /reconcileCompletedRoutes/u);
+    assert.match(source, /executionStatus: 'COMPLETED'/u);
+    assert.match(source, /setRouteGroup\('terminal'\)/u);
+    assert.match(
+      source,
+      /const terminalRoutesRef = useRef<Record<string, DriverDeliveryRoute>>/u,
+    );
+    assert.doesNotMatch(source, /const \[terminalRoutes, setTerminalRoutes\]/u);
+    assert.doesNotMatch(source, /^\s{4}terminalRoutes,$/mu);
+    assert.match(
+      source,
+      /state === 'select'[\s\S]*DeliveryPackageIcon[\s\S]*배송 날짜를 선택해 주세요/u,
+    );
+    assert.match(source, /routePlaceholderIcon:[\s\S]*opacity: 0\.3/u);
+    assert.match(
+      source,
+      /activeTab === 'delivery' &&[\s\S]{0,80}loadState !== 'loading' &&[\s\S]{0,80}!isDeliverySpaceOpen &&[\s\S]{0,80}routeChoices\.length > 0/u,
+    );
+    assert.match(deliveryScreen, /isReadOnly: boolean/u);
   });
 
   it('opens one delivery Space page for whole-destination release and first-claim pickup', () => {

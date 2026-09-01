@@ -25,6 +25,7 @@ export function DestinationNotesSheet({
   address,
   destinationName,
   isOrderActionPending,
+  isReadOnly,
   notes,
   onAcknowledgeTimeConstraint,
   onClose,
@@ -36,6 +37,7 @@ export function DestinationNotesSheet({
   address: string;
   destinationName: string;
   isOrderActionPending: boolean;
+  isReadOnly: boolean;
   notes: DestinationNotes;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onClose(): void;
@@ -129,11 +131,13 @@ export function DestinationNotesSheet({
               label="주문 정보"
               onPress={() => setInformationTab('orders')}
             />
-            <InformationTabButton
-              isSelected={informationTab === 'destination'}
-              label="배송지 정보"
-              onPress={() => setInformationTab('destination')}
-            />
+            {!isReadOnly ? (
+              <InformationTabButton
+                isSelected={informationTab === 'destination'}
+                label="배송지 정보"
+                onPress={() => setInformationTab('destination')}
+              />
+            ) : null}
           </View>
 
           <KeyboardAwareScrollView
@@ -181,7 +185,7 @@ export function DestinationNotesSheet({
                         <View key={message.messageId} style={styles.orderNotice}>
                           <Text style={styles.orderNoticeLabel}>배송원 메모</Text>
                           <Text style={styles.orderNoticeText}>{message.body}</Text>
-                          {message.readAt === null ? (
+                          {message.readAt === null && !isReadOnly ? (
                             <OrderNoticeButton
                               disabled={isOrderActionPending}
                               label="메모 확인"
@@ -189,9 +193,9 @@ export function DestinationNotesSheet({
                                 void onReadDriverMessage(message.messageId);
                               }}
                             />
-                          ) : (
+                          ) : message.readAt !== null ? (
                             <Text style={styles.orderNoticeRead}>확인됨</Text>
-                          )}
+                          ) : null}
                         </View>
                       ))}
 
@@ -204,13 +208,15 @@ export function DestinationNotesSheet({
                               timezone,
                             )}
                           </Text>
-                          <OrderNoticeButton
-                            disabled={isOrderActionPending}
-                            label="시간 변경 확인"
-                            onPress={() => {
-                              void onAcknowledgeTimeConstraint(order.id);
-                            }}
-                          />
+                          {!isReadOnly ? (
+                            <OrderNoticeButton
+                              disabled={isOrderActionPending}
+                              label="시간 변경 확인"
+                              onPress={() => {
+                                void onAcknowledgeTimeConstraint(order.id);
+                              }}
+                            />
+                          ) : null}
                         </View>
                       ) : null}
                     </View>
@@ -324,7 +330,7 @@ export function DestinationNotesSheet({
             )}
           </KeyboardAwareScrollView>
 
-          {informationTab === 'destination' ? (
+          {informationTab === 'destination' && !isReadOnly ? (
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSave }}

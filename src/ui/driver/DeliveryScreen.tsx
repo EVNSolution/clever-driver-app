@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import type { DriverCompletedRouteHistory } from '../../api/dsvDriverRoute';
 import {
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
@@ -41,11 +42,7 @@ import {
   type DeliveryOrderPositions,
 } from '../../domain/delivery/sortableOrder';
 import { useAppDialog } from './AppDialog';
-import {
-  DriverRefreshControl,
-  DriverRefreshUpdatedAt,
-  useDriverRefreshFeedback,
-} from './DriverRefreshControl';
+import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
 
@@ -62,7 +59,9 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 type DeliveryScreenProps = {
   deliveryDate: string;
   destinationNotesById: Record<string, DestinationNotes>;
+  historySummary?: DriverCompletedRouteHistory;
   isEditing: boolean;
+  isReadOnly: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
@@ -85,7 +84,9 @@ type DeliveryScreenProps = {
 export function DeliveryScreen({
   deliveryDate,
   destinationNotesById: initialDestinationNotesById,
+  historySummary,
   isEditing,
+  isReadOnly,
   lastUpdatedAt,
   nextDeliveryStopId,
   onAcknowledgeTimeConstraint,
@@ -101,10 +102,9 @@ export function DeliveryScreen({
   timezone,
 }: DeliveryScreenProps) {
   const { dialog, showDialog } = useAppDialog();
-  const refreshFeedback = useDriverRefreshFeedback(refreshing);
   const deliveryScrollRef = useRef<ScrollView>(null);
   const orderListTopRef = useRef(0);
-  const revealedDeliveryStopIdRef = useRef<string | null>(null);
+  const revealedDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
   const [draftOrders, setDraftOrders] = useState(orders);
   const [isOrderActionPending, setIsOrderActionPending] = useState(false);
   const [selectedDestinationId, setSelectedDestinationId] =
@@ -184,7 +184,7 @@ export function DeliveryScreen({
     }
   }
 
-  if (isEditing) {
+  if (isEditing && !isReadOnly) {
     return (
       <OrderSequenceEditor
         currentDeliveryStopId={nextDeliveryStopId}
@@ -201,35 +201,46 @@ export function DeliveryScreen({
     <>
       <ScrollView
         contentContainerStyle={styles.deliveryContent}
-        onScroll={refreshFeedback.onScroll}
         ref={deliveryScrollRef}
         refreshControl={(
           <DriverRefreshControl
+            lastUpdatedAt={lastUpdatedAt}
             onRefresh={onRefresh}
             refreshing={refreshing}
           />
         )}
-        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        <DriverRefreshUpdatedAt
-          lastUpdatedAt={lastUpdatedAt}
-          visible={refreshFeedback.visible}
-        />
       <View style={styles.deliveryHeader}>
         <View style={styles.deliveryHeadingCopy}>
           <Text style={styles.title}>
             {formatDeliveryDate(deliveryDate)} 배송
           </Text>
           <View style={styles.summaryItems}>
-            <Text style={styles.summaryText}>주문 {orders.length}건</Text>
-            <View style={styles.summaryDivider} />
-            <Text style={styles.summaryText}>배송지 {destinationGroups.length}곳</Text>
-            <View style={styles.summaryDivider} />
-            <Text style={styles.summaryText}>{totalBoxes}박스</Text>
+            {historySummary === undefined ? (
+              <>
+                <Text style={styles.summaryText}>주문 {orders.length}건</Text>
+                <View style={styles.summaryDivider} />
+                <Text style={styles.summaryText}>배송지 {destinationGroups.length}곳</Text>
+                <View style={styles.summaryDivider} />
+                <Text style={styles.summaryText}>{totalBoxes}박스</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.summaryText}>배송 {historySummary.stopCount}건</Text>
+                <View style={styles.summaryDivider} />
+                <Text style={styles.summaryText}>
+                  완료 {historySummary.completedStopCount}건
+                </Text>
+                <View style={styles.summaryDivider} />
+                <Text style={styles.summaryText}>
+                  실패 {historySummary.failedStopCount}건
+                </Text>
+              </>
+            )}
           </View>
         </View>
-        <View style={styles.headerActions}>
+        {!isReadOnly ? <View style={styles.headerActions}>
           <Pressable
             accessibilityLabel="주문 목록 열기"
             accessibilityRole="button"
@@ -261,7 +272,7 @@ export function DeliveryScreen({
               순서 편집
             </Text>
           </Pressable>
-        </View>
+        </View> : null}
       </View>
 
       <View
@@ -272,10 +283,21 @@ export function DeliveryScreen({
       >
         {destinationGroups.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateTitle}>이 배차에 배정된 배송이 없습니다.</Text>
-            <Text style={styles.emptyStateText}>
-              주문 목록에서 공용 배송을 확인할 수 있습니다.
-            </Text>
+            {historySummary === undefined ? (
+              <>
+                <Text style={styles.emptyStateTitle}>이 배차에 배정된 배송이 없습니다.</Text>
+                <Text style={styles.emptyStateText}>
+                  주문 목록에서 공용 배송을 확인할 수 있습니다.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.emptyStateTitle}>완료된 배차입니다.</Text>
+                <Text style={styles.emptyStateText}>
+                  완료 이력에는 배송 결과 요약만 표시됩니다.
+                </Text>
+              </>
+            )}
           </View>
         ) : null}
         {destinationGroups.map((group, index) => {
@@ -305,6 +327,7 @@ export function DeliveryScreen({
           address={selectedDestinationGroup.address}
           destinationName={selectedDestinationGroup.destinationName}
           isOrderActionPending={isOrderActionPending}
+          isReadOnly={isReadOnly}
           orders={selectedDestinationGroup.orders}
           notes={initialDestinationNotesById[selectedDestinationGroup.destinationId]
             ?? EMPTY_DESTINATION_NOTES}
