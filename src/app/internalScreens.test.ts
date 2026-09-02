@@ -26,6 +26,25 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /label="배송 순서"/u);
   });
 
+  it('renders the device bottom inset as part of the authenticated tab bar', () => {
+    const appRoot = readFileSync(join(appDirectory, 'AppRoot.tsx'), 'utf8');
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+
+    assert.match(
+      appRoot,
+      /edges=\{authSession !== null && !shouldShowAppUpdate/u,
+    );
+    assert.match(workspace, /useSafeAreaInsets/u);
+    assert.match(workspace, /const insets = useSafeAreaInsets\(\)/u);
+    assert.match(
+      workspace,
+      /paddingBottom: Platform\.OS === 'ios' \? 0 : insets\.bottom/u,
+    );
+  });
+
   it('returns through child screens and requires two back presses to exit from root tabs', () => {
     const workspace = readFileSync(
       join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),

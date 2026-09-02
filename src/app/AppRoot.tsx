@@ -251,7 +251,12 @@ export function AppRoot() {
     <GestureHandlerRootView style={styles.root}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <SafeAreaView style={styles.safeArea}>
+          <SafeAreaView
+            edges={authSession !== null && !shouldShowAppUpdate
+              ? ['top', 'left', 'right']
+              : ['top', 'right', 'bottom', 'left']}
+            style={styles.safeArea}
+          >
           <StatusBar style="dark" />
           {shouldShowAppUpdate && (
             appUpdateState.kind === 'required_update'
