@@ -10,6 +10,7 @@ import {
   ToastAndroid,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { DriverAuthSession } from '../../api/dsvDriverAuth';
 import {
@@ -63,6 +64,7 @@ export function DriverWorkspace({
   onLogout,
   refreshRequestKey,
 }: DriverWorkspaceProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
   const [isDeliverySpaceOpen, setIsDeliverySpaceOpen] = useState(false);
   const [isSequenceEditing, setIsSequenceEditing] = useState(false);
@@ -541,7 +543,13 @@ export function DriverWorkspace({
         />
       ) : null}
 
-      <View accessibilityRole="tablist" style={styles.tabBar}>
+      <View
+        accessibilityRole="tablist"
+        style={[
+          styles.tabBar,
+          { paddingBottom: Platform.OS === 'ios' ? 0 : insets.bottom },
+        ]}
+      >
         <TabButton
           icon={<DeliveryPackageIcon isSelected={activeTab === 'delivery'} />}
           isSelected={activeTab === 'delivery'}
