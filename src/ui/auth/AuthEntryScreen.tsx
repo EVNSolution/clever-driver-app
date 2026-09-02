@@ -1,5 +1,6 @@
 import { useRef, useState, type Ref } from 'react';
 import {
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -18,6 +19,7 @@ import {
   registerDriverAccount,
   type DriverAuthSession,
 } from '../../api/dsvDriverAuth';
+import { DRIVER_LEGAL_DOCUMENTS } from '../../config/driverLegalDocuments';
 import {
   normalizePhoneNumber,
   validateLoginForm,
@@ -119,6 +121,14 @@ export function AuthEntryScreen({
       setMessage(formatAuthErrorMessage(error));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function openLegalDocument(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setMessage('문서 링크를 열지 못했습니다. 잠시 후 다시 시도해 주세요.');
     }
   }
 
@@ -349,6 +359,21 @@ export function AuthEntryScreen({
             </Pressable>
           )}
         </View>
+        <View style={styles.legalLinks}>
+          {DRIVER_LEGAL_DOCUMENTS.map((document) => (
+            <Pressable
+              accessibilityRole="link"
+              key={document.url}
+              onPress={() => void openLegalDocument(document.url)}
+              style={({ pressed }) => [
+                styles.legalLink,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.legalLinkText}>{document.label}</Text>
+            </Pressable>
+          ))}
+        </View>
         </KeyboardAwareScrollView>
       </KeyboardToolbar.Group>
       <KeyboardToolbar>
@@ -558,6 +583,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 20,
+  },
+  legalLinks: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  legalLink: {
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  legalLinkText: {
+    color: '#667085',
+    fontSize: 12,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   primaryButton: {
     alignItems: 'center',

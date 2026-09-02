@@ -21,6 +21,7 @@ import {
 } from '../../api/dsvDriverAccount';
 import { fetchDriverAndroidAppRelease } from '../../api/dsvDriverAppRelease';
 import { DRIVER_APP_INSTALL_PAGE_URL } from '../../config/driverAppInstall';
+import { DRIVER_LEGAL_DOCUMENTS } from '../../config/driverLegalDocuments';
 import type { DriverAppRelease } from '../../domain/appUpdate/driverAppUpdate';
 import {
   readInstalledDriverAppVersion,
@@ -115,6 +116,18 @@ export function DriverSettingsModal({
       showDialog({
         message: '설치 링크를 열지 못했습니다. 잠시 후 다시 시도해 주세요.',
         title: '업데이트 링크 오류',
+        tone: 'danger',
+      });
+    }
+  }
+
+  async function openLegalDocument(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showDialog({
+        message: '문서 링크를 열지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        title: '문서를 열 수 없습니다',
         tone: 'danger',
       });
     }
@@ -378,6 +391,24 @@ export function DriverSettingsModal({
                 </View>
               </View>
             )}
+
+            <View style={styles.legalSection}>
+              <Text style={styles.legalTitle}>법적 정보</Text>
+              {DRIVER_LEGAL_DOCUMENTS.map((document) => (
+                <Pressable
+                  accessibilityRole="link"
+                  key={document.url}
+                  onPress={() => void openLegalDocument(document.url)}
+                  style={({ pressed }) => [
+                    styles.legalLink,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.legalLinkText}>{document.label}</Text>
+                  <Text style={styles.legalLinkArrow}>›</Text>
+                </Pressable>
+              ))}
+            </View>
 
             <View style={styles.accountSection}>
               <Text style={styles.accountTitle}>계정 관리</Text>
@@ -725,6 +756,35 @@ const styles = StyleSheet.create({
   },
   updateButtonTextAvailable: {
     color: '#ffffff',
+  },
+  legalSection: {
+    borderColor: '#e4e7ec',
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  legalTitle: {
+    color: '#101828',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  legalLink: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 42,
+  },
+  legalLinkText: {
+    color: '#344054',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  legalLinkArrow: {
+    color: '#98a2b3',
+    fontSize: 20,
   },
   accountSection: {
     borderColor: '#fecdca',

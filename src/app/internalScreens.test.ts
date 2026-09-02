@@ -632,6 +632,8 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(settings, /\(\$\{versionCode\}\)/u);
     assert.match(settings, /fetchDriverAndroidAppRelease/u);
     assert.match(settings, /readInstalledDriverAppVersion/u);
+    assert.match(settings, /DRIVER_LEGAL_DOCUMENTS/u);
+    assert.match(settings, /Linking\.openURL/u);
     assert.match(
       settings,
       /<ScrollView[\s\S]{0,180}style=\{styles\.contentScroll\}/u,
