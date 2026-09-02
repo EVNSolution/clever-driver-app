@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 const appDirectory = dirname(fileURLToPath(import.meta.url));
 const authScreenPath = join(appDirectory, '../ui/auth/AuthEntryScreen.tsx');
 const appRootPath = join(appDirectory, 'AppRoot.tsx');
+const legalDocumentsPath = join(appDirectory, '../config/driverLegalDocuments.ts');
 const sessionStorePath = join(appDirectory, '../auth/driverAuthSessionStore.ts');
 
 describe('DSV authentication entry screen', () => {
@@ -107,5 +108,19 @@ describe('DSV authentication entry screen', () => {
 
     assert.match(source, /DSV 배송원 정보와 연결되었습니다/u);
     assert.match(source, /DSV 배송원 정보 연결 대기 중입니다/u);
+  });
+
+  it('keeps legal documents available before authentication', () => {
+    const source = readFileSync(authScreenPath, 'utf8');
+    const legalDocuments = readFileSync(legalDocumentsPath, 'utf8');
+
+    assert.match(source, /DRIVER_LEGAL_DOCUMENTS/u);
+    assert.match(source, /Linking\.openURL/u);
+    assert.match(legalDocuments, /개인정보 처리방침/u);
+    assert.match(legalDocuments, /배송원 이용약관/u);
+    assert.match(legalDocuments, /위치기반서비스 이용약관/u);
+    assert.match(legalDocuments, /driver-app\/privacy/u);
+    assert.match(legalDocuments, /cleversystem\.ai\/driver-terms/u);
+    assert.match(legalDocuments, /cleversystem\.ai\/location-terms/u);
   });
 });
