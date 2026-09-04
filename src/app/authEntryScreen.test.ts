@@ -24,7 +24,8 @@ describe('DSV authentication entry screen', () => {
     const source = readFileSync(authScreenPath, 'utf8');
     const appRoot = readFileSync(appRootPath, 'utf8');
 
-    assert.match(source, /label="아이디"/u);
+    assert.match(source, /label="아이디 또는 이메일"/u);
+    assert.match(source, /keyboardType="email-address"/u);
     assert.match(source, /label="비밀번호"/u);
     assert.match(source, /label="이름"/u);
     assert.match(source, /label="휴대전화 번호"/u);
