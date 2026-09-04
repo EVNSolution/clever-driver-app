@@ -36,6 +36,26 @@ describe('DSV account form', () => {
     );
   });
 
+  it('accepts an email address as the login identifier', () => {
+    assert.deepEqual(
+      validateRegistrationForm({
+        loginId: 'kim.sambong+driver@example.com',
+        name: '김삼봉',
+        password: 'password123',
+        passwordConfirmation: 'password123',
+        phoneNumber: '01012345678',
+      }),
+      {},
+    );
+    assert.deepEqual(
+      validateLoginForm({
+        loginId: 'kim.sambong+driver@example.com',
+        password: 'password123',
+      }),
+      {},
+    );
+  });
+
   it('rejects incomplete or inconsistent registration details', () => {
     assert.deepEqual(
       validateRegistrationForm({
@@ -66,7 +86,7 @@ describe('DSV account form', () => {
       }),
       {
         loginId:
-          '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자로 입력해 주세요.',
+          '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자 또는 이메일 주소로 입력해 주세요.',
         name: '이름은 80자 이하로 입력해 주세요.',
         password: '비밀번호는 8~128자로 입력해 주세요.',
       },
@@ -81,9 +101,15 @@ describe('DSV account form', () => {
       }),
       {
         loginId:
-          '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자로 입력해 주세요.',
+          '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자 또는 이메일 주소로 입력해 주세요.',
         password: '비밀번호는 8~128자로 입력해 주세요.',
       },
     );
+  });
+
+  it('rejects malformed email identifiers', () => {
+    for (const loginId of ['driver@example', 'driver@@example.com', 'driver @example.com']) {
+      assert.ok(validateLoginForm({ loginId, password: 'password123' }).loginId);
+    }
   });
 });

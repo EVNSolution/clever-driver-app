@@ -57,7 +57,7 @@ describe('DSV driver auth API client', () => {
     };
 
     const result = await registerDriverAccount({
-      loginId: 'driver01',
+      loginId: 'kim.sambong@example.com',
       password: 'password123',
       name: '홍길동',
       phone: '01012345678',
@@ -70,7 +70,7 @@ describe('DSV driver auth API client', () => {
     );
     assert.equal(calls[0]?.init?.method, 'POST');
     assert.deepEqual(JSON.parse(calls[0]?.init?.body as string), {
-      loginId: 'driver01',
+      loginId: 'kim.sambong@example.com',
       password: 'password123',
       name: '홍길동',
       phone: '01012345678',
@@ -93,13 +93,13 @@ describe('DSV driver auth API client', () => {
     };
 
     const result = await loginDriverAccount({
-      loginId: 'driver01',
+      loginId: 'kim.sambong@example.com',
       password: 'password123',
     });
 
     assert.equal(result.use, 'dsv_driver_account');
     assert.deepEqual(requestBody, {
-      loginId: 'driver01',
+      loginId: 'kim.sambong@example.com',
       password: 'password123',
     });
   });

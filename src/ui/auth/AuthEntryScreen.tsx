@@ -161,7 +161,7 @@ export function AuthEntryScreen({
             <Text style={styles.formDescription}>
               {isRegistration
                 ? '이름과 휴대전화 번호가 등록된 배송원 정보와 일치하면 자동으로 연결됩니다.'
-                : '가입한 아이디와 비밀번호를 입력해 주세요.'}
+                : '가입한 아이디 또는 이메일과 비밀번호를 입력해 주세요.'}
             </Text>
           </View>
 
@@ -208,7 +208,9 @@ export function AuthEntryScreen({
                 autoComplete="username-new"
                 error={registrationErrors.loginId}
                 inputRef={registrationLoginIdInputRef}
-                label="아이디"
+                keyboardType="email-address"
+                label="아이디 또는 이메일"
+                maxLength={254}
                 onChangeText={(loginId) =>
                   setRegistrationForm((current) => ({
                     ...current,
@@ -218,7 +220,7 @@ export function AuthEntryScreen({
                 onSubmitEditing={() =>
                   registrationPasswordInputRef.current?.focus()
                 }
-                placeholder="사용할 아이디를 입력해 주세요"
+                placeholder="사용할 아이디 또는 이메일을 입력해 주세요"
                 returnKeyType="next"
                 textContentType="username"
                 value={registrationForm.loginId}
@@ -270,7 +272,9 @@ export function AuthEntryScreen({
                 autoCapitalize="none"
                 autoComplete="username"
                 error={loginErrors.loginId}
-                label="아이디"
+                keyboardType="email-address"
+                label="아이디 또는 이메일"
+                maxLength={254}
                 onChangeText={(loginId) =>
                   setLoginForm((current) => ({
                     ...current,
@@ -278,7 +282,7 @@ export function AuthEntryScreen({
                   }))
                 }
                 onSubmitEditing={() => loginPasswordInputRef.current?.focus()}
-                placeholder="아이디를 입력해 주세요"
+                placeholder="아이디 또는 이메일을 입력해 주세요"
                 returnKeyType="next"
                 textContentType="username"
                 value={loginForm.loginId}

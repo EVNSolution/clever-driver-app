@@ -16,6 +16,10 @@ export type RegistrationFormErrors = Partial<
 
 const KOREAN_MOBILE_PATTERN = /^01\d{8,9}$/u;
 const LOGIN_ID_PATTERN = /^[a-z0-9._-]{4,40}$/u;
+const EMAIL_LOGIN_ID_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const MAX_EMAIL_LOGIN_ID_LENGTH = 254;
+const LOGIN_ID_ERROR_MESSAGE =
+  '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자 또는 이메일 주소로 입력해 주세요.';
 const MAX_NAME_LENGTH = 80;
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 128;
@@ -31,9 +35,8 @@ export function validateLoginForm(
 
   if (values.loginId.length === 0) {
     errors.loginId = '아이디를 입력해 주세요.';
-  } else if (!LOGIN_ID_PATTERN.test(values.loginId)) {
-    errors.loginId =
-      '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자로 입력해 주세요.';
+  } else if (!isValidLoginId(values.loginId)) {
+    errors.loginId = LOGIN_ID_ERROR_MESSAGE;
   }
 
   if (values.password.length === 0) {
@@ -55,9 +58,8 @@ export function validateRegistrationForm(
 
   if (values.loginId.length === 0) {
     errors.loginId = '아이디를 입력해 주세요.';
-  } else if (!LOGIN_ID_PATTERN.test(values.loginId)) {
-    errors.loginId =
-      '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자로 입력해 주세요.';
+  } else if (!isValidLoginId(values.loginId)) {
+    errors.loginId = LOGIN_ID_ERROR_MESSAGE;
   }
 
   const trimmedName = values.name.trim();
@@ -85,4 +87,10 @@ export function validateRegistrationForm(
   }
 
   return errors;
+}
+
+function isValidLoginId(value: string): boolean {
+  return LOGIN_ID_PATTERN.test(value)
+    || (value.length <= MAX_EMAIL_LOGIN_ID_LENGTH
+      && EMAIL_LOGIN_ID_PATTERN.test(value));
 }
