@@ -506,7 +506,7 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /<ScrollView/u);
     assert.match(screenSource, /<DeliveryExecutionActions/u);
     assert.match(screenSource, /ETA/u);
-    assert.match(screenSource, /onStartDelivery/u);
+    assert.match(executionActions, /onStartDelivery/u);
     assert.match(screenSource, /summary\.address/u);
     assert.match(executionActions, /배송 완료/u);
     assert.match(executionActions, /etaStatus === 'PRE_PICKUP'/u);
@@ -604,7 +604,7 @@ describe('authenticated driver screens', () => {
     );
 
     assert.match(executionActions, /DeliveryProofModal/u);
-    assert.match(executionActions, /setProofDelivery/u);
+    assert.match(executionActions, /transactionCallbacksRef/u);
     assert.match(
       executionActions,
       /onCompleteDelivery\(summary\.destinationId, summary\.deliveryStopIds\)/u,
@@ -620,6 +620,8 @@ describe('authenticated driver screens', () => {
     assert.match(proofModal, /launchImageLibraryAsync/u);
     assert.match(proofModal, /<Image/u);
     assert.match(proofModal, /10 \* 1024 \* 1024/u);
+    assert.match(proofModal, /executionDialog/u);
+    assert.match(proofModal, /배차 완료 저장 중/u);
     assert.match(workspace, /uploadDriverProofPhoto/u);
     const proofClient = readFileSync(
       join(appDirectory, '../api/dsvDriverProofMedia.ts'),
@@ -651,22 +653,22 @@ describe('authenticated driver screens', () => {
 
     assert.match(deliveryScreen, /<DeliveryExecutionActions/u);
     assert.match(deliveryScreen, /variant="delivery"/u);
-    assert.match(deliveryScreen, /onCompleteDelivery/u);
-    assert.match(deliveryScreen, /onStartDelivery/u);
-    assert.match(deliveryScreen, /onUploadProof/u);
+    assert.match(deliveryScreen, /executionController/u);
     assert.match(mapScreen, /<DeliveryExecutionActions/u);
     assert.match(mapScreen, /variant="map"/u);
     assert.match(executionActions, /DeliveryProofModal/u);
     assert.match(executionActions, /onCompleteDelivery\(summary\.destinationId, summary\.deliveryStopIds\)/u);
     assert.match(executionActions, /픽업을 완료하고 배송을 시작할까요/u);
     assert.match(executionActions, /주문 \$\{summary\.deliveryStopIds\.length\}건을 모두/u);
-    assert.equal(executionActions.match(/setProofDelivery/gu)?.length, 3);
-    assert.match(
-      executionActions,
-      /if \(!shouldShowActions && proofDelivery === null\) return null/u,
-    );
-    assert.match(executionActions, /proofDelivery !== null/u);
-    assert.match(workspace, /<DeliveryScreen[\s\S]*onCompleteDelivery=\{completeDelivery\}/u);
+    assert.match(executionActions, /useDeliveryExecution/u);
+    assert.match(executionActions, /actionRef\.current/u);
+    assert.match(executionActions, /transactionCallbacksRef/u);
+    assert.match(executionActions, /executionDialog=\{controller\.dialog\}/u);
+    assert.match(executionActions, /phase === 'completing-route'/u);
+    assert.match(workspace, /const deliveryExecution = useDeliveryExecution/u);
+    assert.match(workspace, /executionController=\{deliveryExecution\}/u);
+    assert.match(workspace, /<DeliveryExecutionOverlay controller=\{deliveryExecution\}/u);
+    assert.match(workspace, /if \(deliveryExecution\.isLocked\) return/u);
   });
 
   it('keeps destination and address readable when device text is enlarged', () => {

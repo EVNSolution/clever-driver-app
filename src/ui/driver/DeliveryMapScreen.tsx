@@ -12,25 +12,21 @@ import {
   type DeliveryOrder,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
-import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import { DriverRefreshControl } from './DriverRefreshControl';
-import { DeliveryExecutionActions } from './DeliveryExecutionActions';
+import {
+  DeliveryExecutionActions,
+  type DeliveryExecutionController,
+} from './DeliveryExecutionActions';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
 type DeliveryMapScreenProps = {
   depotCoordinate: DeliveryCoordinate | null;
+  executionController: DeliveryExecutionController;
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   isReadOnly: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
-  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<boolean>;
-  onCompleteRoute(): Promise<void>;
-  onStartDelivery(): Promise<void>;
   onRefresh(): void;
-  onUploadProof(
-    deliveryStopId: string,
-    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
-  ): Promise<void>;
   orders: DeliveryOrder[];
   refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -39,15 +35,12 @@ type DeliveryMapScreenProps = {
 
 export function DeliveryMapScreen({
   depotCoordinate,
+  executionController,
   etaStatus,
   isReadOnly,
   lastUpdatedAt,
   nextDeliveryStopId,
-  onCompleteDelivery,
-  onCompleteRoute,
-  onStartDelivery,
   onRefresh,
-  onUploadProof,
   orders,
   refreshing,
   serverRouteGeometry,
@@ -165,14 +158,7 @@ export function DeliveryMapScreen({
         </ScrollView>
 
         <DeliveryExecutionActions
-          etaStatus={etaStatus}
-          isReadOnly={isReadOnly}
-          onCompleteDelivery={onCompleteDelivery}
-          onCompleteRoute={onCompleteRoute}
-          onStartDelivery={onStartDelivery}
-          onUploadProof={onUploadProof}
-          orderCount={orders.length}
-          summary={summary}
+          controller={executionController}
           variant="map"
         />
       </View>

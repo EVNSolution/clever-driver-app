@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -27,12 +27,16 @@ type SelectedProofPhoto = Omit<
 
 type DeliveryProofModalProps = {
   destinationName: string;
+  executionDialog?: ReactNode;
+  executionPending?: boolean;
   onClose(): void;
   onUpload(photo: SelectedProofPhoto): Promise<void>;
 };
 
 export function DeliveryProofModal({
   destinationName,
+  executionDialog,
+  executionPending = false,
   onClose,
   onUpload,
 }: DeliveryProofModalProps) {
@@ -133,14 +137,14 @@ export function DeliveryProofModal({
   return (
     <Modal
       animationType="slide"
-      onRequestClose={isUploading ? undefined : onClose}
+      onRequestClose={isUploading || executionPending ? undefined : onClose}
       transparent
       visible
     >
       <View style={styles.backdrop}>
         <Pressable
           accessibilityLabel="배송 증빙 닫기"
-          disabled={isUploading}
+          disabled={isUploading || executionPending}
           onPress={onClose}
           style={StyleSheet.absoluteFill}
         />
@@ -171,50 +175,60 @@ export function DeliveryProofModal({
             />
           )}
 
-          <View style={styles.sourceActions}>
-            <ProofSourceButton
-              icon="●"
-              label="사진 촬영"
-              onPress={() => void selectPhoto('camera')}
-            />
-            <ProofSourceButton
-              icon="▣"
-              label="앨범에서 선택"
-              onPress={() => void selectPhoto('library')}
-            />
-          </View>
-
-          {selectedPhoto === null ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={onClose}
-              style={({ pressed }) => [
-                styles.closeButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.closeButtonText}>나중에 등록</Text>
-            </Pressable>
+          {executionPending ? (
+            <View accessibilityLiveRegion="polite" style={styles.executionPending}>
+              <ActivityIndicator color="#0b57d0" size="small" />
+              <Text style={styles.executionPendingText}>배차 완료 저장 중</Text>
+            </View>
           ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ busy: isUploading, disabled: isUploading }}
-              disabled={isUploading}
-              onPress={() => void uploadPhoto()}
-              style={({ pressed }) => [
-                styles.uploadButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              {isUploading ? (
-                <ActivityIndicator color="#ffffff" size="small" />
+            <>
+              <View style={styles.sourceActions}>
+                <ProofSourceButton
+                  icon="●"
+                  label="사진 촬영"
+                  onPress={() => void selectPhoto('camera')}
+                />
+                <ProofSourceButton
+                  icon="▣"
+                  label="앨범에서 선택"
+                  onPress={() => void selectPhoto('library')}
+                />
+              </View>
+
+              {selectedPhoto === null ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onClose}
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.closeButtonText}>나중에 등록</Text>
+                </Pressable>
               ) : (
-                <Text style={styles.uploadButtonText}>증빙 사진 업로드</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: isUploading, disabled: isUploading }}
+                  disabled={isUploading}
+                  onPress={() => void uploadPhoto()}
+                  style={({ pressed }) => [
+                    styles.uploadButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  {isUploading ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.uploadButtonText}>증빙 사진 업로드</Text>
+                  )}
+                </Pressable>
               )}
-            </Pressable>
+            </>
           )}
         </View>
       </View>
+      {executionDialog}
       {dialog}
     </Modal>
   );
@@ -355,6 +369,19 @@ const styles = StyleSheet.create({
   uploadButtonText: {
     color: '#ffffff',
     fontSize: 15,
+    fontWeight: '900',
+  },
+  executionPending: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 52,
+    marginTop: 14,
+  },
+  executionPendingText: {
+    color: '#0b57d0',
+    fontSize: 14,
     fontWeight: '900',
   },
   buttonPressed: {

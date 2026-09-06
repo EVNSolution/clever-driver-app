@@ -21,9 +21,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import type { DriverCompletedRouteHistory } from '../../api/dsvDriverRoute';
-import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import {
-  buildCurrentDeliverySummary,
   groupDeliveryOrdersByDestination,
   moveDeliveryDestinationToIndex,
   resolveDeliveryDestinationProgressState,
@@ -44,7 +42,10 @@ import {
   type DeliveryOrderPositions,
 } from '../../domain/delivery/sortableOrder';
 import { useAppDialog } from './AppDialog';
-import { DeliveryExecutionActions } from './DeliveryExecutionActions';
+import {
+  DeliveryExecutionActions,
+  type DeliveryExecutionController,
+} from './DeliveryExecutionActions';
 import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
@@ -60,15 +61,13 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 type DeliveryScreenProps = {
   deliveryDate: string;
   destinationNotesById: Record<string, DestinationNotes>;
-  etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
+  executionController: DeliveryExecutionController;
   historySummary?: DriverCompletedRouteHistory;
   isEditing: boolean;
   isReadOnly: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
-  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<boolean>;
-  onCompleteRoute(): Promise<void>;
   onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
   onOrdersChange(orders: DeliveryOrder[]): void;
@@ -79,11 +78,6 @@ type DeliveryScreenProps = {
     previous: DestinationNotes,
     values: DestinationNoteValues,
   ): Promise<DestinationNotes>;
-  onStartDelivery(): Promise<void>;
-  onUploadProof(
-    deliveryStopId: string,
-    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
-  ): Promise<void>;
   orders: DeliveryOrder[];
   refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -93,23 +87,19 @@ type DeliveryScreenProps = {
 export function DeliveryScreen({
   deliveryDate,
   destinationNotesById: initialDestinationNotesById,
-  etaStatus,
+  executionController,
   historySummary,
   isEditing,
   isReadOnly,
   lastUpdatedAt,
   nextDeliveryStopId,
   onAcknowledgeTimeConstraint,
-  onCompleteDelivery,
-  onCompleteRoute,
   onEditingChange,
   onOpenDeliverySpace,
   onOrdersChange,
   onReadDriverMessage,
   onRefresh,
   onSaveDestinationNotes,
-  onStartDelivery,
-  onUploadProof,
   orders,
   refreshing,
   serverRouteGeometry,
@@ -128,10 +118,6 @@ export function DeliveryScreen({
     0,
   );
   const destinationGroups = groupDeliveryOrdersByDestination(orders);
-  const currentDeliverySummary = buildCurrentDeliverySummary(
-    orders,
-    nextDeliveryStopId,
-  );
   const selectedDestinationGroup = selectedDestinationId === null
     ? null
     : destinationGroups.find(
@@ -308,14 +294,7 @@ export function DeliveryScreen({
       </View>
 
       <DeliveryExecutionActions
-        etaStatus={etaStatus}
-        isReadOnly={isReadOnly}
-        onCompleteDelivery={onCompleteDelivery}
-        onCompleteRoute={onCompleteRoute}
-        onStartDelivery={onStartDelivery}
-        onUploadProof={onUploadProof}
-        orderCount={orders.length}
-        summary={currentDeliverySummary}
+        controller={executionController}
         variant="delivery"
       />
 

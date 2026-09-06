@@ -36,6 +36,7 @@ import {
   type DriverRouteExecutionStatus,
 } from '../../api/dsvDriverRoute';
 import {
+  buildCurrentDeliverySummary,
   completesDeliveryRoute,
   isTerminalDeliveryStatus,
   type DeliveryOrder,
@@ -47,6 +48,10 @@ import type {
 import { resolveAndroidBackAction } from '../../domain/navigation/androidBackNavigation';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
+import {
+  DeliveryExecutionOverlay,
+  useDeliveryExecution,
+} from './DeliveryExecutionActions';
 import { DriverSettingsModal } from './DriverSettingsModal';
 import { DeliverySpaceScreen } from './DeliverySpaceScreen';
 
@@ -262,6 +267,7 @@ export function DriverWorkspace({
   }
 
   function selectRoute(routePlanId: string) {
+    if (deliveryExecution.isLocked) return;
     if (routePlanId === selectedRoutePlanId) {
       return;
     }
@@ -275,6 +281,7 @@ export function DriverWorkspace({
   }
 
   function selectRouteGroup(nextGroup: DriverRouteGroup) {
+    if (deliveryExecution.isLocked) return;
     if (nextGroup === routeGroup) return;
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(false);
@@ -290,17 +297,20 @@ export function DriverWorkspace({
   }
 
   function changeSequenceEditing(isEditing: boolean) {
+    if (deliveryExecution.isLocked) return;
     resetRootBackPress();
     setIsSequenceEditing(isEditing);
   }
 
   function openDeliverySpace() {
+    if (deliveryExecution.isLocked) return;
     resetRootBackPress();
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(true);
   }
 
   function closeDeliverySpace() {
+    if (deliveryExecution.isLocked) return;
     resetRootBackPress();
     setIsDeliverySpaceOpen(false);
   }
@@ -417,6 +427,19 @@ export function DriverWorkspace({
     });
   }
 
+  const deliveryExecution = useDeliveryExecution({
+    etaStatus: route?.etaStatus ?? 'READY',
+    isReadOnly: isRouteReadOnly,
+    onCompleteDelivery: completeDelivery,
+    onCompleteRoute: completeRoute,
+    onStartDelivery: startDelivery,
+    onUploadProof: uploadDeliveryProof,
+    orderCount: orders.length,
+    summary: route === null
+      ? null
+      : buildCurrentDeliverySummary(orders, route.nextDeliveryStopId),
+  });
+
   return (
     <View style={styles.workspace}>
       <View style={styles.appHeader}>
@@ -493,23 +516,19 @@ export function DriverWorkspace({
               <DeliveryScreen
                 deliveryDate={route.deliveryDate}
                 destinationNotesById={route.destinationNotesById}
-                etaStatus={route.etaStatus}
+                executionController={deliveryExecution}
                 historySummary={route.historySummary}
                 isEditing={isSequenceEditing}
                 isReadOnly={isRouteReadOnly}
                 lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
-                onCompleteDelivery={completeDelivery}
-                onCompleteRoute={completeRoute}
                 onEditingChange={changeSequenceEditing}
                 onOpenDeliverySpace={openDeliverySpace}
                 onOrdersChange={setOrders}
                 onReadDriverMessage={readDriverMessage}
                 onRefresh={refreshRoute}
                 onSaveDestinationNotes={saveDestinationNotes}
-                onStartDelivery={startDelivery}
-                onUploadProof={uploadDeliveryProof}
                 orders={orders}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
@@ -518,15 +537,12 @@ export function DriverWorkspace({
             ) : (
               <DeliveryMapScreen
                 depotCoordinate={route.depotCoordinate}
+                executionController={deliveryExecution}
                 etaStatus={route.etaStatus}
                 isReadOnly={isRouteReadOnly}
                 lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={route.nextDeliveryStopId}
-                onCompleteDelivery={completeDelivery}
-                onCompleteRoute={completeRoute}
-                onStartDelivery={startDelivery}
                 onRefresh={refreshRoute}
-                onUploadProof={uploadDeliveryProof}
                 orders={orders}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
@@ -536,6 +552,8 @@ export function DriverWorkspace({
           </>
         )}
       </View>
+
+      <DeliveryExecutionOverlay controller={deliveryExecution} />
 
       {isSettingsOpen ? (
         <DriverSettingsModal

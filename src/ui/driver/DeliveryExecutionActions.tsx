@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useReducer, useRef } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -9,11 +9,16 @@ import {
 
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import type { CurrentDeliverySummary } from '../../domain/delivery/deliveryPlan';
+import {
+  INITIAL_DELIVERY_EXECUTION_STATE,
+  isDeliveryExecutionLocked,
+  reduceDeliveryExecutionState,
+} from '../../domain/delivery/deliveryExecutionState';
 import { openDestinationMap } from '../../platform/destinationMap';
 import { useAppDialog } from './AppDialog';
 import { DeliveryProofModal } from './DeliveryProofModal';
 
-type DeliveryExecutionActionsProps = {
+type UseDeliveryExecutionOptions = {
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   isReadOnly: boolean;
   onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<boolean>;
@@ -25,10 +30,9 @@ type DeliveryExecutionActionsProps = {
   ): Promise<void>;
   orderCount: number;
   summary: CurrentDeliverySummary | null;
-  variant: 'delivery' | 'map';
 };
 
-export function DeliveryExecutionActions({
+export function useDeliveryExecution({
   etaStatus,
   isReadOnly,
   onCompleteDelivery,
@@ -37,20 +41,24 @@ export function DeliveryExecutionActions({
   onUploadProof,
   orderCount,
   summary,
-  variant,
-}: DeliveryExecutionActionsProps) {
+}: UseDeliveryExecutionOptions) {
   const { dialog, showDialog } = useAppDialog();
-  const [isCompleting, setIsCompleting] = useState(false);
-  const [isStarting, setIsStarting] = useState(false);
-  const [proofDelivery, setProofDelivery] = useState<{
-    completesRoute: boolean;
-    deliveryStopId: string;
-    destinationName: string;
+  const [executionState, dispatch] = useReducer(
+    reduceDeliveryExecutionState,
+    INITIAL_DELIVERY_EXECUTION_STATE,
+  );
+  const actionRef = useRef<'route' | 'start' | 'stop' | null>(null);
+  const transactionCallbacksRef = useRef<{
+    onCompleteRoute(): Promise<void>;
+    onUploadProof(
+      deliveryStopId: string,
+      photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
+    ): Promise<void>;
   } | null>(null);
   const canStart = !isReadOnly && etaStatus === 'PRE_PICKUP' && orderCount > 0;
   const isCompletionDisabled =
     isReadOnly || etaStatus === 'PRE_PICKUP' || summary === null ||
-    isCompleting || isStarting || proofDelivery !== null;
+    executionState.phase !== 'idle' || executionState.proof !== null;
   const shouldShowActions = !isReadOnly && (canStart || summary !== null);
 
   async function handleOpenMap() {
@@ -75,16 +83,24 @@ export function DeliveryExecutionActions({
         { label: '취소', tone: 'secondary' },
         {
           onPress: () => {
-            setIsCompleting(true);
+            if (actionRef.current !== null || executionState.proof !== null) return;
+            actionRef.current = 'stop';
+            transactionCallbacksRef.current = { onCompleteRoute, onUploadProof };
+            dispatch({ type: 'STOP_COMPLETION_STARTED' });
             void onCompleteDelivery(summary.destinationId, summary.deliveryStopIds)
               .then((completesRoute) => {
-                setProofDelivery({
-                  completesRoute,
-                  deliveryStopId: summary.deliveryStopId,
-                  destinationName: summary.destinationName,
+                dispatch({
+                  proof: {
+                    completesRoute,
+                    deliveryStopId: summary.deliveryStopId,
+                    destinationName: summary.destinationName,
+                  },
+                  type: 'STOP_COMPLETED',
                 });
               })
               .catch((error: unknown) => {
+                transactionCallbacksRef.current = null;
+                dispatch({ type: 'ACTION_FAILED' });
                 showDialog({
                   message: error instanceof Error
                     ? error.message
@@ -93,7 +109,9 @@ export function DeliveryExecutionActions({
                   tone: 'danger',
                 });
               })
-              .finally(() => setIsCompleting(false));
+              .finally(() => {
+                actionRef.current = null;
+              });
           },
           label: '완료',
           tone: 'primary',
@@ -105,15 +123,28 @@ export function DeliveryExecutionActions({
     });
   }
 
-  function closeProofDelivery() {
-    const completesRoute = proofDelivery?.completesRoute === true;
-    setProofDelivery(null);
-    if (!completesRoute) return;
+  function completeFinalRoute() {
+    const completeRoute = transactionCallbacksRef.current?.onCompleteRoute;
+    if (
+      executionState.proof?.completesRoute !== true ||
+      completeRoute === undefined ||
+      actionRef.current !== null
+    ) return;
 
-    setIsCompleting(true);
-    void onCompleteRoute()
+    actionRef.current = 'route';
+    dispatch({ type: 'ROUTE_COMPLETION_STARTED' });
+    void completeRoute()
+      .then(() => {
+        transactionCallbacksRef.current = null;
+        dispatch({ type: 'ROUTE_COMPLETED' });
+      })
       .catch((error: unknown) => {
+        dispatch({ type: 'ROUTE_COMPLETION_FAILED' });
         showDialog({
+          actions: [
+            { label: '닫기', tone: 'secondary' },
+            { label: '다시 시도', onPress: completeFinalRoute, tone: 'primary' },
+          ],
           message: error instanceof Error
             ? error.message
             : '배차 완료 상태를 저장하지 못했습니다.',
@@ -121,20 +152,37 @@ export function DeliveryExecutionActions({
           tone: 'danger',
         });
       })
-      .finally(() => setIsCompleting(false));
+      .finally(() => {
+        actionRef.current = null;
+      });
+  }
+
+  function closeProofDelivery() {
+    if (executionState.phase === 'completing-route') return;
+    if (executionState.proof?.completesRoute === true) {
+      completeFinalRoute();
+      return;
+    }
+
+    transactionCallbacksRef.current = null;
+    dispatch({ type: 'PROOF_CLOSED' });
   }
 
   function confirmDeliveryStart() {
-    if (!canStart || isStarting || proofDelivery !== null) return;
+    if (!canStart || actionRef.current !== null || executionState.proof !== null) return;
 
     showDialog({
       actions: [
         { label: '취소', tone: 'secondary' },
         {
           onPress: () => {
-            setIsStarting(true);
+            if (actionRef.current !== null || executionState.proof !== null) return;
+            actionRef.current = 'start';
+            dispatch({ type: 'START_STARTED' });
             void onStartDelivery()
+              .then(() => dispatch({ type: 'START_COMPLETED' }))
               .catch((error: unknown) => {
+                dispatch({ type: 'ACTION_FAILED' });
                 showDialog({
                   message: error instanceof Error
                     ? error.message
@@ -143,7 +191,9 @@ export function DeliveryExecutionActions({
                   tone: 'danger',
                 });
               })
-              .finally(() => setIsStarting(false));
+              .finally(() => {
+                actionRef.current = null;
+              });
           },
           label: '시작',
           tone: 'primary',
@@ -155,15 +205,61 @@ export function DeliveryExecutionActions({
     });
   }
 
-  if (!shouldShowActions && proofDelivery === null) return null;
+  async function uploadProof(
+    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
+  ) {
+    const proof = executionState.proof;
+    const upload = transactionCallbacksRef.current?.onUploadProof;
+    if (proof === null || upload === undefined) {
+      throw new Error('배송 증빙 대상을 확인하지 못했습니다.');
+    }
+
+    await upload(proof.deliveryStopId, photo);
+  }
+
+  return {
+    canStart,
+    closeProofDelivery,
+    confirmDeliveryCompletion,
+    confirmDeliveryStart,
+    dialog,
+    executionState,
+    handleOpenMap,
+    isCompletionDisabled,
+    isLocked: isDeliveryExecutionLocked(executionState) || actionRef.current !== null,
+    shouldShowActions,
+    summary,
+    uploadProof,
+  };
+}
+
+export type DeliveryExecutionController = ReturnType<typeof useDeliveryExecution>;
+
+export function DeliveryExecutionActions({
+  controller,
+  variant,
+}: {
+  controller: DeliveryExecutionController;
+  variant: 'delivery' | 'map';
+}) {
+  const {
+    canStart,
+    confirmDeliveryCompletion,
+    confirmDeliveryStart,
+    executionState,
+    handleOpenMap,
+    isCompletionDisabled,
+    shouldShowActions,
+    summary,
+  } = controller;
+
+  if (!shouldShowActions) return null;
 
   return (
-    <>
-      {shouldShowActions ? (
-        <View style={[
-          styles.container,
-          variant === 'delivery' && styles.deliveryContainer,
-        ]}>
+    <View style={[
+      styles.container,
+      variant === 'delivery' && styles.deliveryContainer,
+    ]}>
           {variant === 'delivery' && summary !== null ? (
             <View style={styles.destinationCopy}>
               <Text maxFontSizeMultiplier={1.3} style={styles.eyebrow}>
@@ -181,15 +277,18 @@ export function DeliveryExecutionActions({
           {canStart ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ busy: isStarting, disabled: isStarting }}
-              disabled={isStarting}
+              accessibilityState={{
+                busy: executionState.phase === 'starting',
+                disabled: executionState.phase === 'starting',
+              }}
+              disabled={executionState.phase === 'starting'}
               onPress={confirmDeliveryStart}
               style={({ pressed }) => [
                 styles.startButton,
                 pressed && styles.buttonPressed,
               ]}
             >
-              {isStarting ? (
+              {executionState.phase === 'starting' ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
                 <>
@@ -227,7 +326,7 @@ export function DeliveryExecutionActions({
                   pressed && styles.buttonPressed,
                 ]}
               >
-                {isCompleting ? (
+                {executionState.phase === 'completing-stop' ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <Text maxFontSizeMultiplier={1.3} style={styles.primaryButtonText}>
@@ -237,20 +336,27 @@ export function DeliveryExecutionActions({
               </Pressable>
             </View>
           )}
-        </View>
-      ) : null}
+    </View>
+  );
+}
 
-      {proofDelivery === null ? null : (
-        <DeliveryProofModal
-          destinationName={proofDelivery.destinationName}
-          onClose={closeProofDelivery}
-          onUpload={(photo) => (
-            onUploadProof(proofDelivery.deliveryStopId, photo)
-          )}
-        />
-      )}
-      {dialog}
-    </>
+export function DeliveryExecutionOverlay({
+  controller,
+}: {
+  controller: DeliveryExecutionController;
+}) {
+  const proof = controller.executionState.proof;
+
+  if (proof === null) return controller.dialog;
+
+  return (
+    <DeliveryProofModal
+      destinationName={proof.destinationName}
+      executionDialog={controller.dialog}
+      executionPending={controller.executionState.phase === 'completing-route'}
+      onClose={controller.closeProofDelivery}
+      onUpload={controller.uploadProof}
+    />
   );
 }
 
