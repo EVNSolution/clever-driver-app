@@ -46,9 +46,10 @@ MapLibre source에 전달한다. geometry가 없으면 배송지 표식만 표�
 
 ## 순서 편집 경계
 
-주문 드래그 중에는 React 주문 배열이나 MapLibre source를 변경하지 않는다.
-Gesture Handler가 입력을 받고 Reanimated shared value가 화면상 주문 위치만
-변경한다. 손을 놓은 뒤 최종 위치를 주문 배열에 한 번 반영하며, 지도 마커도
+같은 배송지 ID의 주문은 순서 편집에서 한 행으로 묶는다. 배송지 드래그 중에는
+React 주문 배열이나 MapLibre source를 변경하지 않는다.
+Gesture Handler가 입력을 받고 Reanimated shared value가 화면상 배송지 위치만
+변경한다. 손을 놓은 뒤 배송지 전체 주문의 최종 위치를 주문 배열에 한 번 반영하며, 지도 마커도
 그 확정된 배열로 한 번 갱신한다. 이 규칙은 드래그 중 JS 재렌더와 지도 native
 source 갱신이 프레임 연속성을 방해하지 않도록 하기 위한 것이다.
 

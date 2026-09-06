@@ -600,3 +600,22 @@ export function moveDeliveryOrderToIndex(
     sequence: index + 1,
   }));
 }
+
+export function moveDeliveryDestinationToIndex(
+  orders: DeliveryOrder[],
+  destinationId: string,
+  requestedIndex: number,
+): DeliveryOrder[] {
+  const groups = groupDeliveryOrdersByDestination(orders);
+  const sourceIndex = groups.findIndex((group) => group.destinationId === destinationId);
+  if (sourceIndex < 0 || !Number.isFinite(requestedIndex)) return orders;
+  const targetIndex = Math.max(0, Math.min(groups.length - 1, Math.trunc(requestedIndex)));
+  if (sourceIndex === targetIndex) return orders;
+  const [source] = groups.splice(sourceIndex, 1);
+  if (source === undefined) return orders;
+  groups.splice(targetIndex, 0, source);
+  return groups.flatMap((group) => group.orders).map((order, index) => ({
+    ...order,
+    sequence: index + 1,
+  }));
+}
