@@ -185,7 +185,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(screen, /sellerOrderKey|orderId/u);
   });
 
-  it('shows only index, destination, address, condition, and boxes in order rows', () => {
+  it('shows destination identity and aggregate order totals in sequence rows', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
@@ -193,10 +193,10 @@ describe('authenticated driver screens', () => {
 
     assert.match(source, /순서 편집/u);
     assert.match(source, /\{index \+ 1\}/u);
-    assert.match(source, /order\.destinationName/u);
-    assert.match(source, /order\.address/u);
-    assert.match(source, /order\.conditionCode/u);
-    assert.match(source, /order\.shippedBoxes/u);
+    assert.match(source, /destination\.destinationName/u);
+    assert.match(source, /destination\.address/u);
+    assert.match(source, /group\.conditionCodes/u);
+    assert.match(source, /destination\.boxCount/u);
     assert.doesNotMatch(source, /order\.sellerOrderKey/u);
     assert.doesNotMatch(source, /order\.customerCode/u);
     assert.doesNotMatch(source, /order\.notes/u);
@@ -372,7 +372,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /주문 \{orders\.length\}건 · 배송지/u);
   });
 
-  it('reorders individual seller orders from a left drag handle', () => {
+  it('reorders canonical destination groups from a left drag handle', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
@@ -383,7 +383,7 @@ describe('authenticated driver screens', () => {
     assert.match(source, /accessibilityLabel=.*순서 이동 핸들/u);
     assert.match(source, /styles\.dragHandle/u);
     assert.match(source, /onDrop/u);
-    assert.match(source, /order\.destinationName/u);
+    assert.match(source, /destination\.destinationName/u);
     assert.doesNotMatch(source, /destination\.orders\.length/u);
   });
 
@@ -425,7 +425,7 @@ describe('authenticated driver screens', () => {
     assert.match(source, /isProductionDriverAndroidPackage/u);
   });
 
-  it('keeps a full-width pan-only map fixed above the scrolling editor list', () => {
+  it('keeps the sequence preview full-width and pan-only', () => {
     const source = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
       'utf8',
@@ -705,4 +705,18 @@ describe('authenticated driver screens', () => {
       assert.doesNotMatch(owner, /Alert\.alert/u);
     }
   });
+});
+
+
+it('keeps the sequence map inside the list scroll and offers non-drag movement', () => {
+  const source = readFileSync(join(appDirectory, '../ui/driver/DeliveryScreen.tsx'), 'utf8');
+  const editor = source.slice(source.indexOf('function OrderSequenceEditor('), source.indexOf('function DraggableDestinationRow('));
+  assert.equal((editor.match(/<ScrollView/g) ?? []).length, 1);
+  assert.ok(editor.indexOf('<ScrollView') < editor.indexOf('styles.editorMapFrame'));
+  assert.ok(editor.indexOf('</ScrollView>') > editor.indexOf('styles.editorList, '));
+  assert.match(editor, /지도 접기/u);
+  assert.match(editor, /key=\{destination.destinationId\}/u);
+  assert.match(source, /moveDeliveryDestinationToIndex/u);
+  assert.match(source, /onDrop\(destination.destinationId, initialIndex \+ direction\)/u);
+  assert.match(source, /success \|\| activeOrderId.get\(\) !== destination.destinationId/u);
 });

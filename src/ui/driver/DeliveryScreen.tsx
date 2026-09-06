@@ -22,9 +22,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import type { DriverCompletedRouteHistory } from '../../api/dsvDriverRoute';
 import {
   groupDeliveryOrdersByDestination,
-  moveDeliveryOrderToIndex,
+  moveDeliveryDestinationToIndex,
   resolveDeliveryDestinationProgressState,
-  type DeliveryConditionCode,
   type DeliveryDestinationGroup,
   type DeliveryOrder,
   type DeliveryRouteMarkerState,
@@ -135,11 +134,11 @@ export function DeliveryScreen({
     onEditingChange(false);
   }
 
-  function handleDrop(orderId: string, targetIndex: number) {
+  function handleDrop(destinationId: string, targetIndex: number) {
     setDraftOrders((currentOrders) => {
-      const reordered = moveDeliveryOrderToIndex(
+      const reordered = moveDeliveryDestinationToIndex(
         currentOrders,
-        orderId,
+        destinationId,
         targetIndex,
       );
 
@@ -477,30 +476,6 @@ function DestinationGroupRow({
   );
 }
 
-function ConditionBadge({ conditionCode }: {
-  conditionCode: DeliveryConditionCode;
-}) {
-  const isCold = conditionCode === 'COLD';
-
-  return (
-    <View
-      style={[
-        styles.conditionBadge,
-        isCold && styles.conditionBadgeCold,
-      ]}
-    >
-      <Text
-        style={[
-          styles.conditionBadgeText,
-          isCold && styles.conditionBadgeTextCold,
-        ]}
-      >
-        {conditionCode}
-      </Text>
-    </View>
-  );
-}
-
 function OrderSequenceEditor({
   currentDeliveryStopId,
   onCancel,
@@ -512,22 +487,24 @@ function OrderSequenceEditor({
   currentDeliveryStopId: string | null;
   onCancel(): void;
   onDone(): void;
-  onDrop(orderId: string, targetIndex: number): void;
+  onDrop(destinationId: string, targetIndex: number): void;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
 }) {
+  const destinations = groupDeliveryOrdersByDestination(orders);
+  const [isMapVisible, setIsMapVisible] = useState(true);
   const positions = useSharedValue(
-    createDeliveryOrderPositions(orders.map(({ id }) => id)),
+    createDeliveryOrderPositions(groupDeliveryOrdersByDestination(orders).map(({ destinationId }) => destinationId)),
   );
   const activeOrderId = useSharedValue<string | null>(null);
   const listHeight =
     EDITOR_LIST_PADDING_TOP +
-    Math.max(0, orders.length * EDITOR_ORDER_ROW_STEP - EDITOR_ORDER_ROW_GAP) +
+    Math.max(0, destinations.length * EDITOR_ORDER_ROW_STEP - EDITOR_ORDER_ROW_GAP) +
     EDITOR_LIST_PADDING_BOTTOM;
 
   useEffect(() => {
     positions.set(createDeliveryOrderPositions(
-      orders.map(({ id }) => id),
+      groupDeliveryOrdersByDestination(orders).map(({ destinationId }) => destinationId),
     ));
   }, [orders, positions]);
 
@@ -542,12 +519,12 @@ function OrderSequenceEditor({
             pressed && styles.buttonPressed,
           ]}
         >
-          <Text style={styles.cancelText}>취소</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.cancelText}>취소</Text>
         </Pressable>
         <View style={styles.editorHeadingCopy}>
-          <Text style={styles.editorTitle}>주문 순서 편집</Text>
-          <Text style={styles.editorDescription}>
-            핸들을 누른 채 주문을 이동하세요
+          <Text maxFontSizeMultiplier={1.3} style={styles.editorTitle}>배송지 순서 편집</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.editorDescription}>
+            같은 배송지의 주문을 함께 이동합니다
           </Text>
         </View>
         <Pressable
@@ -558,11 +535,26 @@ function OrderSequenceEditor({
             pressed && styles.buttonPressed,
           ]}
         >
-          <Text style={styles.doneText}>완료</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.doneText}>완료</Text>
         </Pressable>
       </View>
 
-      <View style={styles.editorMapFrame}>
+      <ScrollView
+        removeClippedSubviews={false}
+        showsVerticalScrollIndicator
+        style={styles.editorListScroll}
+      >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isMapVisible }}
+        onPress={() => setIsMapVisible((visible) => !visible)}
+        style={styles.editorMapToggle}
+      >
+        <Text maxFontSizeMultiplier={1.3} style={styles.doneText}>
+          {isMapVisible ? '지도 접기' : '지도 보기'}
+        </Text>
+      </Pressable>
+      {isMapVisible ? <View style={styles.editorMapFrame}>
         <DeliveryRouteMap
           currentDeliveryStopId={currentDeliveryStopId}
           interactionMode="pan-only"
@@ -571,30 +563,25 @@ function OrderSequenceEditor({
           style={styles.editorMap}
         />
         <View pointerEvents="none" style={styles.editorMapBadge}>
-          <Text style={styles.editorMapBadgeTitle}>지도 미리보기</Text>
-          <Text style={styles.editorMapBadgeText}>이동만 가능</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.editorMapBadgeTitle}>지도 미리보기</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.editorMapBadgeText}>이동만 가능</Text>
         </View>
-      </View>
+      </View> : null}
 
       <View style={styles.editorListHeading}>
-        <Text style={styles.editorListTitle}>주문 {orders.length}건</Text>
-        <Text style={styles.editorListHint}>홀드 중 바로 순서가 바뀝니다</Text>
+        <Text maxFontSizeMultiplier={1.3} style={styles.editorListTitle}>배송지 {destinations.length}곳 · 주문 {orders.length}건</Text>
+        <Text maxFontSizeMultiplier={1.3} style={styles.editorListHint}>핸들 또는 화살표로 이동</Text>
       </View>
-      <ScrollView
-        removeClippedSubviews={false}
-        showsVerticalScrollIndicator={false}
-        style={styles.editorListScroll}
-      >
         <View style={[styles.editorList, { height: listHeight }]}>
-          {orders.map((order, index) => (
-            <DraggableOrderRow
+          {destinations.map((destination, index) => (
+            <DraggableDestinationRow
               activeOrderId={activeOrderId}
               initialIndex={index}
-              key={order.id}
+              key={destination.destinationId}
               onDrop={onDrop}
-              order={order}
+              destination={destination}
               positions={positions}
-              rowCount={orders.length}
+              rowCount={destinations.length}
             />
           ))}
         </View>
@@ -603,18 +590,18 @@ function OrderSequenceEditor({
   );
 }
 
-function DraggableOrderRow({
+function DraggableDestinationRow({
   activeOrderId,
   initialIndex,
   onDrop,
-  order,
+  destination,
   positions,
   rowCount,
 }: {
   activeOrderId: SharedValue<string | null>;
   initialIndex: number;
-  onDrop(orderId: string, targetIndex: number): void;
-  order: DeliveryOrder;
+  onDrop(destinationId: string, targetIndex: number): void;
+  destination: DeliveryDestinationGroup;
   positions: SharedValue<DeliveryOrderPositions>;
   rowCount: number;
 }) {
@@ -623,12 +610,12 @@ function DraggableOrderRow({
   const startPositions = useSharedValue<DeliveryOrderPositions>({});
 
   useAnimatedReaction(
-    () => positions.get()[order.id],
+    () => positions.get()[destination.destinationId],
     (nextIndex, previousIndex) => {
       if (
         nextIndex === undefined ||
         nextIndex === previousIndex ||
-        activeOrderId.get() === order.id
+        activeOrderId.get() === destination.destinationId
       ) {
         return;
       }
@@ -638,7 +625,7 @@ function DraggableOrderRow({
         easing: Easing.out(Easing.cubic),
       }));
     },
-    [order.id],
+    [destination.destinationId],
   );
 
   const dragGesture = Gesture.Pan()
@@ -647,7 +634,7 @@ function DraggableOrderRow({
       cancelAnimation(rowTop);
       dragStartTop.set(rowTop.get());
       startPositions.set(positions.get());
-      activeOrderId.set(order.id);
+      activeOrderId.set(destination.destinationId);
     })
     .onUpdate((event) => {
       const maxTop = Math.max(0, (rowCount - 1) * EDITOR_ORDER_ROW_STEP);
@@ -655,7 +642,7 @@ function DraggableOrderRow({
         0,
         Math.min(maxTop, dragStartTop.get() + event.translationY),
       );
-      const currentIndex = positions.get()[order.id] ?? initialIndex;
+      const currentIndex = positions.get()[destination.destinationId] ?? initialIndex;
       const targetIndex = resolveDeliveryOrderDragTarget({
         absoluteTop: nextTop,
         currentIndex,
@@ -668,13 +655,13 @@ function DraggableOrderRow({
       if (targetIndex !== currentIndex) {
         positions.set(moveDeliveryOrderPosition(
           positions.get(),
-          order.id,
+          destination.destinationId,
           targetIndex,
         ));
       }
     })
     .onEnd(() => {
-      const targetIndex = positions.get()[order.id] ?? initialIndex;
+      const targetIndex = positions.get()[destination.destinationId] ?? initialIndex;
 
       rowTop.set(withTiming(
         targetIndex * EDITOR_ORDER_ROW_STEP,
@@ -683,20 +670,20 @@ function DraggableOrderRow({
           easing: Easing.out(Easing.cubic),
         },
         (finished) => {
-          if (finished && activeOrderId.get() === order.id) {
+          if (finished && activeOrderId.get() === destination.destinationId) {
             activeOrderId.set(null);
           }
         },
       ));
-      scheduleOnRN(onDrop, order.id, targetIndex);
+      scheduleOnRN(onDrop, destination.destinationId, targetIndex);
     })
     .onFinalize((_event, success) => {
-      if (success) {
+      if (success || activeOrderId.get() !== destination.destinationId) {
         return;
       }
 
       positions.set(startPositions.get());
-      const originalIndex = startPositions.get()[order.id] ?? initialIndex;
+      const originalIndex = startPositions.get()[destination.destinationId] ?? initialIndex;
       rowTop.set(withTiming(
         originalIndex * EDITOR_ORDER_ROW_STEP,
         {
@@ -704,7 +691,7 @@ function DraggableOrderRow({
           easing: Easing.out(Easing.cubic),
         },
         (finished) => {
-          if (finished && activeOrderId.get() === order.id) {
+          if (finished && activeOrderId.get() === destination.destinationId) {
             activeOrderId.set(null);
           }
         },
@@ -712,7 +699,7 @@ function DraggableOrderRow({
     });
 
   const animatedCardStyle = useAnimatedStyle(() => {
-    const isActive = activeOrderId.get() === order.id;
+    const isActive = activeOrderId.get() === destination.destinationId;
 
     return {
       borderColor: isActive ? '#0b57d0' : '#e5e7eb',
@@ -728,7 +715,7 @@ function DraggableOrderRow({
       ],
       zIndex: isActive ? 10 : 1,
     };
-  }, [order.id]);
+  }, [destination.destinationId]);
 
   return (
     <Animated.View
@@ -736,8 +723,8 @@ function DraggableOrderRow({
     >
       <GestureDetector gesture={dragGesture}>
         <View
-          accessibilityHint="누른 채 위아래로 이동해 이 주문의 순서를 변경합니다."
-          accessibilityLabel={`${order.destinationName} 주문 순서 이동 핸들`}
+          accessibilityHint="누른 채 위아래로 이동해 이 배송지 전체 주문의 순서를 변경합니다."
+          accessibilityLabel={`${destination.destinationName} 배송지 순서 이동 핸들`}
           accessibilityRole="button"
           style={styles.dragHandle}
         >
@@ -748,16 +735,40 @@ function DraggableOrderRow({
         <Text style={styles.sequenceBadgeText}>{initialIndex + 1}</Text>
       </View>
       <View style={styles.editorOrderCopy}>
-        <Text numberOfLines={1} style={styles.editorDestinationName}>
-          {order.destinationName}
+        <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={styles.editorDestinationName}>
+          {destination.destinationName}
         </Text>
-        <Text numberOfLines={2} style={styles.editorAddress}>
-          {order.address}
+        <Text maxFontSizeMultiplier={1.3} numberOfLines={2} style={styles.editorAddress}>
+          {destination.address}
         </Text>
       </View>
       <View style={styles.editorOrderRight}>
-        <ConditionBadge conditionCode={order.conditionCode} />
-        <Text style={styles.editorBoxCount}>{order.shippedBoxes}박스</Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.editorBoxCount}>
+          {destination.orderCount}건 / {destination.boxCount}박스
+        </Text>
+        <View style={styles.editorMoveButtons}>
+          {([-1, 1] as const).map((direction) => {
+            const disabled = initialIndex + direction < 0 || initialIndex + direction >= rowCount;
+            const label = direction < 0 ? '위로' : '아래로';
+            return (
+              <Pressable
+                accessibilityLabel={`${destination.destinationName} ${label} 이동`}
+                accessibilityRole="button"
+                accessibilityState={{ disabled }}
+                disabled={disabled}
+                key={direction}
+                onPress={() => {
+                  if (activeOrderId.get() === null) {
+                    onDrop(destination.destinationId, initialIndex + direction);
+                  }
+                }}
+                style={[styles.editorMoveButton, disabled && styles.buttonPressed]}
+              >
+                <Text maxFontSizeMultiplier={1.2} style={styles.doneText}>{direction < 0 ? '↑' : '↓'}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </Animated.View>
   );
@@ -1014,6 +1025,21 @@ const styles = StyleSheet.create({
     color: '#667085',
     fontSize: 10,
   },
+  editorMapToggle: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  editorMoveButtons: {
+    flexDirection: 'row',
+  },
+  editorMoveButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
+  },
   editorMapFrame: {
     backgroundColor: '#e8eef7',
     borderBottomColor: '#d0d5dd',
@@ -1044,6 +1070,9 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   editorListHeading: {
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingVertical: 8,
     alignItems: 'center',
     backgroundColor: '#ffffff',
     borderBottomColor: '#eaecf0',

@@ -8,6 +8,7 @@ import {
   completesDeliveryRoute,
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
+  moveDeliveryDestinationToIndex,
   PREVIEW_DELIVERY_DATE,
   PREVIEW_DELIVERY_ORDERS,
   resolveDeliveryDestinationProgressState,
@@ -317,5 +318,36 @@ describe('delivery order plan', () => {
       moveDeliveryOrderToIndex(source, lastOrder.id, 99).at(-1)?.id,
       lastOrder.id,
     );
+  });
+});
+
+
+describe('destination sequence editing', () => {
+  const a = { ...PREVIEW_DELIVERY_ORDERS[0]!, id: 'a1', destinationId: 'a' };
+  const b = { ...a, id: 'b1', destinationId: 'b' };
+  const a2 = { ...a, id: 'a2', sellerOrderKey: 'second', shippedBoxes: 5 };
+  const c = { ...a, id: 'c1', destinationId: 'c' };
+  const source = [a, b, a2, c];
+
+  it('moves every split order of a destination together and preserves its contents', () => {
+    const moved = moveDeliveryDestinationToIndex(source, 'a', 2);
+    assert.deepEqual(moved.map(({ id }) => id), ['b1', 'c1', 'a1', 'a2']);
+    assert.deepEqual(moved.map(({ sequence }) => sequence), [1, 2, 3, 4]);
+    assert.deepEqual(moved.map(({ sequence: _sequence, ...order }) => order).sort((x, y) => x.id.localeCompare(y.id)),
+      source.map(({ sequence: _sequence, ...order }) => order).sort((x, y) => x.id.localeCompare(y.id)));
+    assert.deepEqual(source.map(({ id }) => id), ['a1', 'b1', 'a2', 'c1']);
+    assert.deepEqual(buildDeliveryDestinationPoints(moved).map(({ destinationId }) => destinationId), ['b', 'c', 'a']);
+  });
+
+  it('moves upward by destination index and clamps both boundaries', () => {
+    assert.deepEqual(moveDeliveryDestinationToIndex(source, 'c', -10).map(({ id }) => id), ['c1', 'a1', 'a2', 'b1']);
+    assert.deepEqual(moveDeliveryDestinationToIndex(source, 'b', 99).map(({ id }) => id), ['a1', 'a2', 'c1', 'b1']);
+  });
+
+  it('does not merge different destination IDs with identical names or addresses', () => {
+    assert.equal(groupDeliveryOrdersByDestination(moveDeliveryDestinationToIndex(source, 'c', 0)).length, 3);
+    assert.equal(moveDeliveryDestinationToIndex(source, 'unknown', 0), source);
+    assert.equal(moveDeliveryDestinationToIndex(source, 'a', Number.NaN), source);
+    assert.deepEqual(moveDeliveryDestinationToIndex([], 'a', 1), []);
   });
 });
