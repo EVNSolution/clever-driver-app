@@ -484,8 +484,8 @@ export function DriverWorkspace({
           <>
             {isDeliverySpaceOpen ? (
               <DeliverySpaceScreen
-                accessToken={route.routeAccessToken}
-                deliveryDateLabel={formatDeliveryDate(route.deliveryDate)}
+                key={`${route.routePlanId}:${route.deliveryDate}`}
+                selectedRoute={route}
                 onAssignmentsChanged={() => setLoadAttempt((attempt) => attempt + 1)}
                 onBack={closeDeliverySpace}
               />

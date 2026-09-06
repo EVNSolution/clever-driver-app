@@ -27,19 +27,21 @@ import {
 import { useAppDialog } from './AppDialog';
 import { DriverRefreshControl } from './DriverRefreshControl';
 
+import type { DriverDeliveryRoute } from '../../api/dsvDriverRoute';
+
 type SpaceSection = 'mine' | 'available';
 
 export function DeliverySpaceScreen({
-  accessToken,
-  deliveryDateLabel,
+  selectedRoute,
   onAssignmentsChanged,
   onBack,
 }: {
-  accessToken: string;
-  deliveryDateLabel: string;
+  selectedRoute: Pick<DriverDeliveryRoute,
+    'deliveryDate' | 'routeAccessToken' | 'routeName' | 'routePlanId'>;
   onAssignmentsChanged(): void;
   onBack(): void;
 }) {
+  const { routeAccessToken: accessToken } = selectedRoute;
   const { dialog, showDialog } = useAppDialog();
   const [section, setSection] = useState<SpaceSection>('mine');
   const [space, setSpace] = useState<DriverDeliverySpace | null>(null);
@@ -261,7 +263,10 @@ export function DeliverySpaceScreen({
 
       <View style={styles.deliveryDateContext}>
         <Text style={styles.deliveryDateLabel}>배송일</Text>
-        <Text style={styles.deliveryDateValue}>{deliveryDateLabel}</Text>
+        <View style={styles.selectedRouteCopy}>
+          <Text style={styles.deliveryDateValue}>{selectedRoute.deliveryDate}</Text>
+          <Text style={styles.selectedRouteName}>{selectedRoute.routeName}</Text>
+        </View>
       </View>
 
       <View accessibilityRole="tablist" style={styles.sectionTabs}>
@@ -661,6 +666,8 @@ const styles = StyleSheet.create({
   deliveryDateContext: { alignItems: 'center', backgroundColor: '#eef4ff', borderBottomColor: '#d1e0ff', borderBottomWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
   deliveryDateLabel: { color: '#475467', fontSize: 11, fontWeight: '800' },
   deliveryDateValue: { color: '#1849a9', fontSize: 15, fontWeight: '900' },
+  selectedRouteCopy: { flex: 1, gap: 3 },
+  selectedRouteName: { color: '#475467', fontSize: 12, flexShrink: 1 },
   sectionTabs: { backgroundColor: '#ffffff', flexDirection: 'row', paddingHorizontal: 14, paddingTop: 8 },
   sectionTab: { alignItems: 'center', borderBottomColor: 'transparent', borderBottomWidth: 3, flex: 1, justifyContent: 'center', minHeight: 44 },
   sectionTabSelected: { borderBottomColor: '#0b57d0' },

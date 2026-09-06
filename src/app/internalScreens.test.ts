@@ -153,12 +153,12 @@ describe('authenticated driver screens', () => {
     assert.match(workspace, /DeliverySpaceScreen/u);
     assert.match(
       workspace,
-      /deliveryDateLabel=\{formatDeliveryDate\(route\.deliveryDate\)\}/u,
+      /selectedRoute=\{route\}/u,
     );
-    assert.match(screen, /deliveryDateLabel: string/u);
+    assert.match(screen, /selectedRoute: Pick<DriverDeliveryRoute/u);
     assert.match(
       screen,
-      /<View style=\{styles\.deliveryDateContext\}>[\s\S]*배송일[\s\S]*\{deliveryDateLabel\}[\s\S]*accessibilityRole="tablist"/u,
+      /<View style=\{styles\.deliveryDateContext\}>[\s\S]*배송일[\s\S]*\{selectedRoute\.deliveryDate\}[\s\S]*\{selectedRoute\.routeName\}[\s\S]*accessibilityRole="tablist"/u,
     );
     assert.match(screen, /label="내 배송"/u);
     assert.match(screen, /label="공용 배송"/u);
@@ -719,4 +719,14 @@ it('keeps the sequence map inside the list scroll and offers non-drag movement',
   assert.match(source, /moveDeliveryDestinationToIndex/u);
   assert.match(source, /onDrop\(destination.destinationId, initialIndex \+ direction\)/u);
   assert.match(source, /success \|\| activeOrderId.get\(\) !== destination.destinationId/u);
+});
+
+
+it('binds delivery-space state to the selected route identity without a device-date fallback', () => {
+  const workspace = readFileSync(join(appDirectory, '../ui/driver/DriverWorkspace.tsx'), 'utf8');
+  const screen = readFileSync(join(appDirectory, '../ui/driver/DeliverySpaceScreen.tsx'), 'utf8');
+  assert.match(workspace, /key=\{`\$\{route.routePlanId\}:\$\{route.deliveryDate\}`\}/u);
+  assert.match(screen, /routeAccessToken: accessToken/u);
+  assert.match(screen, /'deliveryDate' \| 'routeAccessToken' \| 'routeName' \| 'routePlanId'/u);
+  assert.doesNotMatch(screen, /toISOString\(\)\.slice\(0, 10\)/u);
 });
