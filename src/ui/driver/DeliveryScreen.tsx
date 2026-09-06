@@ -20,7 +20,9 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import type { DriverCompletedRouteHistory } from '../../api/dsvDriverRoute';
+import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
 import {
+  buildCurrentDeliverySummary,
   groupDeliveryOrdersByDestination,
   moveDeliveryOrderToIndex,
   resolveDeliveryDestinationProgressState,
@@ -42,6 +44,7 @@ import {
   type DeliveryOrderPositions,
 } from '../../domain/delivery/sortableOrder';
 import { useAppDialog } from './AppDialog';
+import { DeliveryExecutionActions } from './DeliveryExecutionActions';
 import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
@@ -59,12 +62,15 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 type DeliveryScreenProps = {
   deliveryDate: string;
   destinationNotesById: Record<string, DestinationNotes>;
+  etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   historySummary?: DriverCompletedRouteHistory;
   isEditing: boolean;
   isReadOnly: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
+  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<boolean>;
+  onCompleteRoute(): Promise<void>;
   onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
   onOrdersChange(orders: DeliveryOrder[]): void;
@@ -75,6 +81,11 @@ type DeliveryScreenProps = {
     previous: DestinationNotes,
     values: DestinationNoteValues,
   ): Promise<DestinationNotes>;
+  onStartDelivery(): Promise<void>;
+  onUploadProof(
+    deliveryStopId: string,
+    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
+  ): Promise<void>;
   orders: DeliveryOrder[];
   refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -84,18 +95,23 @@ type DeliveryScreenProps = {
 export function DeliveryScreen({
   deliveryDate,
   destinationNotesById: initialDestinationNotesById,
+  etaStatus,
   historySummary,
   isEditing,
   isReadOnly,
   lastUpdatedAt,
   nextDeliveryStopId,
   onAcknowledgeTimeConstraint,
+  onCompleteDelivery,
+  onCompleteRoute,
   onEditingChange,
   onOpenDeliverySpace,
   onOrdersChange,
   onReadDriverMessage,
   onRefresh,
   onSaveDestinationNotes,
+  onStartDelivery,
+  onUploadProof,
   orders,
   refreshing,
   serverRouteGeometry,
@@ -114,6 +130,10 @@ export function DeliveryScreen({
     0,
   );
   const destinationGroups = groupDeliveryOrdersByDestination(orders);
+  const currentDeliverySummary = buildCurrentDeliverySummary(
+    orders,
+    nextDeliveryStopId,
+  );
   const selectedDestinationGroup = selectedDestinationId === null
     ? null
     : destinationGroups.find(
@@ -219,21 +239,29 @@ export function DeliveryScreen({
           <View style={styles.summaryItems}>
             {historySummary === undefined ? (
               <>
-                <Text style={styles.summaryText}>주문 {orders.length}건</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  주문 {orders.length}건
+                </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>배송지 {destinationGroups.length}곳</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  배송지 {destinationGroups.length}곳
+                </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>{totalBoxes}박스</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  {totalBoxes}박스
+                </Text>
               </>
             ) : (
               <>
-                <Text style={styles.summaryText}>배송 {historySummary.stopCount}건</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  배송 {historySummary.stopCount}건
+                </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
                   완료 {historySummary.completedStopCount}건
                 </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
                   실패 {historySummary.failedStopCount}건
                 </Text>
               </>
@@ -251,7 +279,10 @@ export function DeliveryScreen({
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={[styles.headerActionText, styles.spaceButtonText]}>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={[styles.headerActionText, styles.spaceButtonText]}
+            >
               주문 목록
             </Text>
           </Pressable>
@@ -268,12 +299,27 @@ export function DeliveryScreen({
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={[styles.headerActionText, styles.editButtonText]}>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={[styles.headerActionText, styles.editButtonText]}
+            >
               순서 편집
             </Text>
           </Pressable>
         </View> : null}
       </View>
+
+      <DeliveryExecutionActions
+        etaStatus={etaStatus}
+        isReadOnly={isReadOnly}
+        onCompleteDelivery={onCompleteDelivery}
+        onCompleteRoute={onCompleteRoute}
+        onStartDelivery={onStartDelivery}
+        onUploadProof={onUploadProof}
+        orderCount={orders.length}
+        summary={currentDeliverySummary}
+        variant="delivery"
+      />
 
       <View
         onLayout={(event) => {
@@ -418,6 +464,7 @@ function DestinationGroupRow({
           ]}
         >
           <Text
+            maxFontSizeMultiplier={1.3}
             style={[
               styles.sequenceBadgeText,
               (isCompleted || isCurrent) && styles.sequenceBadgeTextInverse,
@@ -428,7 +475,7 @@ function DestinationGroupRow({
         </View>
         <View style={styles.orderCopy}>
           <Text
-            numberOfLines={1}
+            numberOfLines={2}
             style={[
               styles.destinationName,
               isCompleted && styles.completedPrimaryText,
@@ -437,12 +484,13 @@ function DestinationGroupRow({
             {group.destinationName}
           </Text>
           <Text
-            numberOfLines={2}
+            numberOfLines={3}
             style={[styles.address, isCompleted && styles.completedSecondaryText]}
           >
             {group.address}
           </Text>
           <Text
+            maxFontSizeMultiplier={1.3}
             style={[
               styles.groupOrderCount,
               isCompleted && styles.completedSecondaryText,
@@ -454,11 +502,14 @@ function DestinationGroupRow({
         <View style={styles.orderRight}>
           {isCurrent ? (
             <View style={styles.currentDeliveryBadge}>
-              <Text style={styles.currentDeliveryBadgeText}>배송 중</Text>
+              <Text maxFontSizeMultiplier={1.3} style={styles.currentDeliveryBadgeText}>
+                배송 중
+              </Text>
             </View>
           ) : null}
           <View style={styles.orderRightDetails}>
             <Text
+              maxFontSizeMultiplier={1.3}
               numberOfLines={1}
               style={[
                 styles.groupConditions,
@@ -467,7 +518,10 @@ function DestinationGroupRow({
             >
               {group.conditionCodes.join(' · ')}
             </Text>
-            <Text style={[styles.boxCount, isCompleted && styles.completedBoxText]}>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={[styles.boxCount, isCompleted && styles.completedBoxText]}
+            >
               {group.boxCount}박스
             </Text>
           </View>
@@ -768,7 +822,8 @@ const styles = StyleSheet.create({
     paddingBottom: 88,
   },
   deliveryHeader: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingBottom: 12,
@@ -793,6 +848,7 @@ const styles = StyleSheet.create({
   summaryItems: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 7,
   },
   summaryDivider: {
@@ -825,6 +881,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     marginLeft: 8,
+    marginTop: 2,
   },
   spaceButton: {
     backgroundColor: '#e8f1ff',
@@ -857,7 +914,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   orderRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: 9,
     paddingVertical: 12,
@@ -890,6 +947,7 @@ const styles = StyleSheet.create({
     gap: 2,
     justifyContent: 'center',
     minHeight: 48,
+    minWidth: 0,
   },
   destinationName: {
     color: '#111827',
@@ -936,7 +994,7 @@ const styles = StyleSheet.create({
   orderRight: {
     alignItems: 'flex-end',
     alignSelf: 'stretch',
-    maxWidth: '34%',
+    maxWidth: '30%',
     minHeight: 48,
     minWidth: 70,
   },

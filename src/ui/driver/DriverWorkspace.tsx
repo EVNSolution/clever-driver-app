@@ -493,18 +493,23 @@ export function DriverWorkspace({
               <DeliveryScreen
                 deliveryDate={route.deliveryDate}
                 destinationNotesById={route.destinationNotesById}
+                etaStatus={route.etaStatus}
                 historySummary={route.historySummary}
                 isEditing={isSequenceEditing}
                 isReadOnly={isRouteReadOnly}
                 lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
+                onCompleteDelivery={completeDelivery}
+                onCompleteRoute={completeRoute}
                 onEditingChange={changeSequenceEditing}
                 onOpenDeliverySpace={openDeliverySpace}
                 onOrdersChange={setOrders}
                 onReadDriverMessage={readDriverMessage}
                 onRefresh={refreshRoute}
                 onSaveDestinationNotes={saveDestinationNotes}
+                onStartDelivery={startDelivery}
+                onUploadProof={uploadDeliveryProof}
                 orders={orders}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
