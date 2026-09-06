@@ -2,6 +2,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -52,12 +53,16 @@ export function DeliveryMapScreen({
   serverRouteGeometry,
   timezone,
 }: DeliveryMapScreenProps) {
+  const { fontScale } = useWindowDimensions();
   const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
   const totalBoxes = orders.reduce((total, order) => total + order.shippedBoxes, 0);
 
   return (
     <View style={styles.screen}>
-      <View style={styles.mapArea}>
+      <View style={[
+        styles.mapArea,
+        fontScale > 1.3 && styles.mapAreaLargeText,
+      ]}>
         <DeliveryRouteMap
           currentDeliveryStopId={nextDeliveryStopId}
           depotCoordinate={depotCoordinate}
@@ -98,13 +103,13 @@ export function DeliveryMapScreen({
               </View>
             )}
             <View style={styles.destinationCopy}>
-              <Text numberOfLines={2} style={styles.destinationName}>
+              <Text style={styles.destinationName}>
                 {summary?.destinationName ?? (
                   isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
                 )}
               </Text>
               {summary === null ? null : (
-                <Text numberOfLines={3} style={styles.destinationAddress}>
+                <Text style={styles.destinationAddress}>
                   {summary.address}
                 </Text>
               )}
@@ -305,6 +310,9 @@ const styles = StyleSheet.create({
   mapArea: {
     height: '56%',
     position: 'relative',
+  },
+  mapAreaLargeText: {
+    height: '42%',
   },
   detailsArea: {
     backgroundColor: '#ffffff',

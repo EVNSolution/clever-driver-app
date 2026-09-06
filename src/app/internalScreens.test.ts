@@ -408,8 +408,22 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /PanResponder/u);
     assert.doesNotMatch(onUpdateSource, /setDraftOrders|scheduleOnRN/u);
     assert.doesNotMatch(source, /useNativeDriver: false/u);
-    assert.match(source, /const EDITOR_ORDER_ROW_HEIGHT = 72/u);
-    assert.doesNotMatch(source, /const EDITOR_ORDER_ROW_HEIGHT = 88/u);
+    assert.match(source, /useWindowDimensions/u);
+    assert.match(source, /const rowHeight = Math\.round\(/u);
+    assert.match(source, /Math\.max\(1, fontScale\)/u);
+    assert.match(source, /rowStep=\{rowStep\}/u);
+    assert.match(source, /rowStep: rowStep/u);
+    assert.match(
+      source,
+      /return nextIndex === undefined \? null : nextIndex \* rowStep/u,
+    );
+    assert.match(source, /\{ height: rowHeight \}/u);
+    assert.match(source, /numberOfLines=\{2\}[\s\S]*styles\.editorDestinationName/u);
+    assert.match(source, /numberOfLines=\{3\}[\s\S]*styles\.editorAddress/u);
+    assert.doesNotMatch(
+      source,
+      /maxFontSizeMultiplier=\{1\.3\} numberOfLines=\{[23]\} style=\{styles\.editor/u,
+    );
   });
 
   it('installs the native gesture root at the app boundary', () => {
@@ -674,8 +688,17 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(deliveryScreen, /maxFontSizeMultiplier=.*styles\.destinationName/u);
     assert.doesNotMatch(deliveryScreen, /maxFontSizeMultiplier=.*styles\.address/u);
     assert.match(mapScreen, /styles\.destinationCopy/u);
-    assert.match(mapScreen, /numberOfLines=\{2\}[\s\S]*styles\.destinationName/u);
-    assert.match(mapScreen, /numberOfLines=\{3\}[\s\S]*styles\.destinationAddress/u);
+    assert.match(mapScreen, /useWindowDimensions/u);
+    assert.match(mapScreen, /fontScale > 1\.3 && styles\.mapAreaLargeText/u);
+    assert.match(mapScreen, /mapAreaLargeText:[\s\S]*height: '42%'/u);
+    assert.doesNotMatch(
+      mapScreen,
+      /numberOfLines=\{[23]\} style=\{styles\.destination(?:Name|Address)\}/u,
+    );
+    assert.doesNotMatch(
+      executionActions,
+      /numberOfLines=\{[23]\} style=\{styles\.destination(?:Name|Address)\}/u,
+    );
     assert.match(executionActions, /maxFontSizeMultiplier=\{1\.3\}/u);
   });
 

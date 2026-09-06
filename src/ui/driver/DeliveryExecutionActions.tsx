@@ -169,10 +169,10 @@ export function DeliveryExecutionActions({
               <Text maxFontSizeMultiplier={1.3} style={styles.eyebrow}>
                 지금 가는 배송지
               </Text>
-              <Text numberOfLines={2} style={styles.destinationName}>
+              <Text style={styles.destinationName}>
                 {summary.destinationName}
               </Text>
-              <Text numberOfLines={3} style={styles.destinationAddress}>
+              <Text style={styles.destinationAddress}>
                 {summary.address}
               </Text>
             </View>
