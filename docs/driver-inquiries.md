@@ -56,10 +56,12 @@ Node의 네이티브 대체 실행은 실제 기기 레이아웃·키보드·제
 
 ## 앱 코드 검증 결과
 
-- 전체 테스트 145/145: 기존 132개 + 문의 API 계약 5개 + 실제 hook 제어 8개 통과.
+- 전체 테스트 146/146: 기존 132개 + 문의 API 계약 5개 + 실제 hook 제어 9개 통과.
 - typecheck, lint, Expo 의존성 정합성과 diff 검사 통과. 새 의존성 없음.
 - Android export 1,306 modules, iOS export 1,291 modules 통과.
 - export 증거는 로컬
-  `~/.codex/build-hygiene/logs/driver-inquiries/20260907T132824.406378+0900-23e410581fa6-inquiries-release/summary.json`.
+  `~/.codex/build-hygiene/logs/driver-inquiries/20260907T133228.203985+0900-7f2232027858-inquiries-token-refresh/summary.json`.
+- 같은 계정의 토큰 갱신 중 열린 상세를 새 토큰으로 재조회하며, 이전 응답을
+  무시하고 이미 닫은 상세가 다시 열리지 않는 회귀를 포함한다.
 - 이 소스 검증 시점에 문의 기능의 실기기 UI와 운영 두 계정 E2E는 미검증이다.
   연결된 배포 담당 기기의 기존 앱·로그인 세션을 변경하지 않았다.

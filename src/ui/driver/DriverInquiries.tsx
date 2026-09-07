@@ -35,6 +35,7 @@ export function useDriverInquiries(accessToken: string) {
   const loadMoreLockRef = useRef(false);
   const detailSequenceRef = useRef(0);
   const detailAbortRef = useRef<AbortController | null>(null);
+  const detailIdRef = useRef<string | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
   const submitLockRef = useRef(false);
   const attemptKeyRef = useRef(uuid.v4());
@@ -126,6 +127,7 @@ export function useDriverInquiries(accessToken: string) {
   }, [accessToken, nextCursor]);
 
   const openDetail = useCallback(async (id: string) => {
+    detailIdRef.current = id;
     const sequence = detailSequenceRef.current + 1;
     detailSequenceRef.current = sequence;
     detailAbortRef.current?.abort();
@@ -206,6 +208,7 @@ export function useDriverInquiries(accessToken: string) {
       if (!isActive) return;
       if (submitAbortRef.current === null) setIsSubmitting(false);
       void refresh();
+      if (detailIdRef.current !== null) void openDetail(detailIdRef.current);
     });
     return () => {
       isActive = false;
@@ -220,7 +223,7 @@ export function useDriverInquiries(accessToken: string) {
       loadMoreLockRef.current = false;
       submitLockRef.current = false;
     };
-  }, [accessToken, refresh]);
+  }, [accessToken, openDetail, refresh]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -230,6 +233,7 @@ export function useDriverInquiries(accessToken: string) {
   }, []);
 
   function showList() {
+    detailIdRef.current = null;
     detailAbortRef.current?.abort();
     detailSequenceRef.current += 1;
     setView({ kind: 'list' });

@@ -191,6 +191,23 @@ describe('Driver inquiry production controller', () => {
     current.resolve(row); await second; h.unmount();
   });
 
+  it('reloads an open detail with the refreshed token instead of leaving it loading', async () => {
+    const old = deferred<api.DriverInquiry>();
+    const tokens: string[] = [];
+    const h = harness({ getDriverInquiry: async (token) => {
+      tokens.push(token); return token === 'account-A' ? old.promise : { ...row, title: 'new token detail' };
+    } });
+    let c = h.render(); await flush(); c = h.render();
+    const opening = c.openDetail(row.id);
+    h.render('refreshed-token'); await flush(); c = h.render('refreshed-token');
+    assert.deepEqual(tokens, ['account-A', 'refreshed-token']);
+    assert.equal(c.detailState, 'ready'); assert.equal(c.detail?.title, 'new token detail');
+    old.resolve({ ...row, title: 'obsolete' }); await opening; c = h.render('refreshed-token');
+    assert.equal(c.detail?.title, 'new token detail');
+    c.showList(); c.showCompose(); h.render('another-refresh'); await flush();
+    assert.equal(h.render('another-refresh').view.kind, 'compose'); assert.equal(tokens.length, 2); h.unmount();
+  });
+
   it('keys the settings state by account and keeps the inquiry content in one keyboard-aware native modal', () => {
     const read = (name: string) => readFileSync(new URL(`../ui/driver/${name}`, import.meta.url), 'utf8');
     assert.match(read('DriverWorkspace.tsx'), /<DriverSettingsModal\b[^>]*\bkey=\{authSession\.account\.id\}/u);
