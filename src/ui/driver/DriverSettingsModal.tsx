@@ -28,6 +28,7 @@ import {
   type InstalledDriverAppVersion,
 } from '../../platform/expo/application/expoAppVersionService';
 import { useAppDialog } from './AppDialog';
+import { DriverInquiries } from './DriverInquiries';
 
 type PermissionKey = 'camera' | 'location' | 'photos';
 type PermissionState = {
@@ -67,6 +68,8 @@ export function DriverSettingsModal({
     useState<PermissionKey | null>(null);
   const refreshLocationOnActive = useRef(false);
   const [isRequestingDeletion, setIsRequestingDeletion] = useState(false);
+  const [mode, setMode] = useState<'settings' | 'inquiries'>('settings');
+  const inquiryBackRef = useRef<() => void>(() => setMode('settings'));
   const [versionCheck, setVersionCheck] = useState<VersionCheckState>({
     installed: readInstalledDriverAppVersion(),
     kind: 'checking',
@@ -259,22 +262,39 @@ export function DriverSettingsModal({
     }
   }
 
+  function handleBack() {
+    if (mode === 'inquiries') {
+      inquiryBackRef.current();
+      return;
+    }
+    onClose();
+  }
+
   return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible>
+    <Modal animationType="slide" onRequestClose={handleBack} transparent visible>
       <View style={styles.backdrop}>
         <Pressable
           accessibilityLabel="환경설정 닫기"
-          onPress={onClose}
+          onPress={mode === 'settings' ? onClose : undefined}
           style={StyleSheet.absoluteFill}
         />
         <View
           accessibilityViewIsModal
           style={[
             styles.sheet,
+            mode === 'inquiries' && styles.inquirySheet,
             { paddingBottom: Math.max(insets.bottom + 12, 24) },
           ]}
         >
-          <View style={styles.header}>
+          {mode === 'inquiries' ? (
+            <DriverInquiries
+              accessToken={accessToken}
+              onBack={() => setMode('settings')}
+              requestBackRef={inquiryBackRef}
+            />
+          ) : (
+            <>
+              <View style={styles.header}>
             <View>
               <Text style={styles.title}>환경설정</Text>
               <Text style={styles.subtitle}>권한·버전·계정</Text>
@@ -290,13 +310,13 @@ export function DriverSettingsModal({
             >
               <Text style={styles.closeButtonText}>×</Text>
             </Pressable>
-          </View>
+              </View>
 
-          <ScrollView
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={false}
-            style={styles.contentScroll}
-          >
+              <ScrollView
+                contentContainerStyle={styles.content}
+                showsVerticalScrollIndicator={false}
+                style={styles.contentScroll}
+              >
             <View style={styles.permissionList}>
               <PermissionRow
                 description="지도에서 현재 위치를 표시합니다."
@@ -392,6 +412,23 @@ export function DriverSettingsModal({
               </View>
             )}
 
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setMode('inquiries')}
+              style={({ pressed }) => [
+                styles.inquiryEntry,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <View style={styles.inquiryEntryCopy}>
+                <Text style={styles.inquiryEntryTitle}>문의사항</Text>
+                <Text style={styles.inquiryEntryDescription}>
+                  문의를 작성하고 이전 문의를 확인합니다.
+                </Text>
+              </View>
+              <Text style={styles.inquiryEntryArrow}>›</Text>
+            </Pressable>
+
             <View style={styles.legalSection}>
               <Text style={styles.legalTitle}>법적 정보</Text>
               {DRIVER_LEGAL_DOCUMENTS.map((document) => (
@@ -429,7 +466,9 @@ export function DriverSettingsModal({
                 </Text>
               </Pressable>
             </View>
-          </ScrollView>
+              </ScrollView>
+            </>
+          )}
         </View>
       </View>
       {dialog}
@@ -571,6 +610,9 @@ const styles = StyleSheet.create({
     maxHeight: '92%',
     paddingHorizontal: 20,
     paddingTop: 18,
+  },
+  inquirySheet: {
+    height: '92%',
   },
   content: {
     paddingBottom: 4,
@@ -756,6 +798,37 @@ const styles = StyleSheet.create({
   },
   updateButtonTextAvailable: {
     color: '#ffffff',
+  },
+  inquiryEntry: {
+    alignItems: 'center',
+    backgroundColor: '#eef4ff',
+    borderColor: '#b2ccff',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 18,
+    minHeight: 72,
+    padding: 14,
+  },
+  inquiryEntryCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  inquiryEntryTitle: {
+    color: '#1849a9',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  inquiryEntryDescription: {
+    color: '#475467',
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  inquiryEntryArrow: {
+    color: '#1849a9',
+    fontSize: 24,
   },
   legalSection: {
     borderColor: '#e4e7ec',

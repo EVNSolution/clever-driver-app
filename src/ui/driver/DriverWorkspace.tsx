@@ -571,6 +571,7 @@ export function DriverWorkspace({
       {isSettingsOpen ? (
         <DriverSettingsModal
           accessToken={authSession.accessToken}
+          key={authSession.account.id}
           onClose={() => {
             resetRootBackPress();
             setIsSettingsOpen(false);
