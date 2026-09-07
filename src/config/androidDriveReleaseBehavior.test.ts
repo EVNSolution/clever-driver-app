@@ -52,6 +52,10 @@ describe('Android Drive release command behavior', () => {
       stdio: 'ignore',
     });
 
+    writeExecutable(join(mockBin, 'stat'), `#!/usr/bin/env bash
+printf 'platform-specific stat must not be required\n' >&2
+exit 64
+`);
     writeExecutable(join(mockBin, 'apkanalyzer'), `#!/usr/bin/env bash
 case "$2" in
   application-id) printf 'com.evnsolution.clever.driver' ;;
@@ -81,10 +85,12 @@ if [[ "$drive_version" != '7' ]]; then drive_sha="$(printf 'b%.0s' {1..64})"; fi
 if [[ "$server_version" != '7' ]]; then server_sha="$(printf 'c%.0s' {1..64})"; fi
 case "$*" in
   *'-X PATCH'*)
+    [[ "$*" == *'X-Upload-Content-Length: 14'* ]] || exit 5
     printf 'PATCH\n' >> "$TEST_MUTATION_MARKER"
     printf 'location: https://www.googleapis.com/upload/drive/v3/files/1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y?upload_id=test\r\n'
     ;;
   *'-X PUT'*)
+    [[ "$*" == *'Content-Length: 14'* ]] || exit 5
     printf 'PUT\n' >> "$TEST_MUTATION_MARKER"
     printf '{"id":"1XRXAqREGtJJRMUsRnKgRAhFsiikE4V1y","name":"clever-driver-latest.apk","sha256Checksum":"%s","appProperties":{"publishedVersionCode":"7","publishedVersionName":"0.1.7","apkSha256":"%s"}}' "$sha" "$sha"
     ;;
