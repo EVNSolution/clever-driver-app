@@ -9,6 +9,7 @@ export type DestinationNotes = {
   lunchAccess: DestinationNoteField<LunchAccess>;
   lunchTime: DestinationNoteField<string>;
   memo: DestinationNoteField<string>;
+  openTime: DestinationNoteField<string>;
   requiredArrivalTime: DestinationNoteField<string>;
 };
 
@@ -16,6 +17,7 @@ export type DestinationNoteValues = {
   lunchAccess: LunchAccess;
   lunchTime: string;
   memo: string;
+  openTime: string;
   requiredArrivalTime: string;
 };
 
@@ -23,6 +25,7 @@ export const EMPTY_DESTINATION_NOTES: DestinationNotes = {
   lunchAccess: { updatedAt: null, value: 'UNKNOWN' },
   lunchTime: { updatedAt: null, value: '' },
   memo: { updatedAt: null, value: '' },
+  openTime: { updatedAt: null, value: '' },
   requiredArrivalTime: { updatedAt: null, value: '' },
 };
 
@@ -35,6 +38,7 @@ export function savePreviewDestinationNotes(
     lunchAccess: updateField(previous.lunchAccess, values.lunchAccess, updatedAt),
     lunchTime: updateField(previous.lunchTime, values.lunchTime, updatedAt),
     memo: updateField(previous.memo, values.memo, updatedAt),
+    openTime: updateField(previous.openTime, values.openTime, updatedAt),
     requiredArrivalTime: updateField(
       previous.requiredArrivalTime,
       values.requiredArrivalTime,
@@ -46,6 +50,8 @@ export function savePreviewDestinationNotes(
 export function isValidRequiredArrivalTime(value: string): boolean {
   return value === '' || isValidTime(value);
 }
+
+export const isValidOpenTime = isValidRequiredArrivalTime;
 
 export function isValidLunchTime(value: string): boolean {
   if (value === '') return true;

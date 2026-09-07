@@ -266,6 +266,8 @@ describe('authenticated driver screens', () => {
     assert.match(destinationSheet, /orders\.map\(\(order, index\)/u);
     assert.match(destinationSheet, /order\.conditionCode/u);
     assert.match(destinationSheet, /order\.shippedBoxes/u);
+    assert.match(destinationSheet, /주문 메모/u);
+    assert.match(destinationSheet, /order\.notes/u);
     assert.match(destinationSheet, /일반 메모/u);
     assert.match(destinationSheet, /점심시간 시작/u);
     assert.match(destinationSheet, /점심시간 종료/u);
@@ -291,6 +293,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(destinationSheet, /label="미확인"/u);
     assert.doesNotMatch(destinationSheet, /numbers-and-punctuation/u);
     assert.match(destinationSheet, /필수 도착 시간/u);
+    assert.match(destinationSheet, /배송 가능 시작 시간/u);
     assert.match(destinationSheet, /마지막 수정/u);
     assert.doesNotMatch(destinationSheet, /UI Preview/u);
     assert.doesNotMatch(destinationSheet, /fetch\(/u);

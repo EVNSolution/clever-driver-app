@@ -73,6 +73,8 @@ type ServerDestinationNotes = {
   lunchTimeRangeUpdatedAt: string | null;
   memo: string | null;
   memoUpdatedAt: string | null;
+  openTime?: string | null;
+  openTimeUpdatedAt?: string | null;
   requiredArrivalTime: string | null;
   requiredArrivalTimeUpdatedAt: string | null;
 };
@@ -294,6 +296,9 @@ function buildDestinationNotesPatch(
 ): Record<string, string | null> {
   const patch: Record<string, string | null> = {};
   if (previous.memo.value !== values.memo) patch.memo = values.memo || null;
+  if (previous.openTime.value !== values.openTime) {
+    patch.openTime = values.openTime || null;
+  }
   if (previous.lunchTime.value !== values.lunchTime) {
     patch.lunchTimeRange = values.lunchTime || null;
   }
@@ -322,6 +327,10 @@ function mapServerDestinationNotes(
       value: notes.lunchTimeRange ?? '',
     },
     memo: { updatedAt: notes.memoUpdatedAt, value: notes.memo ?? '' },
+    openTime: {
+      updatedAt: notes.openTimeUpdatedAt ?? null,
+      value: notes.openTime ?? '',
+    },
     requiredArrivalTime: {
       updatedAt: notes.requiredArrivalTimeUpdatedAt,
       value: notes.requiredArrivalTime ?? '',

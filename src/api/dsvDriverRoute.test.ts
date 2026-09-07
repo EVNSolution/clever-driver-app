@@ -122,6 +122,8 @@ describe('DSV assigned route API client', () => {
                   lunchTimeRangeUpdatedAt: '2026-07-30T22:00:00.000Z',
                   memo: '후문으로 입장',
                   memoUpdatedAt: '2026-07-30T21:00:00.000Z',
+                  openTime: '09:00',
+                  openTimeUpdatedAt: '2026-07-30T19:00:00.000Z',
                   requiredArrivalTime: '10:30',
                   requiredArrivalTimeUpdatedAt: '2026-07-30T20:00:00.000Z',
                 },
@@ -185,6 +187,10 @@ describe('DSV assigned route API client', () => {
       memo: {
         updatedAt: '2026-07-30T21:00:00.000Z',
         value: '후문으로 입장',
+      },
+      openTime: {
+        updatedAt: '2026-07-30T19:00:00.000Z',
+        value: '09:00',
       },
       requiredArrivalTime: {
         updatedAt: '2026-07-30T20:00:00.000Z',
@@ -402,6 +408,8 @@ describe('DSV assigned route API client', () => {
             lunchTimeRangeUpdatedAt: '2026-08-17T03:00:00.000Z',
             memo: null,
             memoUpdatedAt: '2026-08-18T04:00:00.000Z',
+            openTime: '09:00',
+            openTimeUpdatedAt: '2026-08-18T03:00:00.000Z',
             requiredArrivalTime: '10:30',
             requiredArrivalTimeUpdatedAt: '2026-08-17T05:00:00.000Z',
           },
@@ -417,12 +425,14 @@ describe('DSV assigned route API client', () => {
         lunchAccess: { updatedAt: null, value: 'AVAILABLE' },
         lunchTime: { updatedAt: '2026-08-17T03:00:00.000Z', value: '12:00~13:00' },
         memo: { updatedAt: null, value: '기존 메모' },
+        openTime: { updatedAt: null, value: '' },
         requiredArrivalTime: { updatedAt: '2026-08-17T05:00:00.000Z', value: '10:30' },
       },
       {
         lunchAccess: 'UNKNOWN',
         lunchTime: '12:00~13:00',
         memo: '',
+        openTime: '09:00',
         requiredArrivalTime: '10:30',
       },
     );
@@ -433,6 +443,7 @@ describe('DSV assigned route API client', () => {
     assert.deepEqual(JSON.parse(request?.init?.body as string), {
       lunchEntryStatus: null,
       memo: null,
+      openTime: '09:00',
     });
     assert.deepEqual(notes.memo, {
       updatedAt: '2026-08-18T04:00:00.000Z',

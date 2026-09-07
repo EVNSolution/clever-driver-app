@@ -18,6 +18,7 @@ describe('destination notes UI preview state', () => {
         lunchAccess: 'AVAILABLE',
         lunchTime: '12:00~13:00',
         memo: '',
+        openTime: '09:00',
         requiredArrivalTime: '13:30',
       },
       updatedAt,
@@ -26,6 +27,7 @@ describe('destination notes UI preview state', () => {
     assert.deepEqual(notes.memo, { updatedAt: null, value: '' });
     assert.deepEqual(notes.lunchAccess, { updatedAt, value: 'AVAILABLE' });
     assert.deepEqual(notes.lunchTime, { updatedAt, value: '12:00~13:00' });
+    assert.deepEqual(notes.openTime, { updatedAt, value: '09:00' });
     assert.deepEqual(notes.requiredArrivalTime, { updatedAt, value: '13:30' });
   });
 
