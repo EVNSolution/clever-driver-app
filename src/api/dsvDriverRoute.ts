@@ -84,6 +84,15 @@ type DestinationNotesEnvelope = {
   error?: { code: string; message: string } | null;
 };
 
+type DriverRouteOrderEnvelope = {
+  data: {
+    routePlanId: string;
+    routeVersionId: string;
+    stops: { deliveryStopId: string; sequence: number }[];
+  } | null;
+  error?: { code: string; message: string } | null;
+};
+
 type DriverRouteHistoryEnvelope = {
   data: {
     routes: {
@@ -118,6 +127,7 @@ type AssignedRouteEnvelope = {
       id: string;
       name: string;
       routeGeometry: ServerDeliveryRouteGeometry | null;
+      routeVersionId?: string | null;
       stops: AssignedRouteStop[];
       timezone?: string;
     };
@@ -141,6 +151,7 @@ export type DriverDeliveryRoute = {
   routePlanId: string;
   routeAccessToken: string;
   routeContext: string;
+  routeVersionId: string | null;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
 };
@@ -222,6 +233,7 @@ export async function loadDriverDeliveryRoute(
       routeId: routeChoice.routePlanId,
       routeName: routeChoice.routeName,
       routePlanId: routeChoice.routePlanId,
+      routeVersionId: null,
       serverRouteGeometry: null,
       timezone: DSV_DEFAULT_TIMEZONE,
     };
@@ -260,9 +272,60 @@ export async function loadDriverDeliveryRoute(
     routePlanId: routeChoice.routePlanId,
     routeAccessToken: routeChoice.routeAccessToken,
     routeContext: routeChoice.routeContext,
+    routeVersionId: route.routeVersionId ?? null,
     serverRouteGeometry: readServerRouteGeometry(route.routeGeometry),
     timezone: normalizeDsvTimezone(route.timezone),
     availableRoutes: routeChoices,
+  };
+}
+
+export async function updateDriverDeliveryOrder(
+  routeAccessToken: string,
+  routePlanId: string,
+  expectedVersion: string,
+  orders: DeliveryOrder[],
+): Promise<{ orders: DeliveryOrder[]; routeVersionId: string }> {
+  const commandId = [
+    routePlanId,
+    'order',
+    Date.now(),
+    Math.random().toString(36).slice(2),
+  ].join(':');
+  const body = JSON.stringify({
+    commandId,
+    expectedVersion,
+    orderedStopIds: orders.map(({ id }) => id),
+  });
+  let envelope: DriverRouteOrderEnvelope | undefined;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      envelope = await requestJson<DriverRouteOrderEnvelope>(
+        `/driver/routes/${encodeURIComponent(routePlanId)}/order`,
+        routeAccessToken,
+        { body, method: 'PATCH' },
+      );
+      break;
+    } catch (error) {
+      if (error instanceof DriverRouteApiError) throw error;
+      if (attempt === 1) {
+        throw new DriverRouteApiError(
+          'ROUTE_ORDER_NETWORK_ERROR',
+          '네트워크 연결을 확인한 뒤 다시 시도해 주세요.',
+        );
+      }
+    }
+  }
+
+  if (envelope?.data === null || envelope === undefined) {
+    throwDriverRouteOrderError(envelope?.error);
+  }
+  if (!isValidDriverRouteOrderResult(envelope.data, routePlanId)) {
+    throwInvalidRouteOrderResponse();
+  }
+  return {
+    orders: applyAuthoritativeStopOrder(orders, envelope.data),
+    routeVersionId: envelope.data.routeVersionId,
   };
 }
 
@@ -340,6 +403,72 @@ function mapServerDestinationNotes(
 
 function readLunchAccess(value: ServerDestinationNotes['lunchEntryStatus']): LunchAccess {
   return value === 'AVAILABLE' || value === 'UNAVAILABLE' ? value : 'UNKNOWN';
+}
+
+function applyAuthoritativeStopOrder(
+  orders: DeliveryOrder[],
+  result: NonNullable<DriverRouteOrderEnvelope['data']>,
+): DeliveryOrder[] {
+  const orderById = new Map(orders.map((order) => [order.id, order]));
+  const sequences = result.stops.map(({ sequence }) => sequence).sort((a, b) => a - b);
+  if (
+    result.stops.length !== orders.length ||
+    new Set(result.stops.map(({ deliveryStopId }) => deliveryStopId)).size !== orders.length ||
+    sequences.some((sequence, index) => sequence !== index + 1)
+  ) {
+    throwInvalidRouteOrderResponse();
+  }
+
+  return [...result.stops]
+    .sort((left, right) => left.sequence - right.sequence)
+    .map(({ deliveryStopId, sequence }) => {
+      const order = orderById.get(deliveryStopId);
+      if (order === undefined) {
+        throwInvalidRouteOrderResponse();
+      }
+      return { ...order, estimatedArrivalAt: null, sequence };
+    });
+}
+
+function isValidDriverRouteOrderResult(
+  result: NonNullable<DriverRouteOrderEnvelope['data']>,
+  expectedRoutePlanId: string,
+): boolean {
+  return result.routePlanId === expectedRoutePlanId &&
+    typeof result.routeVersionId === 'string' &&
+    result.routeVersionId.length > 0 &&
+    Array.isArray(result.stops) &&
+    result.stops.every((stop) => (
+      stop !== null &&
+      typeof stop === 'object' &&
+      typeof stop.deliveryStopId === 'string' &&
+      Number.isInteger(stop.sequence)
+    ));
+}
+
+function throwInvalidRouteOrderResponse(): never {
+  throw new DriverRouteApiError(
+    'INVALID_ROUTE_ORDER_RESPONSE',
+    '저장된 배송 순서를 확인할 수 없습니다.',
+  );
+}
+
+function throwDriverRouteOrderError(
+  error: { code: string; message: string } | null | undefined,
+): never {
+  const code = error?.code ?? 'DSV_API_ERROR';
+  const messages: Record<string, string> = {
+    COMMAND_IN_PROGRESS: '배송 순서를 저장하고 있습니다. 잠시 후 최신 순서를 확인해 주세요.',
+    IDEMPOTENCY_PAYLOAD_MISMATCH: '배송 순서 저장 요청을 확인할 수 없습니다.',
+    INVALID_STOP_SET: '배송 경로가 변경됐습니다. 최신 순서를 확인한 뒤 다시 시도해 주세요.',
+    ROUTE_COMPLETED: '이미 종료된 배송 경로의 순서는 변경할 수 없습니다.',
+    ROUTE_SCOPE_REJECTED: '배송 경로가 변경됐습니다. 최신 순서를 확인한 뒤 다시 시도해 주세요.',
+    VERSION_CONFLICT: '배송 경로가 변경됐습니다. 최신 순서를 확인한 뒤 다시 시도해 주세요.',
+  };
+  throw new DriverRouteApiError(
+    code,
+    messages[code] ?? error?.message ?? '배송 순서를 저장하지 못했습니다.',
+  );
 }
 
 export async function loadDriverDeliveryRouteChoices(

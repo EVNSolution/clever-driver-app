@@ -254,7 +254,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(deliveryScreen, /배송지 정보 UI Preview/u);
     assert.match(
       deliveryScreen,
-      /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
+      /disabled: orders\.length === 0 \|\| !isSequenceEditingSupported/u,
     );
     assert.match(deliveryScreen, /orders=\{selectedDestinationGroup\.orders\}/u);
     assert.match(destinationSheet, /useState<InformationTab>\('orders'\)/u);
@@ -381,6 +381,9 @@ describe('authenticated driver screens', () => {
       'utf8',
     );
 
+    assert.match(source, /async function finishEditing/u);
+    assert.match(source, /await onSaveDeliveryOrder\(draftOrders\)/u);
+    assert.match(source, /isSequenceSaving/u);
     assert.match(source, /Gesture\.Pan\(\)/u);
     assert.match(source, /<GestureDetector gesture=\{dragGesture\}>/u);
     assert.match(source, /accessibilityLabel=.*순서 이동 핸들/u);
@@ -388,6 +391,27 @@ describe('authenticated driver screens', () => {
     assert.match(source, /onDrop/u);
     assert.match(source, /destination\.destinationName/u);
     assert.doesNotMatch(source, /destination\.orders\.length/u);
+  });
+
+  it('persists manual order with the assigned route version before refreshing', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const routeClient = readFileSync(
+      join(appDirectory, '../api/dsvDriverRoute.ts'),
+      'utf8',
+    );
+
+    assert.match(routeClient, /routeVersionId: string \| null/u);
+    assert.match(routeClient, /updateDriverDeliveryOrder/u);
+    assert.match(routeClient, /orderedStopIds: orders\.map/u);
+    assert.match(workspace, /await updateDriverDeliveryOrder/u);
+    assert.match(workspace, /route\.routeVersionId/u);
+    assert.match(workspace, /serverRouteGeometry: null/u);
+    assert.match(workspace, /setLoadAttempt\(\(attempt\) => attempt \+ 1\)/u);
+    assert.match(workspace, /if \(!completesRoute\) \{\s+setLoadAttempt/u);
+    assert.doesNotMatch(workspace, /onOrdersChange=\{setOrders\}/u);
   });
 
   it('reorders and animates neighboring rows while the handle remains held', () => {

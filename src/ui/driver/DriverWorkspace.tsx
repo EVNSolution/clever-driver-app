@@ -29,6 +29,7 @@ import {
   loadDriverCompletedRouteHistory,
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
+  updateDriverDeliveryOrder,
   updateDriverDestinationNotes,
   type DriverDeliveryRoute,
   type DriverDeliveryRouteChoice,
@@ -76,6 +77,7 @@ export function DriverWorkspace({
   const [isSequenceEditing, setIsSequenceEditing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
+  const routeRef = useRef<DriverDeliveryRoute | null>(null);
   const [routeChoices, setRouteChoices] =
     useState<DriverDeliveryRouteChoice[]>([]);
   const terminalRoutesRef = useRef<Record<string, DriverDeliveryRoute>>({});
@@ -97,6 +99,10 @@ export function DriverWorkspace({
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
   const isRouteReadOnly = route !== null &&
     routeStatusGroup(route.executionStatus) === 'terminal';
+
+  useEffect(() => {
+    routeRef.current = route;
+  }, [route]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -277,7 +283,7 @@ export function DriverWorkspace({
   }
 
   function selectRoute(routePlanId: string) {
-    if (deliveryExecution.isLocked) return;
+    if (deliveryExecution.isLocked || isSequenceEditing) return;
     if (routePlanId === selectedRoutePlanId) {
       return;
     }
@@ -291,7 +297,7 @@ export function DriverWorkspace({
   }
 
   function selectRouteGroup(nextGroup: DriverRouteGroup) {
-    if (deliveryExecution.isLocked) return;
+    if (deliveryExecution.isLocked || isSequenceEditing) return;
     if (nextGroup === routeGroup) return;
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(false);
@@ -424,6 +430,77 @@ export function DriverWorkspace({
     return notes;
   }
 
+  async function saveDeliveryOrder(nextOrders: DeliveryOrder[]) {
+    const savingRoute = routeRef.current;
+    if (savingRoute === null) {
+      throw new DriverRouteApiError(
+        'ROUTE_NOT_AVAILABLE',
+        '배송 경로를 확인할 수 없습니다.',
+      );
+    }
+    if (savingRoute.routeVersionId === null) {
+      throw new DriverRouteApiError(
+        'ROUTE_ORDER_UNSUPPORTED',
+        '이 배송 경로는 수동 순서 저장을 지원하지 않습니다.',
+      );
+    }
+
+    const expectedVersion = savingRoute.routeVersionId;
+    let savedOrder: Awaited<ReturnType<typeof updateDriverDeliveryOrder>>;
+    try {
+      savedOrder = await updateDriverDeliveryOrder(
+        savingRoute.routeAccessToken,
+        savingRoute.routePlanId,
+        expectedVersion,
+        nextOrders,
+      );
+    } catch (error) {
+      if (
+        error instanceof DriverRouteApiError &&
+        [
+          'COMMAND_IN_PROGRESS',
+          'INVALID_STOP_SET',
+          'ROUTE_COMPLETED',
+          'ROUTE_SCOPE_REJECTED',
+          'VERSION_CONFLICT',
+        ].includes(error.code)
+      ) {
+        setLoadAttempt((attempt) => attempt + 1);
+      }
+      throw error;
+    }
+
+    const latestRoute = routeRef.current;
+    if (
+      latestRoute === null ||
+      latestRoute.routePlanId !== savingRoute.routePlanId ||
+      (
+        latestRoute.routeVersionId !== expectedVersion &&
+        latestRoute.routeVersionId !== savedOrder.routeVersionId
+      )
+    ) {
+      setLoadAttempt((attempt) => attempt + 1);
+      throw new DriverRouteApiError(
+        'ROUTE_CHANGED_DURING_ORDER_SAVE',
+        '배송 경로가 변경됐습니다. 최신 순서를 확인해 주세요.',
+      );
+    }
+
+    const savedRoute: DriverDeliveryRoute = {
+      ...latestRoute,
+      etaStatus: latestRoute.pickupCompletedAt === null ? 'PRE_PICKUP' : 'FAILED',
+      nextDeliveryStopId: null,
+      orders: savedOrder.orders,
+      routeVersionId: savedOrder.routeVersionId,
+      serverRouteGeometry: null,
+    };
+    routeRef.current = savedRoute;
+    setRoute(savedRoute);
+    setOrders(savedOrder.orders);
+    setLastRouteUpdatedAt(new Date());
+    setLoadAttempt((attempt) => attempt + 1);
+  }
+
   async function uploadDeliveryProof(
     deliveryStopId: string,
     photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
@@ -533,15 +610,16 @@ export function DriverWorkspace({
                 historySummary={route.historySummary}
                 isEditing={isSequenceEditing}
                 isReadOnly={isRouteReadOnly}
+                isSequenceEditingSupported={route.routeVersionId !== null}
                 lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={route.nextDeliveryStopId}
                 onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
                 onEditingChange={changeSequenceEditing}
                 onOpenDeliverySpace={openDeliverySpace}
-                onOrdersChange={setOrders}
                 onReadDriverMessage={readDriverMessage}
                 onRefresh={refreshRoute}
                 onSaveDestinationNotes={saveDestinationNotes}
+                onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
@@ -658,6 +736,7 @@ function completedRouteFromHistory(
     routeId: summary.routePlanId,
     routeName: summary.routeName,
     routePlanId: summary.routePlanId,
+    routeVersionId: null,
     serverRouteGeometry: null,
     timezone: summary.timezone,
   };
