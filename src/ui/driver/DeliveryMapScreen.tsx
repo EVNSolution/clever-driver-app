@@ -1,10 +1,8 @@
-import { useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -14,27 +12,21 @@ import {
   type DeliveryOrder,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
-import { openDestinationMap } from '../../platform/destinationMap';
-import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
-import { useAppDialog } from './AppDialog';
 import { DriverRefreshControl } from './DriverRefreshControl';
-import { DeliveryProofModal } from './DeliveryProofModal';
+import {
+  DeliveryExecutionActions,
+  type DeliveryExecutionController,
+} from './DeliveryExecutionActions';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 
 type DeliveryMapScreenProps = {
   depotCoordinate: DeliveryCoordinate | null;
+  executionController: DeliveryExecutionController;
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   isReadOnly: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
-  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<boolean>;
-  onCompleteRoute(): Promise<void>;
-  onStartDelivery(): Promise<void>;
   onRefresh(): void;
-  onUploadProof(
-    deliveryStopId: string,
-    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
-  ): Promise<void>;
   orders: DeliveryOrder[];
   refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -43,141 +35,27 @@ type DeliveryMapScreenProps = {
 
 export function DeliveryMapScreen({
   depotCoordinate,
+  executionController,
   etaStatus,
   isReadOnly,
   lastUpdatedAt,
   nextDeliveryStopId,
-  onCompleteDelivery,
-  onCompleteRoute,
-  onStartDelivery,
   onRefresh,
-  onUploadProof,
   orders,
   refreshing,
   serverRouteGeometry,
   timezone,
 }: DeliveryMapScreenProps) {
-  const { dialog, showDialog } = useAppDialog();
-  const [isCompleting, setIsCompleting] = useState(false);
-  const [isStarting, setIsStarting] = useState(false);
-  const [proofDelivery, setProofDelivery] = useState<{
-    completesRoute: boolean;
-    deliveryStopId: string;
-    destinationName: string;
-  } | null>(null);
+  const { fontScale } = useWindowDimensions();
   const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
   const totalBoxes = orders.reduce((total, order) => total + order.shippedBoxes, 0);
-  const isCompletionDisabled =
-    isReadOnly || etaStatus === 'PRE_PICKUP' || summary === null ||
-    isCompleting || isStarting;
-
-  async function handleOpenMap() {
-    if (summary === null) return;
-
-    try {
-      await openDestinationMap(summary.address);
-    } catch {
-      showDialog({
-        message: '지도 앱을 열지 못했습니다. 다른 지도 앱에서 주소를 붙여넣어 주세요.',
-        title: '주소를 복사했습니다',
-        tone: 'info',
-      });
-    }
-  }
-
-  function confirmDeliveryCompletion() {
-    if (summary === null || isCompletionDisabled) {
-      return;
-    }
-
-    showDialog({
-      actions: [
-        { label: '취소', tone: 'secondary' },
-        {
-          onPress: () => {
-            setIsCompleting(true);
-            void onCompleteDelivery(summary.destinationId, summary.deliveryStopIds)
-              .then((completesRoute) => {
-                setProofDelivery({
-                  completesRoute,
-                  deliveryStopId: summary.deliveryStopId,
-                  destinationName: summary.destinationName,
-                });
-              })
-              .catch((error: unknown) => {
-                showDialog({
-                  message: error instanceof Error
-                    ? error.message
-                    : '배송 완료 상태를 저장하지 못했습니다.',
-                  title: '배송 완료 실패',
-                  tone: 'danger',
-                });
-              })
-              .finally(() => setIsCompleting(false));
-          },
-          label: '완료',
-          tone: 'primary',
-        },
-      ],
-      message: `${summary.destinationName}의 주문 ${summary.deliveryStopIds.length}건을 모두 배송 완료 처리할까요?`,
-      title: '배송 완료',
-      tone: 'success',
-    });
-  }
-
-  function closeProofDelivery() {
-    const completesRoute = proofDelivery?.completesRoute === true;
-    setProofDelivery(null);
-    if (!completesRoute) return;
-
-    setIsCompleting(true);
-    void onCompleteRoute()
-      .catch((error: unknown) => {
-        showDialog({
-          message: error instanceof Error
-            ? error.message
-            : '배차 완료 상태를 저장하지 못했습니다.',
-          title: '배차 완료 실패',
-          tone: 'danger',
-        });
-      })
-      .finally(() => setIsCompleting(false));
-  }
-
-  function confirmDeliveryStart() {
-    if (isStarting) return;
-
-    showDialog({
-      actions: [
-        { label: '취소', tone: 'secondary' },
-        {
-          onPress: () => {
-            setIsStarting(true);
-            void onStartDelivery()
-              .catch((error: unknown) => {
-                showDialog({
-                  message: error instanceof Error
-                    ? error.message
-                    : '배송 시작 상태를 저장하지 못했습니다.',
-                  title: '배송 시작 실패',
-                  tone: 'danger',
-                });
-              })
-              .finally(() => setIsStarting(false));
-          },
-          label: '시작',
-          tone: 'primary',
-        },
-      ],
-      message: '픽업을 완료하고 배송을 시작할까요?',
-      title: '배송 시작',
-      tone: 'info',
-    });
-  }
 
   return (
     <View style={styles.screen}>
-      <View style={styles.mapArea}>
+      <View style={[
+        styles.mapArea,
+        fontScale > 1.3 && styles.mapAreaLargeText,
+      ]}>
         <DeliveryRouteMap
           currentDeliveryStopId={nextDeliveryStopId}
           depotCoordinate={depotCoordinate}
@@ -191,29 +69,6 @@ export function DeliveryMapScreen({
           <DeliveryAttentionBanner summary={summary} timezone={timezone} />
         )}
 
-        {!isReadOnly && etaStatus === 'PRE_PICKUP' && orders.length > 0 ? (
-          <View pointerEvents="box-none" style={styles.startOverlay}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ busy: isStarting, disabled: isStarting }}
-              disabled={isStarting}
-              onPress={confirmDeliveryStart}
-              style={({ pressed }) => [
-                styles.startButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              {isStarting ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.startButtonText}>배송 시작</Text>
-                  <Text style={styles.startButtonCaption}>픽업 완료</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-        ) : null}
       </View>
 
       <View style={styles.detailsArea}>
@@ -229,27 +84,29 @@ export function DeliveryMapScreen({
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >
-          <Text style={styles.panelLabel}>
+          <Text maxFontSizeMultiplier={1.3} style={styles.panelLabel}>
             {isReadOnly ? '완료된 배차' : '지금 가는 배송지'}
           </Text>
           <View style={styles.destinationRow}>
             {summary === null ? null : (
               <View style={styles.destinationSequenceBadge}>
-                <Text style={styles.destinationSequenceText}>
+                <Text maxFontSizeMultiplier={1.3} style={styles.destinationSequenceText}>
                   {summary.destinationSequence}
                 </Text>
               </View>
             )}
-            <Text numberOfLines={1} style={styles.destinationName}>
-              {summary?.destinationName ?? (
-                isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
-              )}
-            </Text>
-            {summary === null ? null : (
-              <Text numberOfLines={2} style={styles.destinationAddress}>
-                {summary.address}
+            <View style={styles.destinationCopy}>
+              <Text style={styles.destinationName}>
+                {summary?.destinationName ?? (
+                  isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
+                )}
               </Text>
-            )}
+              {summary === null ? null : (
+                <Text style={styles.destinationAddress}>
+                  {summary.address}
+                </Text>
+              )}
+            </View>
           </View>
 
           <View style={styles.metrics}>
@@ -277,7 +134,9 @@ export function DeliveryMapScreen({
 
           {summary === null ? null : (
             <View style={styles.conditionSection}>
-              <Text style={styles.conditionSectionTitle}>주문 정보</Text>
+              <Text maxFontSizeMultiplier={1.3} style={styles.conditionSectionTitle}>
+                주문 정보
+              </Text>
               <View style={styles.conditionList}>
                 {summary.orderBoxes.map(({ boxCount, conditionCode, orderId }) => (
                   <View key={orderId} style={styles.conditionRow}>
@@ -285,10 +144,12 @@ export function DeliveryMapScreen({
                       styles.conditionDot,
                       conditionDotStyle(conditionCode),
                     ]} />
-                    <Text style={styles.conditionLabel}>
+                    <Text maxFontSizeMultiplier={1.3} style={styles.conditionLabel}>
                       {formatConditionLabel(conditionCode)}
                     </Text>
-                    <Text style={styles.conditionBoxCount}>{boxCount}박스</Text>
+                    <Text maxFontSizeMultiplier={1.3} style={styles.conditionBoxCount}>
+                      {boxCount}박스
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -296,52 +157,11 @@ export function DeliveryMapScreen({
           )}
         </ScrollView>
 
-        {!isReadOnly ? <View style={styles.actionFooter}>
-          <View style={styles.actionButtons}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: summary === null }}
-            disabled={summary === null}
-            onPress={() => void handleOpenMap()}
-            style={({ pressed }) => [
-              styles.mapButton,
-              summary === null && styles.mapButtonDisabled,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.mapButtonText}>지도 열기</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: isCompletionDisabled }}
-            disabled={isCompletionDisabled}
-            onPress={confirmDeliveryCompletion}
-            style={({ pressed }) => [
-              styles.completeButton,
-              isCompletionDisabled && styles.completeButtonDisabled,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            {isCompleting ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <Text style={styles.completeButtonText}>배송 완료</Text>
-            )}
-          </Pressable>
-          </View>
-        </View> : null}
-      </View>
-
-      {proofDelivery === null ? null : (
-        <DeliveryProofModal
-          destinationName={proofDelivery.destinationName}
-          onClose={closeProofDelivery}
-          onUpload={(photo) => (
-            onUploadProof(proofDelivery.deliveryStopId, photo)
-          )}
+        <DeliveryExecutionActions
+          controller={executionController}
+          variant="map"
         />
-      )}
-      {dialog}
+      </View>
     </View>
   );
 }
@@ -376,7 +196,13 @@ function DeliveryAttentionBanner({
     <View pointerEvents="none" style={styles.attentionBanner}>
       {badges.map((badge) => (
         <View key={badge} style={styles.attentionBadge}>
-          <Text numberOfLines={1} style={styles.attentionText}>{badge}</Text>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={2}
+            style={styles.attentionText}
+          >
+            {badge}
+          </Text>
         </View>
       ))}
     </View>
@@ -386,8 +212,10 @@ function DeliveryAttentionBanner({
 function DeliveryMetric({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text numberOfLines={1} style={styles.metricValue}>{value}</Text>
+      <Text maxFontSizeMultiplier={1.3} style={styles.metricLabel}>{label}</Text>
+      <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={styles.metricValue}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -469,41 +297,8 @@ const styles = StyleSheet.create({
     height: '56%',
     position: 'relative',
   },
-  startOverlay: {
-    alignItems: 'center',
-    bottom: 0,
-    justifyContent: 'center',
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  startButton: {
-    alignItems: 'center',
-    backgroundColor: '#0b57d0',
-    borderColor: '#ffffff',
-    borderRadius: 20,
-    borderWidth: 3,
-    elevation: 10,
-    height: 76,
-    justifyContent: 'center',
-    minWidth: 196,
-    paddingHorizontal: 32,
-    shadowColor: '#101828',
-    shadowOffset: { height: 5, width: 0 },
-    shadowOpacity: 0.24,
-    shadowRadius: 10,
-  },
-  startButtonText: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '900',
-  },
-  startButtonCaption: {
-    color: '#dbeafe',
-    fontSize: 11,
-    fontWeight: '800',
-    marginTop: 2,
+  mapAreaLargeText: {
+    height: '42%',
   },
   detailsArea: {
     backgroundColor: '#ffffff',
@@ -551,13 +346,18 @@ const styles = StyleSheet.create({
     color: '#101828',
     fontSize: 18,
     fontWeight: '900',
-    flex: 0.38,
+    lineHeight: 24,
   },
   destinationRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     marginTop: 2,
+  },
+  destinationCopy: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0,
   },
   destinationSequenceBadge: {
     alignItems: 'center',
@@ -573,12 +373,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   destinationAddress: {
-    color: '#667085',
-    fontSize: 11,
+    color: '#475467',
+    fontSize: 13,
     fontWeight: '600',
-    lineHeight: 16,
-    flex: 0.62,
-    textAlign: 'right',
+    lineHeight: 19,
   },
   metrics: {
     alignItems: 'center',
@@ -653,55 +451,6 @@ const styles = StyleSheet.create({
   conditionBoxCount: {
     color: '#101828',
     fontSize: 13,
-    fontWeight: '900',
-  },
-  actionFooter: {
-    backgroundColor: '#ffffff',
-    borderTopColor: '#e5e7eb',
-    borderTopWidth: 1,
-    paddingBottom: 10,
-    paddingHorizontal: 18,
-    paddingTop: 10,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  mapButton: {
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderColor: '#0b57d0',
-    borderRadius: 12,
-    borderWidth: 1,
-    flex: 1,
-    height: 46,
-    justifyContent: 'center',
-  },
-  mapButtonDisabled: {
-    borderColor: '#cbd5e1',
-  },
-  mapButtonText: {
-    color: '#0b57d0',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  completeButton: {
-    alignItems: 'center',
-    backgroundColor: '#0b57d0',
-    borderRadius: 12,
-    flex: 1,
-    height: 46,
-    justifyContent: 'center',
-  },
-  completeButtonDisabled: {
-    backgroundColor: '#b8c2d1',
-  },
-  buttonPressed: {
-    opacity: 0.82,
-  },
-  completeButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
     fontWeight: '900',
   },
 });

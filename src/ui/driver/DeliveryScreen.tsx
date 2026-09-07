@@ -4,6 +4,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -41,14 +42,16 @@ import {
   type DeliveryOrderPositions,
 } from '../../domain/delivery/sortableOrder';
 import { useAppDialog } from './AppDialog';
+import {
+  DeliveryExecutionActions,
+  type DeliveryExecutionController,
+} from './DeliveryExecutionActions';
 import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
 
-const EDITOR_ORDER_ROW_HEIGHT = 72;
+const EDITOR_ORDER_ROW_BASE_HEIGHT = 84;
 const EDITOR_ORDER_ROW_GAP = 6;
-const EDITOR_ORDER_ROW_STEP =
-  EDITOR_ORDER_ROW_HEIGHT + EDITOR_ORDER_ROW_GAP;
 const EDITOR_LIST_PADDING_TOP = 8;
 const EDITOR_LIST_PADDING_BOTTOM = 18;
 const NEIGHBOR_MOVE_DURATION_MS = 170;
@@ -58,6 +61,7 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 type DeliveryScreenProps = {
   deliveryDate: string;
   destinationNotesById: Record<string, DestinationNotes>;
+  executionController: DeliveryExecutionController;
   historySummary?: DriverCompletedRouteHistory;
   isEditing: boolean;
   isReadOnly: boolean;
@@ -83,6 +87,7 @@ type DeliveryScreenProps = {
 export function DeliveryScreen({
   deliveryDate,
   destinationNotesById: initialDestinationNotesById,
+  executionController,
   historySummary,
   isEditing,
   isReadOnly,
@@ -218,21 +223,29 @@ export function DeliveryScreen({
           <View style={styles.summaryItems}>
             {historySummary === undefined ? (
               <>
-                <Text style={styles.summaryText}>주문 {orders.length}건</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  주문 {orders.length}건
+                </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>배송지 {destinationGroups.length}곳</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  배송지 {destinationGroups.length}곳
+                </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>{totalBoxes}박스</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  {totalBoxes}박스
+                </Text>
               </>
             ) : (
               <>
-                <Text style={styles.summaryText}>배송 {historySummary.stopCount}건</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
+                  배송 {historySummary.stopCount}건
+                </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
                   완료 {historySummary.completedStopCount}건
                 </Text>
                 <View style={styles.summaryDivider} />
-                <Text style={styles.summaryText}>
+                <Text maxFontSizeMultiplier={1.3} style={styles.summaryText}>
                   실패 {historySummary.failedStopCount}건
                 </Text>
               </>
@@ -250,7 +263,10 @@ export function DeliveryScreen({
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={[styles.headerActionText, styles.spaceButtonText]}>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={[styles.headerActionText, styles.spaceButtonText]}
+            >
               주문 목록
             </Text>
           </Pressable>
@@ -267,12 +283,20 @@ export function DeliveryScreen({
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={[styles.headerActionText, styles.editButtonText]}>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={[styles.headerActionText, styles.editButtonText]}
+            >
               순서 편집
             </Text>
           </Pressable>
         </View> : null}
       </View>
+
+      <DeliveryExecutionActions
+        controller={executionController}
+        variant="delivery"
+      />
 
       <View
         onLayout={(event) => {
@@ -417,6 +441,7 @@ function DestinationGroupRow({
           ]}
         >
           <Text
+            maxFontSizeMultiplier={1.3}
             style={[
               styles.sequenceBadgeText,
               (isCompleted || isCurrent) && styles.sequenceBadgeTextInverse,
@@ -427,7 +452,7 @@ function DestinationGroupRow({
         </View>
         <View style={styles.orderCopy}>
           <Text
-            numberOfLines={1}
+            numberOfLines={2}
             style={[
               styles.destinationName,
               isCompleted && styles.completedPrimaryText,
@@ -436,12 +461,13 @@ function DestinationGroupRow({
             {group.destinationName}
           </Text>
           <Text
-            numberOfLines={2}
+            numberOfLines={3}
             style={[styles.address, isCompleted && styles.completedSecondaryText]}
           >
             {group.address}
           </Text>
           <Text
+            maxFontSizeMultiplier={1.3}
             style={[
               styles.groupOrderCount,
               isCompleted && styles.completedSecondaryText,
@@ -453,11 +479,14 @@ function DestinationGroupRow({
         <View style={styles.orderRight}>
           {isCurrent ? (
             <View style={styles.currentDeliveryBadge}>
-              <Text style={styles.currentDeliveryBadgeText}>배송 중</Text>
+              <Text maxFontSizeMultiplier={1.3} style={styles.currentDeliveryBadgeText}>
+                배송 중
+              </Text>
             </View>
           ) : null}
           <View style={styles.orderRightDetails}>
             <Text
+              maxFontSizeMultiplier={1.3}
               numberOfLines={1}
               style={[
                 styles.groupConditions,
@@ -466,7 +495,10 @@ function DestinationGroupRow({
             >
               {group.conditionCodes.join(' · ')}
             </Text>
-            <Text style={[styles.boxCount, isCompleted && styles.completedBoxText]}>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={[styles.boxCount, isCompleted && styles.completedBoxText]}
+            >
               {group.boxCount}박스
             </Text>
           </View>
@@ -491,15 +523,20 @@ function OrderSequenceEditor({
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
 }) {
+  const { fontScale } = useWindowDimensions();
   const destinations = groupDeliveryOrdersByDestination(orders);
   const [isMapVisible, setIsMapVisible] = useState(true);
+  const rowHeight = Math.round(
+    EDITOR_ORDER_ROW_BASE_HEIGHT * Math.max(1, fontScale),
+  );
+  const rowStep = rowHeight + EDITOR_ORDER_ROW_GAP;
   const positions = useSharedValue(
     createDeliveryOrderPositions(groupDeliveryOrdersByDestination(orders).map(({ destinationId }) => destinationId)),
   );
   const activeOrderId = useSharedValue<string | null>(null);
   const listHeight =
     EDITOR_LIST_PADDING_TOP +
-    Math.max(0, destinations.length * EDITOR_ORDER_ROW_STEP - EDITOR_ORDER_ROW_GAP) +
+    Math.max(0, destinations.length * rowStep - EDITOR_ORDER_ROW_GAP) +
     EDITOR_LIST_PADDING_BOTTOM;
 
   useEffect(() => {
@@ -582,6 +619,8 @@ function OrderSequenceEditor({
               destination={destination}
               positions={positions}
               rowCount={destinations.length}
+              rowHeight={rowHeight}
+              rowStep={rowStep}
             />
           ))}
         </View>
@@ -597,6 +636,8 @@ function DraggableDestinationRow({
   destination,
   positions,
   rowCount,
+  rowHeight,
+  rowStep,
 }: {
   activeOrderId: SharedValue<string | null>;
   initialIndex: number;
@@ -604,28 +645,33 @@ function DraggableDestinationRow({
   destination: DeliveryDestinationGroup;
   positions: SharedValue<DeliveryOrderPositions>;
   rowCount: number;
+  rowHeight: number;
+  rowStep: number;
 }) {
-  const rowTop = useSharedValue(initialIndex * EDITOR_ORDER_ROW_STEP);
-  const dragStartTop = useSharedValue(initialIndex * EDITOR_ORDER_ROW_STEP);
+  const rowTop = useSharedValue(initialIndex * rowStep);
+  const dragStartTop = useSharedValue(initialIndex * rowStep);
   const startPositions = useSharedValue<DeliveryOrderPositions>({});
 
   useAnimatedReaction(
-    () => positions.get()[destination.destinationId],
-    (nextIndex, previousIndex) => {
+    () => {
+      const nextIndex = positions.get()[destination.destinationId];
+      return nextIndex === undefined ? null : nextIndex * rowStep;
+    },
+    (nextTop, previousTop) => {
       if (
-        nextIndex === undefined ||
-        nextIndex === previousIndex ||
+        nextTop === null ||
+        nextTop === previousTop ||
         activeOrderId.get() === destination.destinationId
       ) {
         return;
       }
 
-      rowTop.set(withTiming(nextIndex * EDITOR_ORDER_ROW_STEP, {
+      rowTop.set(withTiming(nextTop, {
         duration: NEIGHBOR_MOVE_DURATION_MS,
         easing: Easing.out(Easing.cubic),
       }));
     },
-    [destination.destinationId],
+    [destination.destinationId, rowStep],
   );
 
   const dragGesture = Gesture.Pan()
@@ -637,7 +683,7 @@ function DraggableDestinationRow({
       activeOrderId.set(destination.destinationId);
     })
     .onUpdate((event) => {
-      const maxTop = Math.max(0, (rowCount - 1) * EDITOR_ORDER_ROW_STEP);
+      const maxTop = Math.max(0, (rowCount - 1) * rowStep);
       const nextTop = Math.max(
         0,
         Math.min(maxTop, dragStartTop.get() + event.translationY),
@@ -647,7 +693,7 @@ function DraggableDestinationRow({
         absoluteTop: nextTop,
         currentIndex,
         rowCount,
-        rowStep: EDITOR_ORDER_ROW_STEP,
+        rowStep: rowStep,
       });
 
       rowTop.set(nextTop);
@@ -664,7 +710,7 @@ function DraggableDestinationRow({
       const targetIndex = positions.get()[destination.destinationId] ?? initialIndex;
 
       rowTop.set(withTiming(
-        targetIndex * EDITOR_ORDER_ROW_STEP,
+        targetIndex * rowStep,
         {
           duration: DRAG_SETTLE_DURATION_MS,
           easing: Easing.out(Easing.cubic),
@@ -685,7 +731,7 @@ function DraggableDestinationRow({
       positions.set(startPositions.get());
       const originalIndex = startPositions.get()[destination.destinationId] ?? initialIndex;
       rowTop.set(withTiming(
-        originalIndex * EDITOR_ORDER_ROW_STEP,
+        originalIndex * rowStep,
         {
           duration: DRAG_SETTLE_DURATION_MS,
           easing: Easing.out(Easing.cubic),
@@ -719,7 +765,7 @@ function DraggableDestinationRow({
 
   return (
     <Animated.View
-      style={[styles.editorOrderCard, animatedCardStyle]}
+      style={[styles.editorOrderCard, { height: rowHeight }, animatedCardStyle]}
     >
       <GestureDetector gesture={dragGesture}>
         <View
@@ -735,10 +781,10 @@ function DraggableDestinationRow({
         <Text style={styles.sequenceBadgeText}>{initialIndex + 1}</Text>
       </View>
       <View style={styles.editorOrderCopy}>
-        <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={styles.editorDestinationName}>
+        <Text numberOfLines={2} style={styles.editorDestinationName}>
           {destination.destinationName}
         </Text>
-        <Text maxFontSizeMultiplier={1.3} numberOfLines={2} style={styles.editorAddress}>
+        <Text numberOfLines={3} style={styles.editorAddress}>
           {destination.address}
         </Text>
       </View>
@@ -779,7 +825,8 @@ const styles = StyleSheet.create({
     paddingBottom: 88,
   },
   deliveryHeader: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingBottom: 12,
@@ -804,6 +851,7 @@ const styles = StyleSheet.create({
   summaryItems: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 7,
   },
   summaryDivider: {
@@ -836,6 +884,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     marginLeft: 8,
+    marginTop: 2,
   },
   spaceButton: {
     backgroundColor: '#e8f1ff',
@@ -868,7 +917,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   orderRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: 9,
     paddingVertical: 12,
@@ -901,6 +950,7 @@ const styles = StyleSheet.create({
     gap: 2,
     justifyContent: 'center',
     minHeight: 48,
+    minWidth: 0,
   },
   destinationName: {
     color: '#111827',
@@ -947,7 +997,7 @@ const styles = StyleSheet.create({
   orderRight: {
     alignItems: 'flex-end',
     alignSelf: 'stretch',
-    maxWidth: '34%',
+    maxWidth: '30%',
     minHeight: 48,
     minWidth: 70,
   },
@@ -1105,7 +1155,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     elevation: 1,
     flexDirection: 'row',
-    height: EDITOR_ORDER_ROW_HEIGHT,
     left: 12,
     paddingRight: 8,
     position: 'absolute',

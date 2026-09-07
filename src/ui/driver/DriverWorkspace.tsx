@@ -36,6 +36,7 @@ import {
   type DriverRouteExecutionStatus,
 } from '../../api/dsvDriverRoute';
 import {
+  buildCurrentDeliverySummary,
   completesDeliveryRoute,
   isTerminalDeliveryStatus,
   type DeliveryOrder,
@@ -47,6 +48,11 @@ import type {
 import { resolveAndroidBackAction } from '../../domain/navigation/androidBackNavigation';
 import { DeliveryScreen } from './DeliveryScreen';
 import { DeliveryMapScreen } from './DeliveryMapScreen';
+import {
+  DeliveryExecutionOverlay,
+  useDeliveryExecution,
+} from './DeliveryExecutionActions';
+import { DriverRefreshControl } from './DriverRefreshControl';
 import { DriverSettingsModal } from './DriverSettingsModal';
 import { DeliverySpaceScreen } from './DeliverySpaceScreen';
 
@@ -77,6 +83,7 @@ export function DriverWorkspace({
   const [routeGroup, setRouteGroup] = useState<DriverRouteGroup>('active');
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [isRefreshingRoute, setIsRefreshingRoute] = useState(false);
+  const isPullRefreshingRouteRef = useRef(false);
   const [lastRouteUpdatedAt, setLastRouteUpdatedAt] = useState<Date | null>(null);
   const [selectedRoutePlanId, setSelectedRoutePlanId] = useState<string>();
   const [loadErrorMessage, setLoadErrorMessage] = useState<string>();
@@ -132,7 +139,10 @@ export function DriverWorkspace({
   useEffect(() => {
     let isActive = true;
 
-    if (selectedRoutePlanId === undefined) {
+    if (
+      selectedRoutePlanId === undefined &&
+      !isPullRefreshingRouteRef.current
+    ) {
       void Promise.resolve().then(() => {
         if (isActive) setLoadState('loading');
       });
@@ -180,6 +190,7 @@ export function DriverWorkspace({
           setRoute(null);
           setOrders([]);
           setLoadErrorMessage(undefined);
+          setLastRouteUpdatedAt(new Date());
           setLoadState(mergedRouteChoices.length === 0 ? 'empty' : 'select');
         })
       : (cachedTerminalRoute === undefined
@@ -236,7 +247,10 @@ export function DriverWorkspace({
       );
       setLoadState('error');
     }).finally(() => {
-      if (isActive) setIsRefreshingRoute(false);
+      if (isActive) {
+        isPullRefreshingRouteRef.current = false;
+        setIsRefreshingRoute(false);
+      }
     });
 
     return () => {
@@ -257,11 +271,13 @@ export function DriverWorkspace({
   function refreshRoute() {
     if (isRouteReadOnly || isRefreshingRoute || loadState === 'loading') return;
 
+    isPullRefreshingRouteRef.current = true;
     setIsRefreshingRoute(true);
     setLoadAttempt((attempt) => attempt + 1);
   }
 
   function selectRoute(routePlanId: string) {
+    if (deliveryExecution.isLocked) return;
     if (routePlanId === selectedRoutePlanId) {
       return;
     }
@@ -275,6 +291,7 @@ export function DriverWorkspace({
   }
 
   function selectRouteGroup(nextGroup: DriverRouteGroup) {
+    if (deliveryExecution.isLocked) return;
     if (nextGroup === routeGroup) return;
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(false);
@@ -290,17 +307,20 @@ export function DriverWorkspace({
   }
 
   function changeSequenceEditing(isEditing: boolean) {
+    if (deliveryExecution.isLocked) return;
     resetRootBackPress();
     setIsSequenceEditing(isEditing);
   }
 
   function openDeliverySpace() {
+    if (deliveryExecution.isLocked) return;
     resetRootBackPress();
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(true);
   }
 
   function closeDeliverySpace() {
+    if (deliveryExecution.isLocked) return;
     resetRootBackPress();
     setIsDeliverySpaceOpen(false);
   }
@@ -417,6 +437,19 @@ export function DriverWorkspace({
     });
   }
 
+  const deliveryExecution = useDeliveryExecution({
+    etaStatus: route?.etaStatus ?? 'READY',
+    isReadOnly: isRouteReadOnly,
+    onCompleteDelivery: completeDelivery,
+    onCompleteRoute: completeRoute,
+    onStartDelivery: startDelivery,
+    onUploadProof: uploadDeliveryProof,
+    orderCount: orders.length,
+    summary: route === null
+      ? null
+      : buildCurrentDeliverySummary(orders, route.nextDeliveryStopId),
+  });
+
   return (
     <View style={styles.workspace}>
       <View style={styles.appHeader}>
@@ -476,16 +509,19 @@ export function DriverWorkspace({
         ) : null}
         {loadState !== 'ready' || route === null ? (
           <RouteLoadState
+            lastUpdatedAt={lastRouteUpdatedAt}
             message={loadErrorMessage}
+            onRefresh={refreshRoute}
             onRetry={retryRouteLoad}
+            refreshing={isRefreshingRoute}
             state={loadState}
           />
         ) : (
           <>
             {isDeliverySpaceOpen ? (
               <DeliverySpaceScreen
-                accessToken={route.routeAccessToken}
-                deliveryDateLabel={formatDeliveryDate(route.deliveryDate)}
+                key={`${route.routePlanId}:${route.deliveryDate}`}
+                selectedRoute={route}
                 onAssignmentsChanged={() => setLoadAttempt((attempt) => attempt + 1)}
                 onBack={closeDeliverySpace}
               />
@@ -493,6 +529,7 @@ export function DriverWorkspace({
               <DeliveryScreen
                 deliveryDate={route.deliveryDate}
                 destinationNotesById={route.destinationNotesById}
+                executionController={deliveryExecution}
                 historySummary={route.historySummary}
                 isEditing={isSequenceEditing}
                 isReadOnly={isRouteReadOnly}
@@ -513,15 +550,12 @@ export function DriverWorkspace({
             ) : (
               <DeliveryMapScreen
                 depotCoordinate={route.depotCoordinate}
+                executionController={deliveryExecution}
                 etaStatus={route.etaStatus}
                 isReadOnly={isRouteReadOnly}
                 lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={route.nextDeliveryStopId}
-                onCompleteDelivery={completeDelivery}
-                onCompleteRoute={completeRoute}
-                onStartDelivery={startDelivery}
                 onRefresh={refreshRoute}
-                onUploadProof={uploadDeliveryProof}
                 orders={orders}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
@@ -531,6 +565,8 @@ export function DriverWorkspace({
           </>
         )}
       </View>
+
+      <DeliveryExecutionOverlay controller={deliveryExecution} />
 
       {isSettingsOpen ? (
         <DriverSettingsModal
@@ -859,51 +895,69 @@ function routeStatusLabel(status: DriverRouteExecutionStatus): string {
 }
 
 function RouteLoadState({
+  lastUpdatedAt,
   message,
+  onRefresh,
   onRetry,
+  refreshing,
   state,
 }: {
+  lastUpdatedAt: Date | null;
   message?: string;
+  onRefresh(): void;
   onRetry(): void;
+  refreshing: boolean;
   state: 'loading' | 'select' | 'ready' | 'empty' | 'error';
 }) {
   const isLoading = state === 'loading';
-
-  if (state === 'select') {
-    return (
-      <View style={styles.routeState}>
-        <View style={styles.routePlaceholderIcon}>
-          <DeliveryPackageIcon isSelected={false} />
-        </View>
-        <Text style={styles.routePlaceholderText}>
-          배송 날짜를 선택해 주세요
-        </Text>
-      </View>
-    );
-  }
+  const canPullRefresh = state === 'select' || state === 'empty';
 
   return (
-    <View style={styles.routeState}>
-      <Text style={styles.routeStateTitle}>
-        {isLoading
-          ? '배송 정보를 불러오는 중입니다.'
-          : state === 'empty'
-            ? '배정된 배송이 없습니다.'
-            : message ?? '배송 정보를 불러오지 못했습니다.'}
-      </Text>
-      {!isLoading ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onRetry}
-          style={({ pressed }) => [
-            styles.retryButton,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.retryButtonText}>다시 불러오기</Text>
-        </Pressable>
-      ) : null}
-    </View>
+    <ScrollView
+      alwaysBounceVertical={canPullRefresh}
+      contentContainerStyle={styles.routeState}
+      refreshControl={canPullRefresh ? (
+        <DriverRefreshControl
+          lastUpdatedAt={lastUpdatedAt}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+        />
+      ) : undefined}
+      style={styles.routeStateScroll}
+    >
+      {state === 'select' ? (
+        <>
+          <View style={styles.routePlaceholderIcon}>
+            <DeliveryPackageIcon isSelected={false} />
+          </View>
+          <Text style={styles.routePlaceholderText}>
+            배송 날짜를 선택해 주세요
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.routeStateTitle}>
+            {isLoading
+              ? '배송 정보를 불러오는 중입니다.'
+              : state === 'empty'
+                ? '배정된 배송이 없습니다.'
+                : message ?? '배송 정보를 불러오지 못했습니다.'}
+          </Text>
+          {!isLoading ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={onRetry}
+              style={({ pressed }) => [
+                styles.retryButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.retryButtonText}>다시 불러오기</Text>
+            </Pressable>
+          ) : null}
+        </>
+      )}
+    </ScrollView>
   );
 }
 
@@ -1147,6 +1201,9 @@ const styles = StyleSheet.create({
     gap: 14,
     justifyContent: 'center',
     padding: 24,
+  },
+  routeStateScroll: {
+    flex: 1,
   },
   routeStateTitle: {
     color: '#475467',
