@@ -57,7 +57,7 @@ done
 [[ "${API_BASE_URL%/}" == "$EXPECTED_API_BASE_URL" ]] \
   || fail "release API must be $EXPECTED_API_BASE_URL"
 
-for command in curl gcloud git node shasum stat; do
+for command in curl gcloud git node shasum; do
   require_command "$command"
 done
 
@@ -122,7 +122,7 @@ if [[ -n "${MINIMUM_SUPPORTED_VERSION_CODE:-}" ]]; then
     || fail 'minimum versionCode exceeds APK versionCode'
 fi
 
-APK_SIZE="$(stat -f%z "$APK_PATH")"
+APK_SIZE="$(node -e 'process.stdout.write(String(require("node:fs").statSync(process.argv[1]).size))' "$APK_PATH")"
 APK_SHA256="$(shasum -a 256 "$APK_PATH" | awk '{print $1}')"
 
 ACCESS_TOKEN="$(gcloud auth print-access-token)"
