@@ -19,7 +19,7 @@
     "android": {
       "package": "com.evnsolution.clever.driver",
       "predictiveBackGestureEnabled": true,
-      "versionCode": 22,
+      "versionCode": 23,
       "googleServicesFile": "./.private/google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/driver-app-icon-foreground.png",

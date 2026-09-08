@@ -65,10 +65,41 @@ describe('authenticated driver screens', () => {
     assert.match(workspace, /앱을 종료하려면 뒤로가기를 한 번 더 누르세요\./u);
     assert.match(workspace, /isDeliverySpaceOpen/u);
     assert.match(workspace, /isSequenceEditing/u);
+    assert.match(workspace, /isSequenceSaving/u);
     assert.match(workspace, /backSubscription\.remove\(\)/u);
     assert.match(deliveryScreen, /isEditing: boolean/u);
     assert.match(deliveryScreen, /onEditingChange\(isEditing: boolean\): void/u);
+    assert.match(
+      deliveryScreen,
+      /onSequenceSavingChange\(isSaving: boolean\): void/u,
+    );
     assert.match(appConfig, /"predictiveBackGestureEnabled": true/u);
+  });
+
+  it('keeps parent navigation disabled while delivery order saving is pending', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+
+    assert.match(workspace, /onSequenceSavingChange=\{setIsSequenceSaving\}/u);
+    assert.equal(workspace.match(/disabled=\{isSequenceSaving\}/gu)?.length, 4);
+    assert.match(
+      workspace,
+      /accessibilityState=\{\{ disabled, selected: isSelected \}\}/u,
+    );
+    assert.match(
+      deliveryScreen,
+      /setIsSequenceSaving\(true\);\s+onSequenceSavingChange\(true\);/u,
+    );
+    assert.match(
+      deliveryScreen,
+      /setIsSequenceSaving\(false\);\s+onSequenceSavingChange\(false\);/u,
+    );
   });
 
   it('selects delivery dates from server route choices', () => {

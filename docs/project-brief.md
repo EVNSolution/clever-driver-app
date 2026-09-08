@@ -118,8 +118,11 @@ localhost 또는 `127.0.0.1` 개발을 위한
 발급한 경로 범위 토큰으로 `/driver/assigned-route`를 조회해 표시한다. 화면의
 배송일은 기기 날짜가 아니라 응답의 `deliveryDate`를 사용한다. 앱은 배송지
 좌표를 임의로 연결하거나 경로를 계산하지 않으며, 서버의 `routeGeometry`가
-있을 때만 그 좌표를 수정 없이 표시한다. 순서 저장은 별도 API 계약이 승인된
-뒤 연결한다.
+있을 때만 그 좌표를 수정 없이 표시한다. `routeVersionId`가 있는 배차의 수동
+순서는 경로 토큰으로 `PATCH /driver/routes/:routePlanId/order`에 완료 배송지를
+포함한 전체 `deliveryStopId` 순열, `expectedVersion`, `commandId`를 보내 저장한다.
+앱은 서버가 반환한 새 버전과 순서만 채택하며 `routeVersionId: null`인 레거시
+배차에서는 수동 순서 저장을 제공하지 않는다.
 
 주문 목록은 본 화면에서 선택한 배송일·배차 ID·배차명·경로 범위 토큰을 함께 받는다.
 배차나 배송일이 바뀌면 목록 상태를 새로 만들고, 화면에는 선택한 배송일과 배차명을 표시한다.

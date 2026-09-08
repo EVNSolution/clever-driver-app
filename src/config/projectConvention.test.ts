@@ -34,7 +34,7 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   assert.equal(appConfig.expo.owner, 'evandsolution');
   assert.equal(appConfig.expo.slug, 'clever-driver-app');
   assert.equal(appConfig.expo.version, '0.1.14');
-  assert.equal(appConfig.expo.android.versionCode, 22);
+  assert.equal(appConfig.expo.android.versionCode, 23);
   assert.equal(
     appConfig.expo.ios.bundleIdentifier,
     'com.evnsolution.clever.driver',

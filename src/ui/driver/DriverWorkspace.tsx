@@ -75,6 +75,7 @@ export function DriverWorkspace({
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
   const [isDeliverySpaceOpen, setIsDeliverySpaceOpen] = useState(false);
   const [isSequenceEditing, setIsSequenceEditing] = useState(false);
+  const [isSequenceSaving, setIsSequenceSaving] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const routeRef = useRef<DriverDeliveryRoute | null>(null);
@@ -114,11 +115,14 @@ export function DriverWorkspace({
         const action = resolveAndroidBackAction({
           isDeliverySpaceOpen,
           isSequenceEditing,
+          isSequenceSaving,
           lastRootBackAt: lastRootBackAtRef.current,
           now,
         });
 
-        if (action === 'close-delivery-space') {
+        if (action === 'keep-sequence-editor-open') {
+          lastRootBackAtRef.current = null;
+        } else if (action === 'close-delivery-space') {
           lastRootBackAtRef.current = null;
           setIsDeliverySpaceOpen(false);
         } else if (action === 'close-sequence-editor') {
@@ -140,7 +144,7 @@ export function DriverWorkspace({
     );
 
     return () => backSubscription.remove();
-  }, [isDeliverySpaceOpen, isSequenceEditing]);
+  }, [isDeliverySpaceOpen, isSequenceEditing, isSequenceSaving]);
 
   useEffect(() => {
     let isActive = true;
@@ -543,6 +547,8 @@ export function DriverWorkspace({
           <Pressable
             accessibilityLabel="환경설정"
             accessibilityRole="button"
+            accessibilityState={{ disabled: isSequenceSaving }}
+            disabled={isSequenceSaving}
             onPress={() => {
               resetRootBackPress();
               setIsSettingsOpen(true);
@@ -560,6 +566,8 @@ export function DriverWorkspace({
           </Pressable>
           <Pressable
             accessibilityRole="button"
+            accessibilityState={{ disabled: isSequenceSaving }}
+            disabled={isSequenceSaving}
             onPress={onLogout}
             style={({ pressed }) => [
               styles.logoutButton,
@@ -618,6 +626,7 @@ export function DriverWorkspace({
                 onOpenDeliverySpace={openDeliverySpace}
                 onReadDriverMessage={readDriverMessage}
                 onRefresh={refreshRoute}
+                onSequenceSavingChange={setIsSequenceSaving}
                 onSaveDestinationNotes={saveDestinationNotes}
                 onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}
@@ -667,6 +676,7 @@ export function DriverWorkspace({
       >
         <TabButton
           icon={<DeliveryPackageIcon isSelected={activeTab === 'delivery'} />}
+          disabled={isSequenceSaving}
           isSelected={activeTab === 'delivery'}
           label="배송"
           onPress={() => {
@@ -685,6 +695,7 @@ export function DriverWorkspace({
               ⌖
             </Text>
           }
+          disabled={isSequenceSaving}
           isSelected={activeTab === 'map'}
           label="지도"
           onPress={() => {
@@ -1042,11 +1053,13 @@ function RouteLoadState({
 }
 
 function TabButton({
+  disabled,
   icon,
   isSelected,
   label,
   onPress,
 }: {
+  disabled: boolean;
   icon: ReactNode;
   isSelected: boolean;
   label: string;
@@ -1055,7 +1068,8 @@ function TabButton({
   return (
     <Pressable
       accessibilityRole="tab"
-      accessibilityState={{ selected: isSelected }}
+      accessibilityState={{ disabled, selected: isSelected }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.tabButton,

@@ -73,6 +73,7 @@ type DeliveryScreenProps = {
   onOpenDeliverySpace(): void;
   onReadDriverMessage(messageId: string): Promise<void>;
   onRefresh(): void;
+  onSequenceSavingChange(isSaving: boolean): void;
   onSaveDestinationNotes(
     destinationId: string,
     previous: DestinationNotes,
@@ -100,6 +101,7 @@ export function DeliveryScreen({
   onOpenDeliverySpace,
   onReadDriverMessage,
   onRefresh,
+  onSequenceSavingChange,
   onSaveDestinationNotes,
   onSaveDeliveryOrder,
   orders,
@@ -150,6 +152,7 @@ export function DeliveryScreen({
     }
 
     setIsSequenceSaving(true);
+    onSequenceSavingChange(true);
     try {
       await onSaveDeliveryOrder(draftOrders);
       onEditingChange(false);
@@ -161,6 +164,7 @@ export function DeliveryScreen({
       });
     } finally {
       setIsSequenceSaving(false);
+      onSequenceSavingChange(false);
     }
   }
 
