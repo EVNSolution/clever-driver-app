@@ -87,6 +87,11 @@ export function DriverWorkspace({
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [isRefreshingRoute, setIsRefreshingRoute] = useState(false);
   const isPullRefreshingRouteRef = useRef(false);
+  const sequenceSaveReloadBaselineRef = useRef<{
+    loadAttempt: number;
+    refreshRequestKey: number;
+    selectedRoutePlanId: string | undefined;
+  } | null>(null);
   const [lastRouteUpdatedAt, setLastRouteUpdatedAt] = useState<Date | null>(null);
   const [selectedRoutePlanId, setSelectedRoutePlanId] = useState<string>();
   const [loadErrorMessage, setLoadErrorMessage] = useState<string>();
@@ -147,6 +152,20 @@ export function DriverWorkspace({
   }, [isDeliverySpaceOpen, isSequenceEditing, isSequenceSaving]);
 
   useEffect(() => {
+    if (isSequenceSaving) return undefined;
+
+    const sequenceSaveBaseline = sequenceSaveReloadBaselineRef.current;
+    if (sequenceSaveBaseline !== null) {
+      sequenceSaveReloadBaselineRef.current = null;
+      if (
+        sequenceSaveBaseline.loadAttempt === loadAttempt &&
+        sequenceSaveBaseline.refreshRequestKey === refreshRequestKey &&
+        sequenceSaveBaseline.selectedRoutePlanId === selectedRoutePlanId
+      ) {
+        return undefined;
+      }
+    }
+
     let isActive = true;
 
     if (
@@ -271,6 +290,7 @@ export function DriverWorkspace({
     loadAttempt,
     refreshRequestKey,
     selectedRoutePlanId,
+    isSequenceSaving,
   ]);
 
   function retryRouteLoad() {
@@ -320,6 +340,17 @@ export function DriverWorkspace({
     if (deliveryExecution.isLocked) return;
     resetRootBackPress();
     setIsSequenceEditing(isEditing);
+  }
+
+  function changeSequenceSaving(isSaving: boolean) {
+    if (isSaving) {
+      sequenceSaveReloadBaselineRef.current = {
+        loadAttempt,
+        refreshRequestKey,
+        selectedRoutePlanId,
+      };
+    }
+    setIsSequenceSaving(isSaving);
   }
 
   function openDeliverySpace() {
@@ -626,7 +657,7 @@ export function DriverWorkspace({
                 onOpenDeliverySpace={openDeliverySpace}
                 onReadDriverMessage={readDriverMessage}
                 onRefresh={refreshRoute}
-                onSequenceSavingChange={setIsSequenceSaving}
+                onSequenceSavingChange={changeSequenceSaving}
                 onSaveDestinationNotes={saveDestinationNotes}
                 onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}

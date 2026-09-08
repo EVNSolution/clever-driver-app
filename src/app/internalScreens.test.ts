@@ -86,8 +86,21 @@ describe('authenticated driver screens', () => {
       'utf8',
     );
 
-    assert.match(workspace, /onSequenceSavingChange=\{setIsSequenceSaving\}/u);
+    assert.match(workspace, /onSequenceSavingChange=\{changeSequenceSaving\}/u);
     assert.equal(workspace.match(/disabled=\{isSequenceSaving\}/gu)?.length, 4);
+    assert.match(
+      workspace,
+      /useEffect\(\(\) => \{\s+if \(isSequenceSaving\) return undefined;/u,
+    );
+    assert.match(workspace, /sequenceSaveReloadBaselineRef/u);
+    assert.match(
+      workspace,
+      /sequenceSaveBaseline\.refreshRequestKey === refreshRequestKey/u,
+    );
+    assert.match(
+      workspace,
+      /sequenceSaveBaseline\.loadAttempt === loadAttempt/u,
+    );
     assert.match(
       workspace,
       /accessibilityState=\{\{ disabled, selected: isSelected \}\}/u,
