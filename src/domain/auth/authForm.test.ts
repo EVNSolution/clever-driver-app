@@ -108,7 +108,13 @@ describe('DSV account form', () => {
   });
 
   it('rejects malformed email identifiers', () => {
-    for (const loginId of ['driver@example', 'driver@@example.com', 'driver @example.com']) {
+    for (const loginId of [
+      'driver@example',
+      'driver@@example.com',
+      'driver @example.com',
+      'driver..test@example.com',
+      'driver@-example.com',
+    ]) {
       assert.ok(validateLoginForm({ loginId, password: 'password123' }).loginId);
     }
   });
