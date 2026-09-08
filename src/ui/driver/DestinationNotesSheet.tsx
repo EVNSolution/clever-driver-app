@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   formatTimeInput,
   isValidLunchTime,
+  isValidOpenTime,
   isValidRequiredArrivalTime,
   type DestinationNotes,
   type DestinationNoteValues,
@@ -55,6 +56,7 @@ export function DestinationNotesSheet({
   const [lunchStartsAt, setLunchStartsAt] = useState(initialLunchStartsAt);
   const [lunchEndsAt, setLunchEndsAt] = useState(initialLunchEndsAt);
   const [memo, setMemo] = useState(notes.memo.value);
+  const [openTime, setOpenTime] = useState(notes.openTime.value);
   const [requiredArrivalTime, setRequiredArrivalTime] = useState(
     notes.requiredArrivalTime.value,
   );
@@ -62,10 +64,15 @@ export function DestinationNotesSheet({
     ? ''
     : `${lunchStartsAt}~${lunchEndsAt}`;
   const normalizedMemo = memo.trim();
+  const normalizedOpenTime = openTime.trim();
   const normalizedArrivalTime = requiredArrivalTime.trim();
   const hasValidLunchTime = isValidLunchTime(normalizedLunchTime);
+  const hasValidOpenTime = isValidOpenTime(normalizedOpenTime);
   const hasValidArrivalTime = isValidRequiredArrivalTime(normalizedArrivalTime);
-  const canSave = hasValidLunchTime && hasValidArrivalTime && !isSaving;
+  const canSave = hasValidLunchTime
+    && hasValidOpenTime
+    && hasValidArrivalTime
+    && !isSaving;
   const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
@@ -79,6 +86,7 @@ export function DestinationNotesSheet({
         lunchAccess,
         lunchTime: normalizedLunchTime,
         memo: normalizedMemo,
+        openTime: normalizedOpenTime,
         requiredArrivalTime: normalizedArrivalTime,
       });
     } finally {
@@ -180,6 +188,13 @@ export function DestinationNotesSheet({
                           {order.shippedBoxes}박스
                         </Text>
                       </View>
+
+                      {order.notes ? (
+                        <View style={styles.orderNotice}>
+                          <Text style={styles.orderNoticeLabel}>주문 메모</Text>
+                          <Text style={styles.orderNoticeText}>{order.notes}</Text>
+                        </View>
+                      ) : null}
 
                       {order.driverMessages?.map((message) => (
                         <View key={message.messageId} style={styles.orderNotice}>
@@ -300,6 +315,32 @@ export function DestinationNotesSheet({
                     </Text>
                   ) : null}
                 </View>
+
+                <FieldHeader
+                  label="배송 가능 시작 시간"
+                  updatedAt={notes.openTime.updatedAt}
+                />
+                <TextInput
+                  accessibilityLabel="배송 가능 시작 시간"
+                  keyboardType="number-pad"
+                  maxLength={5}
+                  onChangeText={(value) => {
+                    setOpenTime(formatTimeInput(value));
+                  }}
+                  placeholder="09:00"
+                  placeholderTextColor="#98a2b3"
+                  style={[
+                    styles.textInput,
+                    styles.arrivalTimeInput,
+                    !hasValidOpenTime && styles.textInputInvalid,
+                  ]}
+                  value={openTime}
+                />
+                {!hasValidOpenTime ? (
+                  <Text style={[styles.fieldHint, styles.fieldError]}>
+                    0000부터 2359 사이의 숫자 4자리로 입력해 주세요.
+                  </Text>
+                ) : null}
 
                 <FieldHeader
                   label="필수 도착 시간"

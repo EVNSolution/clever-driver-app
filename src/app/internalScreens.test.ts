@@ -65,10 +65,54 @@ describe('authenticated driver screens', () => {
     assert.match(workspace, /앱을 종료하려면 뒤로가기를 한 번 더 누르세요\./u);
     assert.match(workspace, /isDeliverySpaceOpen/u);
     assert.match(workspace, /isSequenceEditing/u);
+    assert.match(workspace, /isSequenceSaving/u);
     assert.match(workspace, /backSubscription\.remove\(\)/u);
     assert.match(deliveryScreen, /isEditing: boolean/u);
     assert.match(deliveryScreen, /onEditingChange\(isEditing: boolean\): void/u);
+    assert.match(
+      deliveryScreen,
+      /onSequenceSavingChange\(isSaving: boolean\): void/u,
+    );
     assert.match(appConfig, /"predictiveBackGestureEnabled": true/u);
+  });
+
+  it('keeps parent navigation disabled while delivery order saving is pending', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+
+    assert.match(workspace, /onSequenceSavingChange=\{changeSequenceSaving\}/u);
+    assert.equal(workspace.match(/disabled=\{isSequenceSaving\}/gu)?.length, 4);
+    assert.match(
+      workspace,
+      /useEffect\(\(\) => \{\s+if \(isSequenceSaving\) return undefined;/u,
+    );
+    assert.match(workspace, /sequenceSaveReloadBaselineRef/u);
+    assert.match(
+      workspace,
+      /sequenceSaveBaseline\.refreshRequestKey === refreshRequestKey/u,
+    );
+    assert.match(
+      workspace,
+      /sequenceSaveBaseline\.loadAttempt === loadAttempt/u,
+    );
+    assert.match(
+      workspace,
+      /accessibilityState=\{\{ disabled, selected: isSelected \}\}/u,
+    );
+    assert.match(
+      deliveryScreen,
+      /setIsSequenceSaving\(true\);\s+onSequenceSavingChange\(true\);/u,
+    );
+    assert.match(
+      deliveryScreen,
+      /setIsSequenceSaving\(false\);\s+onSequenceSavingChange\(false\);/u,
+    );
   });
 
   it('selects delivery dates from server route choices', () => {
@@ -254,7 +298,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(deliveryScreen, /배송지 정보 UI Preview/u);
     assert.match(
       deliveryScreen,
-      /accessibilityState=\{\{ disabled: orders\.length === 0 \}\}/u,
+      /disabled: orders\.length === 0 \|\| !isSequenceEditingSupported/u,
     );
     assert.match(deliveryScreen, /orders=\{selectedDestinationGroup\.orders\}/u);
     assert.match(destinationSheet, /useState<InformationTab>\('orders'\)/u);
@@ -266,6 +310,8 @@ describe('authenticated driver screens', () => {
     assert.match(destinationSheet, /orders\.map\(\(order, index\)/u);
     assert.match(destinationSheet, /order\.conditionCode/u);
     assert.match(destinationSheet, /order\.shippedBoxes/u);
+    assert.match(destinationSheet, /주문 메모/u);
+    assert.match(destinationSheet, /order\.notes/u);
     assert.match(destinationSheet, /일반 메모/u);
     assert.match(destinationSheet, /점심시간 시작/u);
     assert.match(destinationSheet, /점심시간 종료/u);
@@ -291,6 +337,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(destinationSheet, /label="미확인"/u);
     assert.doesNotMatch(destinationSheet, /numbers-and-punctuation/u);
     assert.match(destinationSheet, /필수 도착 시간/u);
+    assert.match(destinationSheet, /배송 가능 시작 시간/u);
     assert.match(destinationSheet, /마지막 수정/u);
     assert.doesNotMatch(destinationSheet, /UI Preview/u);
     assert.doesNotMatch(destinationSheet, /fetch\(/u);
@@ -378,6 +425,9 @@ describe('authenticated driver screens', () => {
       'utf8',
     );
 
+    assert.match(source, /async function finishEditing/u);
+    assert.match(source, /await onSaveDeliveryOrder\(draftOrders\)/u);
+    assert.match(source, /isSequenceSaving/u);
     assert.match(source, /Gesture\.Pan\(\)/u);
     assert.match(source, /<GestureDetector gesture=\{dragGesture\}>/u);
     assert.match(source, /accessibilityLabel=.*순서 이동 핸들/u);
@@ -385,6 +435,27 @@ describe('authenticated driver screens', () => {
     assert.match(source, /onDrop/u);
     assert.match(source, /destination\.destinationName/u);
     assert.doesNotMatch(source, /destination\.orders\.length/u);
+  });
+
+  it('persists manual order with the assigned route version before refreshing', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const routeClient = readFileSync(
+      join(appDirectory, '../api/dsvDriverRoute.ts'),
+      'utf8',
+    );
+
+    assert.match(routeClient, /routeVersionId: string \| null/u);
+    assert.match(routeClient, /updateDriverDeliveryOrder/u);
+    assert.match(routeClient, /orderedStopIds: orders\.map/u);
+    assert.match(workspace, /await updateDriverDeliveryOrder/u);
+    assert.match(workspace, /route\.routeVersionId/u);
+    assert.match(workspace, /serverRouteGeometry: null/u);
+    assert.match(workspace, /setLoadAttempt\(\(attempt\) => attempt \+ 1\)/u);
+    assert.match(workspace, /if \(!completesRoute\) \{\s+setLoadAttempt/u);
+    assert.doesNotMatch(workspace, /onOrdersChange=\{setOrders\}/u);
   });
 
   it('reorders and animates neighboring rows while the handle remains held', () => {

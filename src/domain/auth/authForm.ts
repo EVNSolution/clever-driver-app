@@ -16,8 +16,7 @@ export type RegistrationFormErrors = Partial<
 
 const KOREAN_MOBILE_PATTERN = /^01\d{8,9}$/u;
 const LOGIN_ID_PATTERN = /^[a-z0-9._-]{4,40}$/u;
-const EMAIL_LOGIN_ID_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
-const MAX_EMAIL_LOGIN_ID_LENGTH = 254;
+const EMAIL_LOGIN_ID_PATTERN = /^(?=.{3,254}$)(?=[^@]{1,64}@)[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 const LOGIN_ID_ERROR_MESSAGE =
   '아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈 4~40자 또는 이메일 주소로 입력해 주세요.';
 const MAX_NAME_LENGTH = 80;
@@ -91,6 +90,5 @@ export function validateRegistrationForm(
 
 function isValidLoginId(value: string): boolean {
   return LOGIN_ID_PATTERN.test(value)
-    || (value.length <= MAX_EMAIL_LOGIN_ID_LENGTH
-      && EMAIL_LOGIN_ID_PATTERN.test(value));
+    || EMAIL_LOGIN_ID_PATTERN.test(value);
 }

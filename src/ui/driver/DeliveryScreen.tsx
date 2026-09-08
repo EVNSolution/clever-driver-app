@@ -65,19 +65,21 @@ type DeliveryScreenProps = {
   historySummary?: DriverCompletedRouteHistory;
   isEditing: boolean;
   isReadOnly: boolean;
+  isSequenceEditingSupported: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
-  onOrdersChange(orders: DeliveryOrder[]): void;
   onReadDriverMessage(messageId: string): Promise<void>;
   onRefresh(): void;
+  onSequenceSavingChange(isSaving: boolean): void;
   onSaveDestinationNotes(
     destinationId: string,
     previous: DestinationNotes,
     values: DestinationNoteValues,
   ): Promise<DestinationNotes>;
+  onSaveDeliveryOrder(orders: DeliveryOrder[]): Promise<void>;
   orders: DeliveryOrder[];
   refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -91,15 +93,17 @@ export function DeliveryScreen({
   historySummary,
   isEditing,
   isReadOnly,
+  isSequenceEditingSupported,
   lastUpdatedAt,
   nextDeliveryStopId,
   onAcknowledgeTimeConstraint,
   onEditingChange,
   onOpenDeliverySpace,
-  onOrdersChange,
   onReadDriverMessage,
   onRefresh,
+  onSequenceSavingChange,
   onSaveDestinationNotes,
+  onSaveDeliveryOrder,
   orders,
   refreshing,
   serverRouteGeometry,
@@ -111,6 +115,7 @@ export function DeliveryScreen({
   const revealedDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
   const [draftOrders, setDraftOrders] = useState(orders);
   const [isOrderActionPending, setIsOrderActionPending] = useState(false);
+  const [isSequenceSaving, setIsSequenceSaving] = useState(false);
   const [selectedDestinationId, setSelectedDestinationId] =
     useState<string | null>(null);
   const totalBoxes = orders.reduce(
@@ -125,18 +130,42 @@ export function DeliveryScreen({
     ) ?? null;
 
   function startEditing() {
+    if (!isSequenceEditingSupported) return;
     setDraftOrders(orders);
     onEditingChange(true);
   }
 
   function cancelEditing() {
+    if (isSequenceSaving) return;
     setDraftOrders(orders);
     onEditingChange(false);
   }
 
-  function finishEditing() {
-    onOrdersChange(draftOrders);
-    onEditingChange(false);
+  async function finishEditing() {
+    if (isSequenceSaving) return;
+    const orderChanged = draftOrders.some((order, index) => (
+      order.id !== orders[index]?.id
+    ));
+    if (!orderChanged) {
+      onEditingChange(false);
+      return;
+    }
+
+    setIsSequenceSaving(true);
+    onSequenceSavingChange(true);
+    try {
+      await onSaveDeliveryOrder(draftOrders);
+      onEditingChange(false);
+    } catch (error) {
+      showDialog({
+        message: error instanceof Error ? error.message : '다시 시도해 주세요.',
+        title: '배송 순서를 저장하지 못했습니다',
+        tone: 'warning',
+      });
+    } finally {
+      setIsSequenceSaving(false);
+      onSequenceSavingChange(false);
+    }
   }
 
   function handleDrop(destinationId: string, targetIndex: number) {
@@ -190,14 +219,18 @@ export function DeliveryScreen({
 
   if (isEditing && !isReadOnly) {
     return (
-      <OrderSequenceEditor
-        currentDeliveryStopId={nextDeliveryStopId}
-        onCancel={cancelEditing}
-        onDone={finishEditing}
-        onDrop={handleDrop}
-        orders={draftOrders}
-        serverRouteGeometry={serverRouteGeometry}
-      />
+      <>
+        <OrderSequenceEditor
+          currentDeliveryStopId={nextDeliveryStopId}
+          isSaving={isSequenceSaving}
+          onCancel={cancelEditing}
+          onDone={finishEditing}
+          onDrop={handleDrop}
+          orders={draftOrders}
+          serverRouteGeometry={serverRouteGeometry}
+        />
+        {dialog}
+      </>
     );
   }
 
@@ -273,13 +306,16 @@ export function DeliveryScreen({
           <Pressable
             accessibilityLabel="배송 순서 편집"
             accessibilityRole="button"
-            accessibilityState={{ disabled: orders.length === 0 }}
-            disabled={orders.length === 0}
+            accessibilityState={{
+              disabled: orders.length === 0 || !isSequenceEditingSupported,
+            }}
+            disabled={orders.length === 0 || !isSequenceEditingSupported}
             onPress={startEditing}
             style={({ pressed }) => [
               styles.headerActionButton,
               styles.editButton,
-              orders.length === 0 && styles.editButtonDisabled,
+              (orders.length === 0 || !isSequenceEditingSupported) &&
+                styles.editButtonDisabled,
               pressed && styles.buttonPressed,
             ]}
           >
@@ -510,6 +546,7 @@ function DestinationGroupRow({
 
 function OrderSequenceEditor({
   currentDeliveryStopId,
+  isSaving,
   onCancel,
   onDone,
   onDrop,
@@ -517,8 +554,9 @@ function OrderSequenceEditor({
   serverRouteGeometry,
 }: {
   currentDeliveryStopId: string | null;
+  isSaving: boolean;
   onCancel(): void;
-  onDone(): void;
+  onDone(): Promise<void> | void;
   onDrop(destinationId: string, targetIndex: number): void;
   orders: DeliveryOrder[];
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
@@ -550,6 +588,8 @@ function OrderSequenceEditor({
       <View style={styles.editorHeader}>
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ disabled: isSaving }}
+          disabled={isSaving}
           onPress={onCancel}
           style={({ pressed }) => [
             styles.headerAction,
@@ -566,17 +606,22 @@ function OrderSequenceEditor({
         </View>
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ disabled: isSaving }}
+          disabled={isSaving}
           onPress={onDone}
           style={({ pressed }) => [
             styles.headerAction,
             pressed && styles.buttonPressed,
           ]}
         >
-          <Text maxFontSizeMultiplier={1.3} style={styles.doneText}>완료</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.doneText}>
+            {isSaving ? '저장 중…' : '완료'}
+          </Text>
         </Pressable>
       </View>
 
       <ScrollView
+        pointerEvents={isSaving ? 'none' : 'auto'}
         removeClippedSubviews={false}
         showsVerticalScrollIndicator
         style={styles.editorListScroll}
