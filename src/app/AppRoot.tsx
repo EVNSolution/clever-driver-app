@@ -169,6 +169,32 @@ export function AppRoot() {
 
   useEffect(() => {
     if (authSession === null) return undefined;
+    let isActive = true;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void refreshDriverAccountSession({
+        refreshToken: authSession.refreshToken,
+      })
+        .then((session) => {
+          if (isActive) void acceptAuthSession(session);
+        })
+        .catch((error: unknown) => {
+          if (
+            isActive
+            && resolveDriverAuthRecoveryAction(error) === 'discard'
+          ) {
+            void discardAuthSession();
+          }
+        });
+    });
+    return () => {
+      isActive = false;
+      subscription.remove();
+    };
+  }, [acceptAuthSession, authSession, discardAuthSession]);
+
+  useEffect(() => {
+    if (authSession === null) return undefined;
     void registerExpoDriverPushNotifications(authSession.accessToken).catch(() => undefined);
     return subscribeToExpoDriverPushNotifications(
       authSession.accessToken,
