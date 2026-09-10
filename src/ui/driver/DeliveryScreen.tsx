@@ -20,7 +20,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import type { DriverCompletedRouteHistory } from '../../api/dsvDriverRoute';
+import type {
+  DriverCompletedRouteHistory,
+  DriverRouteExecutionStatus,
+} from '../../api/dsvDriverRoute';
 import {
   groupDeliveryOrdersByDestination,
   moveDeliveryDestinationToIndex,
@@ -30,6 +33,7 @@ import {
   type DeliveryRouteMarkerState,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
+import { buildFinalDeliveryEtaSummary } from '../../domain/delivery/finalDeliveryEta';
 import {
   EMPTY_DESTINATION_NOTES,
   type DestinationNotes,
@@ -61,7 +65,9 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 type DeliveryScreenProps = {
   deliveryDate: string;
   destinationNotesById: Record<string, DestinationNotes>;
+  etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   executionController: DeliveryExecutionController;
+  executionStatus: DriverRouteExecutionStatus;
   historySummary?: DriverCompletedRouteHistory;
   isEditing: boolean;
   isReadOnly: boolean;
@@ -81,6 +87,7 @@ type DeliveryScreenProps = {
   ): Promise<DestinationNotes>;
   onSaveDeliveryOrder(orders: DeliveryOrder[]): Promise<void>;
   orders: DeliveryOrder[];
+  pickupCompletedAt: string | null;
   refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
@@ -89,7 +96,9 @@ type DeliveryScreenProps = {
 export function DeliveryScreen({
   deliveryDate,
   destinationNotesById: initialDestinationNotesById,
+  etaStatus,
   executionController,
+  executionStatus,
   historySummary,
   isEditing,
   isReadOnly,
@@ -105,6 +114,7 @@ export function DeliveryScreen({
   onSaveDestinationNotes,
   onSaveDeliveryOrder,
   orders,
+  pickupCompletedAt,
   refreshing,
   serverRouteGeometry,
   timezone,
@@ -123,6 +133,13 @@ export function DeliveryScreen({
     0,
   );
   const destinationGroups = groupDeliveryOrdersByDestination(orders);
+  const finalEtaSummary = buildFinalDeliveryEtaSummary({
+    etaStatus,
+    executionStatus,
+    orders,
+    pickupCompletedAt,
+    timezone,
+  });
   const selectedDestinationGroup = selectedDestinationId === null
     ? null
     : destinationGroups.find(
@@ -328,6 +345,29 @@ export function DeliveryScreen({
           </Pressable>
         </View> : null}
       </View>
+
+      {finalEtaSummary === null ? null : (
+        <View
+          accessibilityLabel={[
+            finalEtaSummary.primaryText,
+            finalEtaSummary.secondaryText,
+          ].filter(Boolean).join('. ')}
+          accessible
+          style={styles.finalEtaCard}
+        >
+          <Text maxFontSizeMultiplier={1.3} style={styles.finalEtaLabel}>
+            배송 시작 → 마지막 배송
+          </Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.finalEtaPrimary}>
+            {finalEtaSummary.primaryText}
+          </Text>
+          {finalEtaSummary.secondaryText === null ? null : (
+            <Text maxFontSizeMultiplier={1.3} style={styles.finalEtaSecondary}>
+              {finalEtaSummary.secondaryText}
+            </Text>
+          )}
+        </View>
+      )}
 
       <DeliveryExecutionActions
         controller={executionController}
@@ -930,6 +970,33 @@ const styles = StyleSheet.create({
     gap: 6,
     marginLeft: 8,
     marginTop: 2,
+  },
+  finalEtaCard: {
+    backgroundColor: '#eef5ff',
+    borderColor: '#c9dcff',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 3,
+    marginBottom: 12,
+    marginHorizontal: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
+  },
+  finalEtaLabel: {
+    color: '#475467',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  finalEtaPrimary: {
+    color: '#0b3f91',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 23,
+  },
+  finalEtaSecondary: {
+    color: '#475467',
+    fontSize: 13,
+    lineHeight: 19,
   },
   spaceButton: {
     backgroundColor: '#e8f1ff',

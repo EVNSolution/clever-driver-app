@@ -26,6 +26,34 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /label="배송 순서"/u);
   });
 
+  it('adds a route-level final ETA without replacing next-stop ETA or completion actions', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const mapScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryMapScreen.tsx'),
+      'utf8',
+    );
+    const executionActions = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryExecutionActions.tsx'),
+      'utf8',
+    );
+
+    assert.match(deliveryScreen, /buildFinalDeliveryEtaSummary/u);
+    assert.match(deliveryScreen, /배송 시작 → 마지막 배송/u);
+    assert.match(workspace, /executionStatus=\{route\.executionStatus\}/u);
+    assert.match(workspace, /pickupCompletedAt=\{route\.pickupCompletedAt\}/u);
+    assert.match(mapScreen, /summary\?\.estimatedArrivalAt/u);
+    assert.match(mapScreen, /label="ETA"/u);
+    assert.match(executionActions, /배송 완료/u);
+    assert.match(executionActions, /onCompleteDelivery/u);
+  });
+
   it('renders the device bottom inset as part of the authenticated tab bar', () => {
     const appRoot = readFileSync(join(appDirectory, 'AppRoot.tsx'), 'utf8');
     const workspace = readFileSync(
