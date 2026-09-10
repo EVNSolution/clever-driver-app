@@ -647,7 +647,9 @@ export function DriverWorkspace({
               <DeliveryScreen
                 deliveryDate={route.deliveryDate}
                 destinationNotesById={route.destinationNotesById}
+                etaStatus={route.etaStatus}
                 executionController={deliveryExecution}
+                executionStatus={route.executionStatus}
                 historySummary={route.historySummary}
                 isEditing={isSequenceEditing}
                 isReadOnly={isRouteReadOnly}
@@ -663,6 +665,7 @@ export function DriverWorkspace({
                 onSaveDestinationNotes={saveDestinationNotes}
                 onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}
+                pickupCompletedAt={route.pickupCompletedAt}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
                 timezone={route.timezone}
