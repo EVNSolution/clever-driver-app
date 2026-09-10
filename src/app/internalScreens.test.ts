@@ -402,7 +402,8 @@ describe('authenticated driver screens', () => {
     assert.match(source, /destinationGroupEmphasis:[\s\S]*paddingHorizontal: 9/u);
     assert.match(source, /completedPrimaryText:[\s\S]*color: '#475467'/u);
     assert.match(source, /paddingBottom: 88/u);
-    assert.match(source, /scrollTo\(\{[\s\S]*destinationTop/u);
+    assert.match(source, /scrollTo\(\{ animated: false, y: 0 \}\)/u);
+    assert.doesNotMatch(source, /destinationTop/u);
   });
 
   it('uses matching action-button geometry, typography, and visual summary separators', () => {
@@ -660,7 +661,7 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /currentDeliveryStopId=\{nextDeliveryStopId\}/u);
   });
 
-  it('offers camera and album proof upload after delivery completion', () => {
+  it('collects completion time and optional proof before confirming delivery', () => {
     const executionActions = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryExecutionActions.tsx'),
       'utf8',
@@ -676,15 +677,19 @@ describe('authenticated driver screens', () => {
 
     assert.match(executionActions, /DeliveryProofModal/u);
     assert.match(executionActions, /transactionCallbacksRef/u);
-    assert.match(
-      executionActions,
-      /onCompleteDelivery\(summary\.destinationId, summary\.deliveryStopIds\)/u,
-    );
-    assert.match(executionActions, /주문 \$\{summary\.deliveryStopIds\.length\}건을 모두/u);
+    assert.match(executionActions, /type: 'COMPLETION_OPENED'/u);
+    assert.match(executionActions, /callbacks\.onCompleteDelivery\([\s\S]*occurredAt/u);
+    assert.doesNotMatch(executionActions, /모두 배송 완료 처리할까요/u);
     assert.match(workspace, /completeDriverDeliveryDestination/u);
-    assert.match(proofModal, /배송 증빙 추가/u);
+    assert.match(proofModal, /완료 시간/u);
+    assert.match(proofModal, /현재 시간/u);
+    assert.match(proofModal, /formatDeliveryCompletionTime/u);
+    assert.match(proofModal, /resolveDeliveryCompletionOccurredAt/u);
+    assert.match(proofModal, /배송 증빙 사진 · 선택/u);
     assert.match(proofModal, /사진 촬영/u);
     assert.match(proofModal, /앨범에서 선택/u);
+    assert.match(proofModal, /완료 확정/u);
+    assert.doesNotMatch(proofModal, /나중에 등록/u);
     assert.match(proofModal, /requestCameraPermissionsAsync/u);
     assert.match(proofModal, /Platform\.OS !== 'android'/u);
     assert.match(proofModal, /launchCameraAsync/u);
@@ -692,7 +697,7 @@ describe('authenticated driver screens', () => {
     assert.match(proofModal, /<Image/u);
     assert.match(proofModal, /10 \* 1024 \* 1024/u);
     assert.match(proofModal, /executionDialog/u);
-    assert.match(proofModal, /배차 완료 저장 중/u);
+    assert.match(proofModal, /배송 완료 처리 중/u);
     assert.match(workspace, /uploadDriverProofPhoto/u);
     const proofClient = readFileSync(
       join(appDirectory, '../api/dsvDriverProofMedia.ts'),
@@ -727,15 +732,24 @@ describe('authenticated driver screens', () => {
     assert.match(deliveryScreen, /executionController/u);
     assert.match(mapScreen, /<DeliveryExecutionActions/u);
     assert.match(mapScreen, /variant="map"/u);
+    assert.match(
+      deliveryScreen,
+      /deliveryScrollRef\.current\?\.scrollTo\(\{ animated: false, y: 0 \}\)/u,
+    );
+    assert.match(
+      mapScreen,
+      /deliveryScrollRef\.current\?\.scrollTo\(\{ animated: false, y: 0 \}\)/u,
+    );
     assert.match(executionActions, /DeliveryProofModal/u);
-    assert.match(executionActions, /onCompleteDelivery\(summary\.destinationId, summary\.deliveryStopIds\)/u);
+    assert.match(executionActions, /type: 'COMPLETION_OPENED'/u);
+    assert.match(executionActions, /submitDeliveryCompletion/u);
     assert.match(executionActions, /픽업을 완료하고 배송을 시작할까요/u);
-    assert.match(executionActions, /주문 \$\{summary\.deliveryStopIds\.length\}건을 모두/u);
+    assert.doesNotMatch(executionActions, /모두 배송 완료 처리할까요/u);
     assert.match(executionActions, /useDeliveryExecution/u);
     assert.match(executionActions, /actionRef\.current/u);
     assert.match(executionActions, /transactionCallbacksRef/u);
     assert.match(executionActions, /executionDialog=\{controller\.dialog\}/u);
-    assert.match(executionActions, /phase === 'completing-route'/u);
+    assert.match(executionActions, /'uploading-proof'/u);
     assert.match(workspace, /const deliveryExecution = useDeliveryExecution/u);
     assert.match(workspace, /executionController=\{deliveryExecution\}/u);
     assert.match(workspace, /<DeliveryExecutionOverlay controller=\{deliveryExecution\}/u);

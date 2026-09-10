@@ -21,7 +21,11 @@ import { DeliveryProofModal } from './DeliveryProofModal';
 type UseDeliveryExecutionOptions = {
   etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   isReadOnly: boolean;
-  onCompleteDelivery(destinationId: string, deliveryStopIds: string[]): Promise<boolean>;
+  onCompleteDelivery(
+    destinationId: string,
+    deliveryStopIds: string[],
+    occurredAt: string,
+  ): Promise<boolean>;
   onCompleteRoute(): Promise<void>;
   onStartDelivery(): Promise<void>;
   onUploadProof(
@@ -47,8 +51,13 @@ export function useDeliveryExecution({
     reduceDeliveryExecutionState,
     INITIAL_DELIVERY_EXECUTION_STATE,
   );
-  const actionRef = useRef<'route' | 'start' | 'stop' | null>(null);
+  const actionRef = useRef<'proof' | 'route' | 'start' | 'stop' | null>(null);
   const transactionCallbacksRef = useRef<{
+    onCompleteDelivery(
+      destinationId: string,
+      deliveryStopIds: string[],
+      occurredAt: string,
+    ): Promise<boolean>;
     onCompleteRoute(): Promise<void>;
     onUploadProof(
       deliveryStopId: string,
@@ -78,89 +87,64 @@ export function useDeliveryExecution({
   function confirmDeliveryCompletion() {
     if (summary === null || isCompletionDisabled) return;
 
-    showDialog({
-      actions: [
-        { label: '취소', tone: 'secondary' },
-        {
-          onPress: () => {
-            if (actionRef.current !== null || executionState.proof !== null) return;
-            actionRef.current = 'stop';
-            transactionCallbacksRef.current = { onCompleteRoute, onUploadProof };
-            dispatch({ type: 'STOP_COMPLETION_STARTED' });
-            void onCompleteDelivery(summary.destinationId, summary.deliveryStopIds)
-              .then((completesRoute) => {
-                dispatch({
-                  proof: {
-                    completesRoute,
-                    deliveryStopId: summary.deliveryStopId,
-                    destinationName: summary.destinationName,
-                  },
-                  type: 'STOP_COMPLETED',
-                });
-              })
-              .catch((error: unknown) => {
-                transactionCallbacksRef.current = null;
-                dispatch({ type: 'ACTION_FAILED' });
-                showDialog({
-                  message: error instanceof Error
-                    ? error.message
-                    : '배송 완료 상태를 저장하지 못했습니다.',
-                  title: '배송 완료 실패',
-                  tone: 'danger',
-                });
-              })
-              .finally(() => {
-                actionRef.current = null;
-              });
-          },
-          label: '완료',
-          tone: 'primary',
-        },
-      ],
-      message: `${summary.destinationName}의 주문 ${summary.deliveryStopIds.length}건을 모두 배송 완료 처리할까요?`,
-      title: '배송 완료',
-      tone: 'success',
+    transactionCallbacksRef.current = {
+      onCompleteDelivery,
+      onCompleteRoute,
+      onUploadProof,
+    };
+    dispatch({
+      proof: {
+        completesRoute: null,
+        deliveryStopId: summary.deliveryStopId,
+        deliveryStopIds: summary.deliveryStopIds,
+        destinationId: summary.destinationId,
+        destinationName: summary.destinationName,
+        proofUploaded: false,
+      },
+      type: 'COMPLETION_OPENED',
     });
   }
 
-  function completeFinalRoute() {
+  async function completeFinalRoute(proof = executionState.proof) {
     const completeRoute = transactionCallbacksRef.current?.onCompleteRoute;
     if (
-      executionState.proof?.completesRoute !== true ||
+      proof?.completesRoute !== true ||
       completeRoute === undefined ||
       actionRef.current !== null
     ) return;
 
     actionRef.current = 'route';
     dispatch({ type: 'ROUTE_COMPLETION_STARTED' });
-    void completeRoute()
-      .then(() => {
-        transactionCallbacksRef.current = null;
-        dispatch({ type: 'ROUTE_COMPLETED' });
-      })
-      .catch((error: unknown) => {
-        dispatch({ type: 'ROUTE_COMPLETION_FAILED' });
-        showDialog({
-          actions: [
-            { label: '닫기', tone: 'secondary' },
-            { label: '다시 시도', onPress: completeFinalRoute, tone: 'primary' },
-          ],
-          message: error instanceof Error
-            ? error.message
-            : '배차 완료 상태를 저장하지 못했습니다.',
-          title: '배차 완료 실패',
-          tone: 'danger',
-        });
-      })
-      .finally(() => {
-        actionRef.current = null;
+    try {
+      await completeRoute();
+      transactionCallbacksRef.current = null;
+      dispatch({ type: 'ROUTE_COMPLETED' });
+    } catch (error) {
+      dispatch({ type: 'ROUTE_COMPLETION_FAILED' });
+      showDialog({
+        actions: [
+          { label: '닫기', tone: 'secondary' },
+          {
+            label: '다시 시도',
+            onPress: () => void completeFinalRoute(proof),
+            tone: 'primary',
+          },
+        ],
+        message: error instanceof Error
+          ? error.message
+          : '배차 완료 상태를 저장하지 못했습니다.',
+        title: '배차 완료 실패',
+        tone: 'danger',
       });
+    } finally {
+      actionRef.current = null;
+    }
   }
 
   function closeProofDelivery() {
     if (executionState.phase === 'completing-route') return;
     if (executionState.proof?.completesRoute === true) {
-      completeFinalRoute();
+      void completeFinalRoute();
       return;
     }
 
@@ -205,16 +189,68 @@ export function useDeliveryExecution({
     });
   }
 
-  async function uploadProof(
-    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
+  async function submitDeliveryCompletion(
+    occurredAt: string,
+    photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'> | null,
   ) {
-    const proof = executionState.proof;
-    const upload = transactionCallbacksRef.current?.onUploadProof;
-    if (proof === null || upload === undefined) {
-      throw new Error('배송 증빙 대상을 확인하지 못했습니다.');
+    const callbacks = transactionCallbacksRef.current;
+    let proof = executionState.proof;
+    if (proof === null || callbacks === null || actionRef.current !== null) return;
+
+    if (proof.completesRoute === null) {
+      actionRef.current = 'stop';
+      dispatch({ type: 'STOP_COMPLETION_STARTED' });
+      try {
+        const completesRoute = await callbacks.onCompleteDelivery(
+          proof.destinationId,
+          proof.deliveryStopIds,
+          occurredAt,
+        );
+        proof = { ...proof, completesRoute };
+        dispatch({ proof, type: 'STOP_COMPLETED' });
+      } catch (error) {
+        dispatch({ type: 'STOP_COMPLETION_FAILED' });
+        showDialog({
+          message: error instanceof Error
+            ? error.message
+            : '배송 완료 상태를 저장하지 못했습니다.',
+          title: '배송 완료 실패',
+          tone: 'danger',
+        });
+        return;
+      } finally {
+        actionRef.current = null;
+      }
     }
 
-    await upload(proof.deliveryStopId, photo);
+    if (photo !== null && !proof.proofUploaded) {
+      actionRef.current = 'proof';
+      dispatch({ type: 'PROOF_UPLOAD_STARTED' });
+      try {
+        await callbacks.onUploadProof(proof.deliveryStopId, photo);
+        proof = { ...proof, proofUploaded: true };
+        dispatch({ proof, type: 'PROOF_UPLOADED' });
+      } catch (error) {
+        dispatch({ type: 'PROOF_UPLOAD_FAILED' });
+        showDialog({
+          message: error instanceof Error
+            ? error.message
+            : '배송 증빙 사진을 업로드하지 못했습니다.',
+          title: '증빙 업로드 실패',
+          tone: 'danger',
+        });
+        return;
+      } finally {
+        actionRef.current = null;
+      }
+    }
+
+    if (proof.completesRoute) {
+      await completeFinalRoute(proof);
+    } else {
+      transactionCallbacksRef.current = null;
+      dispatch({ type: 'PROOF_CLOSED' });
+    }
   }
 
   return {
@@ -229,7 +265,7 @@ export function useDeliveryExecution({
     isLocked: isDeliveryExecutionLocked(executionState) || actionRef.current !== null,
     shouldShowActions,
     summary,
-    uploadProof,
+    submitDeliveryCompletion,
   };
 }
 
@@ -353,9 +389,13 @@ export function DeliveryExecutionOverlay({
     <DeliveryProofModal
       destinationName={proof.destinationName}
       executionDialog={controller.dialog}
-      executionPending={controller.executionState.phase === 'completing-route'}
+      executionPending={[
+        'completing-route',
+        'completing-stop',
+        'uploading-proof',
+      ].includes(controller.executionState.phase)}
       onClose={controller.closeProofDelivery}
-      onUpload={controller.uploadProof}
+      onConfirm={controller.submitDeliveryCompletion}
     />
   );
 }

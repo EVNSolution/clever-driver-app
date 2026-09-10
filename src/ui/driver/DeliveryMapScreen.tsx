@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -47,8 +48,16 @@ export function DeliveryMapScreen({
   timezone,
 }: DeliveryMapScreenProps) {
   const { fontScale } = useWindowDimensions();
+  const deliveryScrollRef = useRef<ScrollView>(null);
+  const previousDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
   const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
   const totalBoxes = orders.reduce((total, order) => total + order.shippedBoxes, 0);
+
+  useEffect(() => {
+    if (previousDeliveryStopIdRef.current === nextDeliveryStopId) return;
+    previousDeliveryStopIdRef.current = nextDeliveryStopId;
+    deliveryScrollRef.current?.scrollTo({ animated: false, y: 0 });
+  }, [nextDeliveryStopId]);
 
   return (
     <View style={styles.screen}>
@@ -74,6 +83,7 @@ export function DeliveryMapScreen({
       <View style={styles.detailsArea}>
         <ScrollView
           contentContainerStyle={styles.deliveryPanelContent}
+          ref={deliveryScrollRef}
           refreshControl={(
             <DriverRefreshControl
               lastUpdatedAt={lastUpdatedAt}

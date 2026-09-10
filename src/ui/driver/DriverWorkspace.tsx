@@ -369,6 +369,7 @@ export function DriverWorkspace({
   async function completeDelivery(
     destinationId: string,
     deliveryStopIds: string[],
+    occurredAt: string,
   ): Promise<boolean> {
     if (route === null) {
       return false;
@@ -380,6 +381,7 @@ export function DriverWorkspace({
       route.routeId,
       destinationId,
       deliveryStopIds,
+      occurredAt,
     );
     if (!completesRoute) {
       setLoadAttempt((attempt) => attempt + 1);

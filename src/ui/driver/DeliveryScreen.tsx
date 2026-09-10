@@ -6,7 +6,6 @@ import {
   Text,
   useWindowDimensions,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -111,8 +110,7 @@ export function DeliveryScreen({
 }: DeliveryScreenProps) {
   const { dialog, showDialog } = useAppDialog();
   const deliveryScrollRef = useRef<ScrollView>(null);
-  const orderListTopRef = useRef(0);
-  const revealedDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
+  const previousDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
   const [draftOrders, setDraftOrders] = useState(orders);
   const [isOrderActionPending, setIsOrderActionPending] = useState(false);
   const [isSequenceSaving, setIsSequenceSaving] = useState(false);
@@ -128,6 +126,12 @@ export function DeliveryScreen({
     : destinationGroups.find(
       (group) => group.destinationId === selectedDestinationId,
     ) ?? null;
+
+  useEffect(() => {
+    if (previousDeliveryStopIdRef.current === nextDeliveryStopId) return;
+    previousDeliveryStopIdRef.current = nextDeliveryStopId;
+    deliveryScrollRef.current?.scrollTo({ animated: false, y: 0 });
+  }, [nextDeliveryStopId]);
 
   function startEditing() {
     if (!isSequenceEditingSupported) return;
@@ -181,24 +185,6 @@ export function DeliveryScreen({
       }
 
       return reordered;
-    });
-  }
-
-  function revealCurrentDestination(event: LayoutChangeEvent) {
-    if (
-      nextDeliveryStopId === null ||
-      revealedDeliveryStopIdRef.current === nextDeliveryStopId
-    ) {
-      return;
-    }
-
-    revealedDeliveryStopIdRef.current = nextDeliveryStopId;
-    const destinationTop = event.nativeEvent.layout.y;
-    requestAnimationFrame(() => {
-      deliveryScrollRef.current?.scrollTo({
-        animated: false,
-        y: Math.max(0, orderListTopRef.current + destinationTop - 12),
-      });
     });
   }
 
@@ -334,12 +320,7 @@ export function DeliveryScreen({
         variant="delivery"
       />
 
-      <View
-        onLayout={(event) => {
-          orderListTopRef.current = event.nativeEvent.layout.y;
-        }}
-        style={styles.orderList}
-      >
+      <View style={styles.orderList}>
         {destinationGroups.length === 0 ? (
           <View style={styles.emptyState}>
             {historySummary === undefined ? (
@@ -371,7 +352,6 @@ export function DeliveryScreen({
               index={index}
               isLast={index === destinationGroups.length - 1}
               key={`${group.key}:${progressState}`}
-              onCurrentLayout={revealCurrentDestination}
               onOpenDeliveryInformation={() => {
                 setSelectedDestinationId(group.destinationId);
               }}
@@ -436,14 +416,12 @@ function DestinationGroupRow({
   group,
   index,
   isLast,
-  onCurrentLayout,
   onOpenDeliveryInformation,
   progressState,
 }: {
   group: DeliveryDestinationGroup;
   index: number;
   isLast: boolean;
-  onCurrentLayout(event: LayoutChangeEvent): void;
   onOpenDeliveryInformation(): void;
   progressState: DeliveryRouteMarkerState;
 }) {
@@ -452,7 +430,6 @@ function DestinationGroupRow({
 
   return (
     <View
-      onLayout={isCurrent ? onCurrentLayout : undefined}
       style={[
         !isLast && !isCompleted && !isCurrent && styles.orderRowDivider,
         (isCompleted || isCurrent) && styles.destinationGroupEmphasis,
