@@ -48,6 +48,22 @@ describe('DSV authentication entry screen', () => {
     assert.match(source, /registerDriverAccount/u);
   });
 
+  it('routes password recovery through the approved administrator-issued HTTPS link', () => {
+    const source = readFileSync(authScreenPath, 'utf8');
+    const authClient = readFileSync(
+      join(appDirectory, '../api/dsvDriverAuth.ts'),
+      'utf8',
+    );
+
+    assert.match(source, /비밀번호 찾기/u);
+    assert.match(source, /DSV 관리자에게 비밀번호 초기화를 요청/u);
+    assert.match(source, /30분/u);
+    assert.match(source, /HTTPS 링크/u);
+    assert.match(source, /이름이나 휴대전화 번호만으로 비밀번호를 초기화할 수 없습니다/u);
+    assert.doesNotMatch(source, /인증번호 요청|SMS OTP|계정 삭제|재가입/u);
+    assert.doesNotMatch(authClient, /password-reset\/validate|password-reset\/complete/u);
+  });
+
   it('keeps focused authentication fields visible above the native keyboard', () => {
     const source = readFileSync(authScreenPath, 'utf8');
     const appRoot = readFileSync(appRootPath, 'utf8');
@@ -88,6 +104,19 @@ describe('DSV authentication entry screen', () => {
     assert.match(appRoot, /자동 로그인을 다시 연결하고 있습니다/u);
     assert.match(appRoot, /아이디로 로그인/u);
     assert.match(appRoot, /setAutoLoginEnabled\(false\)/u);
+  });
+
+  it('discards the stored session when a password reset invalidates it', () => {
+    const appRoot = readFileSync(appRootPath, 'utf8');
+
+    assert.match(
+      appRoot,
+      /AppState\.addEventListener\('change', \(state\) => \{[\s\S]{0,240}refreshDriverAccountSession\(\{[\s\S]{0,120}authSession\.refreshToken/u,
+    );
+    assert.match(
+      appRoot,
+      /resolveDriverAuthRecoveryAction\(error\) === 'discard'[\s\S]{0,120}discardAuthSession\(\)/u,
+    );
   });
 
   it('rechecks the installed app in the background and presents available updates', () => {
