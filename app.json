@@ -57,7 +57,8 @@
           "photosPermission": "배송 완료 증빙 사진을 선택하기 위해 사진 앨범을 사용합니다."
         }
       ],
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "./plugins/with-android-release-optimization"
     ]
   }
 }

@@ -23,6 +23,7 @@ type ExpoConfig = {
       package: string;
       versionCode: number;
     };
+    plugins: unknown[];
   };
 };
 
@@ -66,6 +67,9 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     backgroundColor: '#0B57D0',
     foregroundImage: './assets/branding/driver-app-icon-foreground.png',
   });
+  assert.ok(
+    appConfig.expo.plugins.includes('./plugins/with-android-release-optimization'),
+  );
 
   const icon = readFileSync(
     new URL('../../assets/branding/driver-app-icon.png', import.meta.url),
