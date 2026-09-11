@@ -12,6 +12,10 @@ const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), '
 };
 const policy = readFileSync(join(projectRoot, 'docs/android-drive-release.md'), 'utf8');
 const buildRunbook = readFileSync(join(projectRoot, 'docs/android-build-runbook.md'), 'utf8');
+const buildLesson = readFileSync(
+  join(projectRoot, 'docs/android-build-lesson-8gb-mac.md'),
+  'utf8',
+);
 const publishScript = readFileSync(join(projectRoot, 'scripts/publish-android-drive-release.sh'), 'utf8');
 
 describe('Android Google Drive release policy', () => {
@@ -28,10 +32,21 @@ describe('Android Google Drive release policy', () => {
 
   it('documents the persistent cached build path and slow-build response', () => {
     assert.match(buildRunbook, /영구 릴리스 작업공간/u);
+    assert.match(buildRunbook, /android-build-lesson-8gb-mac\.md/u);
     assert.match(buildRunbook, /npm run build:android:release:apk -- --profile/u);
     assert.match(buildRunbook, /Configuration Cache/u);
     assert.match(buildRunbook, /MaxMetaspaceSize=1g/u);
     assert.match(buildRunbook, /20분/u);
+  });
+
+  it('preserves the 8GB Mac native-build incident guardrails', () => {
+    assert.match(buildLesson, /8GB Mac/u);
+    assert.match(buildLesson, /Ninja\/clang/u);
+    assert.match(buildLesson, /ninja -j2/u);
+    assert.match(buildLesson, /20분/u);
+    assert.match(buildLesson, /Play에 업로드하지 않는다/u);
+    assert.match(buildLesson, /memory_pressure -Q/u);
+    assert.match(buildLesson, /Pages occupied by compressor/u);
   });
 
   it('keeps one stable Drive file identity and replaces content only', () => {
