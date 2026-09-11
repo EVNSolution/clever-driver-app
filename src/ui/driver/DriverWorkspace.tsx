@@ -369,6 +369,7 @@ export function DriverWorkspace({
   async function completeDelivery(
     destinationId: string,
     deliveryStopIds: string[],
+    occurredAt: string,
   ): Promise<boolean> {
     if (route === null) {
       return false;
@@ -380,6 +381,7 @@ export function DriverWorkspace({
       route.routeId,
       destinationId,
       deliveryStopIds,
+      occurredAt,
     );
     if (!completesRoute) {
       setLoadAttempt((attempt) => attempt + 1);
@@ -645,7 +647,9 @@ export function DriverWorkspace({
               <DeliveryScreen
                 deliveryDate={route.deliveryDate}
                 destinationNotesById={route.destinationNotesById}
+                etaStatus={route.etaStatus}
                 executionController={deliveryExecution}
+                executionStatus={route.executionStatus}
                 historySummary={route.historySummary}
                 isEditing={isSequenceEditing}
                 isReadOnly={isRouteReadOnly}
@@ -661,6 +665,7 @@ export function DriverWorkspace({
                 onSaveDestinationNotes={saveDestinationNotes}
                 onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}
+                pickupCompletedAt={route.pickupCompletedAt}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
                 timezone={route.timezone}

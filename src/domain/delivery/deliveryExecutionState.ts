@@ -1,18 +1,30 @@
 export type DeliveryExecutionProof = {
-  completesRoute: boolean;
+  completesRoute: boolean | null;
+  deliveryStopIds: string[];
   deliveryStopId: string;
+  destinationId: string;
   destinationName: string;
+  proofUploaded: boolean;
 };
 
 export type DeliveryExecutionState = {
-  phase: 'idle' | 'starting' | 'completing-stop' | 'proof' | 'completing-route';
+  phase:
+    | 'idle'
+    | 'starting'
+    | 'proof'
+    | 'completing-stop'
+    | 'uploading-proof'
+    | 'completing-route';
   proof: DeliveryExecutionProof | null;
 };
 
 type DeliveryExecutionEvent =
   | { type: 'ACTION_FAILED' | 'ROUTE_COMPLETED' | 'START_COMPLETED' }
   | { type: 'ROUTE_COMPLETION_FAILED' | 'ROUTE_COMPLETION_STARTED' }
-  | { type: 'START_STARTED' | 'STOP_COMPLETION_STARTED' }
+  | { proof: DeliveryExecutionProof; type: 'COMPLETION_OPENED' }
+  | { type: 'PROOF_UPLOAD_FAILED' | 'PROOF_UPLOAD_STARTED' }
+  | { proof: DeliveryExecutionProof; type: 'PROOF_UPLOADED' }
+  | { type: 'START_STARTED' | 'STOP_COMPLETION_FAILED' | 'STOP_COMPLETION_STARTED' }
   | { proof: DeliveryExecutionProof; type: 'STOP_COMPLETED' }
   | { type: 'PROOF_CLOSED' };
 
@@ -33,11 +45,26 @@ export function reduceDeliveryExecutionState(
     case 'START_STARTED':
       if (isDeliveryExecutionLocked(state)) return state;
       return { phase: 'starting', proof: null };
-    case 'STOP_COMPLETION_STARTED':
+    case 'COMPLETION_OPENED':
       if (isDeliveryExecutionLocked(state)) return state;
-      return { phase: 'completing-stop', proof: null };
+      return { phase: 'proof', proof: event.proof };
+    case 'STOP_COMPLETION_STARTED':
+      if (state.phase !== 'proof' || state.proof?.completesRoute !== null) return state;
+      return { phase: 'completing-stop', proof: state.proof };
+    case 'STOP_COMPLETION_FAILED':
+      if (state.phase !== 'completing-stop') return state;
+      return { phase: 'proof', proof: state.proof };
     case 'STOP_COMPLETED':
       if (state.phase !== 'completing-stop') return state;
+      return { phase: 'proof', proof: event.proof };
+    case 'PROOF_UPLOAD_STARTED':
+      if (state.phase !== 'proof' || state.proof?.completesRoute === null) return state;
+      return { phase: 'uploading-proof', proof: state.proof };
+    case 'PROOF_UPLOAD_FAILED':
+      if (state.phase !== 'uploading-proof') return state;
+      return { phase: 'proof', proof: state.proof };
+    case 'PROOF_UPLOADED':
+      if (state.phase !== 'uploading-proof') return state;
       return { phase: 'proof', proof: event.proof };
     case 'ROUTE_COMPLETION_STARTED':
       if (state.phase !== 'proof' || state.proof?.completesRoute !== true) return state;
@@ -55,7 +82,7 @@ export function reduceDeliveryExecutionState(
       if (state.phase !== 'starting') return state;
       return INITIAL_DELIVERY_EXECUTION_STATE;
     case 'ACTION_FAILED':
-      if (state.phase !== 'starting' && state.phase !== 'completing-stop') return state;
+      if (state.phase !== 'starting') return state;
       return INITIAL_DELIVERY_EXECUTION_STATE;
   }
 }

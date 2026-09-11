@@ -103,13 +103,14 @@ export async function completeDriverDeliveryDestination(
   routePlanId: string,
   destinationId: string,
   deliveryStopIds: string[],
+  occurredAt: string,
 ): Promise<void> {
   const response = await fetch(resolveDsvApiUrl('/driver/destinations/complete'), {
     body: JSON.stringify({
       clientEventId: `${destinationId}:delivered:${Date.now()}`,
       deliveryStopIds,
       destinationId,
-      occurredAt: new Date().toISOString(),
+      occurredAt,
       routePlanId,
     }),
     headers: {
