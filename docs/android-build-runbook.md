@@ -1,5 +1,9 @@
 # Android APK 빌드 런북
 
+> **먼저 읽기:** 8GB Mac에서 Android 네이티브 빌드를 실행하거나 빌드가
+> 10분을 넘었다면 [`android-build-lesson-8gb-mac.md`](./android-build-lesson-8gb-mac.md)의
+> 중지 기준과 메모리 회복 확인 절차를 먼저 적용한다.
+
 ## 목적
 
 CLEVER Driver의 Android APK를 동일한 소스와 서명으로 반복 가능하게 만들면서
