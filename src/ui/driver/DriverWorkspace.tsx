@@ -1,4 +1,6 @@
 import { SymbolView } from 'expo-symbols';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { uuid } from 'expo-modules-core';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   BackHandler,
@@ -14,11 +16,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { DriverAuthSession } from '../../api/dsvDriverAuth';
 import {
+  DriverOperationalApiError,
+  loadDriverExecutionContexts,
+  reportDriverDeliveryException,
+  startDriverExecution,
+  type DriverExecutionContext,
+} from '../../api/dsvDriverOperational';
+import { DRIVER_OPERATIONAL_ENABLED } from '../../config/driverOperational';
+import {
+  DriverCommandQueue,
+  type DriverQueuedCommand,
+} from '../../domain/delivery/driverCommandQueue';
+import { createDriverCommandStore } from '../../platform/expo/storage/driverCommandStore';
+import {
   acknowledgeDriverTimeConstraint,
   completeDriverDeliveryDestination,
   completeDriverDeliveryRoute,
   markDriverOrderMessageRead,
   startDriverDeliveryRoute,
+  type DriverLifecycleCommandIdentity,
 } from '../../api/dsvDriverEvents';
 import {
   uploadDriverProofPhoto,
@@ -56,6 +72,7 @@ import {
 import { DriverRefreshControl } from './DriverRefreshControl';
 import { DriverSettingsModal } from './DriverSettingsModal';
 import { DeliverySpaceScreen } from './DeliverySpaceScreen';
+import { DriverDeliveryException, type DriverDeliveryExceptionReason } from './DriverDeliveryException';
 
 type DriverWorkspaceTab = 'delivery' | 'map';
 type DriverRouteGroup = 'active' | 'terminal';
@@ -64,12 +81,27 @@ type DriverWorkspaceProps = {
   authSession: DriverAuthSession;
   onLogout(): void;
   refreshRequestKey: number;
+  notificationDestination?: {
+    notificationId: string;
+    executionContextId: string;
+    routePlanId: string;
+    targetStopId?: string;
+  };
+  onNotificationDestinationAccepted?(notificationId: string): void;
+  onNotificationDestinationRejected?(notificationId: string): void;
+  onAuthenticationRequired?(): void;
+  deliveryExceptionReasons?: readonly DriverDeliveryExceptionReason[];
 };
 
 export function DriverWorkspace({
   authSession,
   onLogout,
   refreshRequestKey,
+  notificationDestination,
+  onNotificationDestinationAccepted,
+  onNotificationDestinationRejected,
+  onAuthenticationRequired,
+  deliveryExceptionReasons = [],
 }: DriverWorkspaceProps) {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
@@ -79,6 +111,23 @@ export function DriverWorkspace({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const routeRef = useRef<DriverDeliveryRoute | null>(null);
+  const [executionContext, setExecutionContext] = useState<DriverExecutionContext | null>(null);
+  const [pendingCommands, setPendingCommands] = useState<DriverQueuedCommand[]>([]);
+  const [commandError, setCommandError] = useState<string>();
+  const [isRetryingCommands, setIsRetryingCommands] = useState(false);
+  const [isRecoveringCompletion, setIsRecoveringCompletion] = useState(false);
+  const recoveryLockRef = useRef(false);
+  const mountedRef = useRef(true);
+  const sessionRef = useRef(authSession);
+  const commandSessionGenerationRef = useRef(uuid.v4());
+  const authenticationRequiredRef = useRef(onAuthenticationRequired);
+  const commandQueueRef = useRef<DriverCommandQueue | null>(null);
+  const [notificationTarget, setNotificationTarget] = useState<{
+    notificationId: string; routePlanId: string; targetStopId: string;
+    executionContext: DriverExecutionContext;
+  } | null>(null);
+  const notificationTargetRef = useRef<typeof notificationTarget>(null);
+  const notifiedRef = useRef<string | undefined>(undefined);
   const [routeChoices, setRouteChoices] =
     useState<DriverDeliveryRouteChoice[]>([]);
   const terminalRoutesRef = useRef<Record<string, DriverDeliveryRoute>>({});
@@ -109,6 +158,86 @@ export function DriverWorkspace({
   useEffect(() => {
     routeRef.current = route;
   }, [route]);
+
+  useEffect(() => {
+    sessionRef.current = authSession;
+  }, [authSession]);
+
+  useEffect(() => {
+    authenticationRequiredRef.current = onAuthenticationRequired;
+  }, [onAuthenticationRequired]);
+
+  useEffect(() => {
+    notificationTargetRef.current = notificationTarget;
+  }, [notificationTarget]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    if (DRIVER_OPERATIONAL_ENABLED) {
+      const queue = new DriverCommandQueue({
+        store: createDriverCommandStore(),
+        getSession: () => mountedRef.current ? {
+          accountId: sessionRef.current.account.id,
+          generation: commandSessionGenerationRef.current,
+        } : null,
+        loadContexts: () => loadDriverExecutionContexts(sessionRef.current.accessToken),
+        send: (command) => command.type === 'START_EXECUTION'
+          ? startDriverExecution(sessionRef.current.accessToken, command.executionContextId, command.payload)
+          : reportDriverDeliveryException(sessionRef.current.accessToken, command.executionContextId, command.payload),
+        createCommandId: () => uuid.v4(),
+        onAuthenticationRequired: () => authenticationRequiredRef.current?.(),
+        onChange: (commands) => {
+          if (mountedRef.current) setPendingCommands(commands.filter((command) => (
+            command.accountId === sessionRef.current.account.id && command.status !== 'confirmed'
+          )));
+        },
+      });
+      commandQueueRef.current = queue;
+      void queue.initialize().then(() => queue.retryPending()).then(() => {
+        if (mountedRef.current) setLoadAttempt((attempt) => attempt + 1);
+      }).catch(() => {
+        if (mountedRef.current) setCommandError('저장된 명령을 확인하지 못했습니다. 다시 시도해 주세요.');
+      });
+    }
+    return () => {
+      commandQueueRef.current?.suspendSession();
+      mountedRef.current = false;
+      routeRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const queue = commandQueueRef.current;
+    if (queue === null) return;
+    let active = true;
+    const hasPending = queue.listForAccount(authSession.account.id).some((command) => command.status === 'pending');
+    if (hasPending) void queue.retryPending().then(() => {
+      if (active) setLoadAttempt((attempt) => attempt + 1);
+    }).catch(() => {
+      if (active) setCommandError('인증 복구 후 명령을 확인하지 못했습니다. 다시 시도해 주세요.');
+    });
+    return () => { active = false; };
+  }, [authSession.accessToken, authSession.account.id]);
+
+  useEffect(() => {
+    if (notificationDestination === undefined) return;
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      notifiedRef.current = undefined;
+      setActiveTab('delivery');
+      setIsDeliverySpaceOpen(false);
+      setIsSequenceEditing(false);
+      setNotificationTarget(null);
+      setRoute(null);
+      routeRef.current = null;
+      setOrders([]);
+      setLoadState('loading');
+      setSelectedRoutePlanId(notificationDestination.routePlanId);
+      setLoadAttempt((attempt) => attempt + 1);
+    });
+    return () => { active = false; };
+  }, [notificationDestination]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -196,12 +325,8 @@ export function DriverWorkspace({
                 )
               )))
               .catch(() => []);
-          const reconciledRoutes = await reconcileCompletedRoutes(
-            authSession.accessToken,
-            nextRouteChoices,
-          );
           if (!isActive) return;
-          const completedRoutes = [...historyRoutes, ...reconciledRoutes];
+          const completedRoutes = historyRoutes;
           if (completedRoutes.length > 0) {
             terminalRoutesRef.current = {
               ...terminalRoutesRef.current,
@@ -225,19 +350,43 @@ export function DriverWorkspace({
       : (cachedTerminalRoute === undefined
           ? loadDriverDeliveryRoute(authSession.accessToken, selectedRoutePlanId)
           : Promise.resolve(cachedTerminalRoute)
-        ).then(async (loadedRoute) => {
-        let nextRoute = loadedRoute;
-        if (
-          nextRoute.executionStatus === 'IN_PROGRESS' &&
-          completesDeliveryRoute(nextRoute.orders, [])
-        ) {
-          await completeDriverDeliveryRoute(
-            nextRoute.routeAccessToken,
-            nextRoute.routePlanId,
-          );
-          nextRoute = completedDeliveryRoute(nextRoute, nextRoute.orders);
-        }
+        ).then(async (nextRoute) => {
+        const contexts = DRIVER_OPERATIONAL_ENABLED
+          ? await loadDriverExecutionContexts(authSession.accessToken) : [];
         if (!isActive) return;
+        const context = contexts.find((candidate) => candidate.routePlanId === nextRoute.routePlanId);
+        const previousTarget = notificationTargetRef.current;
+        if (notificationDestination === undefined && previousTarget?.routePlanId === nextRoute.routePlanId) {
+          const target = nextRoute.orders.find((order) => order.id === previousTarget.targetStopId);
+          if (target === undefined || isTerminalDeliveryStatus(target.status) || context === undefined ||
+            context.status !== 'ACTIVE' || context.expectedRouteVersionId !== nextRoute.routeVersionId ||
+            !sameExecutionFences(context, previousTarget.executionContext)) {
+            setRoute(null); routeRef.current = null; setOrders([]); setExecutionContext(null);
+            setLoadErrorMessage('알림 배송지는 이미 처리됐거나 배정이 변경됐습니다. 현재 배차를 다시 확인해 주세요.');
+            setLoadState('error'); return;
+          }
+        }
+        if (notificationDestination !== undefined && notificationDestination.routePlanId === nextRoute.routePlanId) {
+          const exactContext = context?.executionContextId === notificationDestination.executionContextId &&
+            context.status === 'ACTIVE' && context.expectedRouteVersionId === nextRoute.routeVersionId;
+          const target = notificationDestination.targetStopId === undefined ? undefined
+            : nextRoute.orders.find((order) => order.id === notificationDestination.targetStopId);
+          if (!exactContext || routeStatusGroup(nextRoute.executionStatus) === 'terminal' ||
+            (notificationDestination.targetStopId !== undefined &&
+              (target === undefined || isTerminalDeliveryStatus(target.status)))) {
+            setRoute(null); setOrders([]); setExecutionContext(null);
+            setLoadErrorMessage('알림의 배차 또는 배송지를 더 이상 확인할 수 없습니다.');
+            setLoadState('error');
+            onNotificationDestinationRejected?.(notificationDestination.notificationId);
+            return;
+          }
+          if (notificationDestination.targetStopId !== undefined && context !== undefined) setNotificationTarget({
+            notificationId: notificationDestination.notificationId,
+            routePlanId: nextRoute.routePlanId,
+            targetStopId: notificationDestination.targetStopId,
+            executionContext: context,
+          });
+        }
         if (routeStatusGroup(nextRoute.executionStatus) === 'terminal') {
           if (terminalRoutesRef.current[nextRoute.routePlanId] !== nextRoute) {
             terminalRoutesRef.current = {
@@ -248,6 +397,8 @@ export function DriverWorkspace({
           setRouteGroup('terminal');
         }
         setRoute(nextRoute);
+        routeRef.current = nextRoute;
+        setExecutionContext(context ?? null);
         setRouteChoices(mergeRouteChoices(
           nextRoute.availableRoutes,
           [
@@ -270,7 +421,12 @@ export function DriverWorkspace({
       }
 
       setRoute(null);
+      routeRef.current = null;
+      setExecutionContext(null);
       setOrders([]);
+      if (error instanceof DriverOperationalApiError && error.status === 401) {
+        authenticationRequiredRef.current?.();
+      }
       setLoadErrorMessage(
         error instanceof DriverRouteApiError ? error.message : undefined,
       );
@@ -291,9 +447,41 @@ export function DriverWorkspace({
     refreshRequestKey,
     selectedRoutePlanId,
     isSequenceSaving,
+    notificationDestination,
+    onNotificationDestinationRejected,
   ]);
 
+  useEffect(() => {
+    if (loadState !== 'ready' || route === null || notificationDestination === undefined ||
+      route.routePlanId !== notificationDestination.routePlanId ||
+      executionContext?.executionContextId !== notificationDestination.executionContextId ||
+      (notificationDestination.targetStopId !== undefined &&
+        notificationTarget?.targetStopId !== notificationDestination.targetStopId) ||
+      notifiedRef.current === notificationDestination.notificationId) return;
+    notifiedRef.current = notificationDestination.notificationId;
+    onNotificationDestinationAccepted?.(notificationDestination.notificationId);
+  }, [loadState, route, executionContext, notificationDestination, notificationTarget, onNotificationDestinationAccepted]);
+
+  async function retryCommands() {
+    if (isRetryingCommands || commandQueueRef.current === null) return;
+    const hadPending = commandQueueRef.current.listForAccount(authSession.account.id)
+      .some((command) => command.status === 'pending');
+    setIsRetryingCommands(true); setCommandError(undefined);
+    try {
+      await commandQueueRef.current.retryPending();
+      if (mountedRef.current && hadPending) setLoadAttempt((attempt) => attempt + 1);
+    } catch {
+      if (mountedRef.current) setCommandError('명령을 다시 전송하지 못했습니다. 연결 후 다시 시도해 주세요.');
+    } finally {
+      if (mountedRef.current) setIsRetryingCommands(false);
+    }
+  }
+
   function retryRouteLoad() {
+    if (notificationDestination === undefined) {
+      setNotificationTarget(null);
+      notificationTargetRef.current = null;
+    }
     setLoadState('loading');
     setLoadAttempt((attempt) => attempt + 1);
   }
@@ -304,6 +492,7 @@ export function DriverWorkspace({
     isPullRefreshingRouteRef.current = true;
     setIsRefreshingRoute(true);
     setLoadAttempt((attempt) => attempt + 1);
+    void retryCommands();
   }
 
   function selectRoute(routePlanId: string) {
@@ -316,6 +505,9 @@ export function DriverWorkspace({
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(false);
     setRoute(null);
+    routeRef.current = null;
+    setExecutionContext(null);
+    setNotificationTarget(null);
     setOrders([]);
     setSelectedRoutePlanId(routePlanId);
   }
@@ -326,6 +518,9 @@ export function DriverWorkspace({
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(false);
     setRoute(null);
+    routeRef.current = null;
+    setExecutionContext(null);
+    setNotificationTarget(null);
     setOrders([]);
     setSelectedRoutePlanId(undefined);
     setLoadState('select');
@@ -370,9 +565,8 @@ export function DriverWorkspace({
     destinationId: string,
     deliveryStopIds: string[],
   ): Promise<boolean> {
-    if (route === null) {
-      return false;
-    }
+    if (route === null) throw new Error('현재 배차를 확인해 주세요.');
+    const completingRoute = route;
 
     const completesRoute = completesDeliveryRoute(orders, deliveryStopIds);
     await completeDriverDeliveryDestination(
@@ -381,7 +575,8 @@ export function DriverWorkspace({
       destinationId,
       deliveryStopIds,
     );
-    if (!completesRoute) {
+    if (!completesRoute && mountedRef.current && routeRef.current?.routePlanId === completingRoute.routePlanId &&
+      routeRef.current.routeVersionId === completingRoute.routeVersionId) {
       setLoadAttempt((attempt) => attempt + 1);
     }
     return completesRoute;
@@ -389,11 +584,35 @@ export function DriverWorkspace({
 
   async function completeRoute() {
     if (route === null || isRouteReadOnly) return;
-
+    const completingRoute = route;
+    const identityKey = `driver:completion:${authSession.account.id}:${route.routePlanId}`;
+    const stored = await AsyncStorage.getItem(identityKey);
+    let identity: DriverLifecycleCommandIdentity | undefined;
+    if (stored !== null) {
+      try {
+        const previous = JSON.parse(stored) as DriverLifecycleCommandIdentity & { routeVersionId: string | null };
+        if (previous.routeVersionId === route.routeVersionId &&
+          typeof previous.clientEventId === 'string' && typeof previous.occurredAt === 'string') {
+          identity = previous;
+        }
+      } catch { /* A malformed command cannot authorize a business event. */ }
+    }
+    identity ??= { clientEventId: `${route.routePlanId}:completed:${uuid.v4()}`, occurredAt: new Date().toISOString() };
+    await AsyncStorage.setItem(identityKey, JSON.stringify({ ...identity, routeVersionId: route.routeVersionId }));
+    if (!mountedRef.current || routeRef.current?.routePlanId !== completingRoute.routePlanId ||
+      routeRef.current.routeVersionId !== completingRoute.routeVersionId) {
+      throw new Error('배차가 변경됐습니다. 현재 배차를 확인해 주세요.');
+    }
     await completeDriverDeliveryRoute(
       route.routeAccessToken,
       route.routePlanId,
+      identity,
     );
+    if (!mountedRef.current || routeRef.current?.routePlanId !== completingRoute.routePlanId ||
+      routeRef.current.routeVersionId !== completingRoute.routeVersionId) return;
+    await AsyncStorage.removeItem(identityKey);
+    if (!mountedRef.current || routeRef.current?.routePlanId !== completingRoute.routePlanId ||
+      routeRef.current.routeVersionId !== completingRoute.routeVersionId) return;
     const completedRoute = completedDeliveryRoute(route, orders);
     terminalRoutesRef.current = {
       ...terminalRoutesRef.current,
@@ -418,27 +637,94 @@ export function DriverWorkspace({
     if (route === null) {
       return;
     }
+    const startingRoute = route;
+    const atomicRouteKey = `driver:atomic-route:${authSession.account.id}:${startingRoute.routePlanId}`;
+    const previousAtomicExecution = await AsyncStorage.getItem(atomicRouteKey);
+    if (DRIVER_OPERATIONAL_ENABLED) {
+      if (!mountedRef.current || routeRef.current?.routePlanId !== startingRoute.routePlanId ||
+        routeRef.current.routeVersionId !== startingRoute.routeVersionId) {
+        throw new Error('배차가 변경됐습니다. 현재 배차를 확인해 주세요.');
+      }
+      if (executionContext?.routePlanId === startingRoute.routePlanId) {
+        const context = executionContext;
+        if (context.status !== 'ACTIVE' || context.expectedRouteVersionId !== startingRoute.routeVersionId) {
+          throw new Error('배차 버전이 변경됐습니다. 새로고침 후 시작해 주세요.');
+        }
+        const queue = commandQueueRef.current;
+        if (queue === null) throw new Error('명령 저장소를 확인하지 못했습니다.');
+        await AsyncStorage.setItem(atomicRouteKey, context.executionContextId);
+        const command = await queue.enqueueStart(context);
+        if (command.status !== 'confirmed') throw new Error(command.status === 'blocked'
+          ? '배차가 변경되어 시작 명령이 차단됐습니다. 현재 배차를 확인해 주세요.'
+          : '서버 승인을 기다리고 있습니다. 연결 후 저장된 명령을 다시 시도해 주세요.');
+        if (mountedRef.current) setLoadAttempt((attempt) => attempt + 1);
+        return;
+      }
+      const contexts = await loadDriverExecutionContexts(authSession.accessToken);
+      if (contexts.some((context) => context.routePlanId === startingRoute.routePlanId)) {
+        throw new Error('실행 배차가 변경됐습니다. 새로고침 후 시작해 주세요.');
+      }
+    }
+    if (previousAtomicExecution !== null || executionContext?.routePlanId === startingRoute.routePlanId ||
+      commandQueueRef.current?.listForAccount(authSession.account.id).some((command) =>
+        command.type === 'START_EXECUTION' && command.payload.expectedRouteVersionId === startingRoute.routeVersionId)) {
+      throw new Error('기존 시작 명령의 서버 승인을 확인할 수 없습니다. 현재 배차를 새로고침해 주세요.');
+    }
+    if (!mountedRef.current || routeRef.current?.routePlanId !== startingRoute.routePlanId ||
+      routeRef.current.routeVersionId !== startingRoute.routeVersionId) {
+      throw new Error('배차가 변경됐습니다. 현재 배차를 확인해 주세요.');
+    }
+    await startDriverDeliveryRoute(startingRoute.routeAccessToken, startingRoute.routeId);
+    if (mountedRef.current && routeRef.current?.routePlanId === startingRoute.routePlanId) {
+      setLoadAttempt((attempt) => attempt + 1);
+    }
+  }
 
-    await startDriverDeliveryRoute(route.routeAccessToken, route.routeId);
-    setLoadAttempt((attempt) => attempt + 1);
+  async function reportDeliveryException(reasonCode: string, explanation?: string) {
+    if (route === null || executionContext === null || isRouteReadOnly) throw new Error('현재 배차를 확인해 주세요.');
+    const targetStopId = activeDeliveryStopId;
+    const target = orders.find((order) => order.id === targetStopId);
+    if (target === undefined || isTerminalDeliveryStatus(target.status)) throw new Error('이미 처리됐거나 변경된 배송지는 보고할 수 없습니다.');
+    const reason = deliveryExceptionReasons.find((candidate) => candidate.code === reasonCode);
+    if (reason === undefined || (reason.requiresExplanation && !explanation?.trim())) throw new Error('보고 사유와 필수 내용을 확인해 주세요.');
+    const reportingRoute = route;
+    const context = executionContext;
+    if (!mountedRef.current || context.status !== 'ACTIVE' ||
+      context.routePlanId !== reportingRoute.routePlanId || context.expectedRouteVersionId !== reportingRoute.routeVersionId ||
+      routeRef.current?.routePlanId !== reportingRoute.routePlanId ||
+      routeRef.current.routeVersionId !== reportingRoute.routeVersionId) {
+      throw new Error('배차가 변경됐습니다. 현재 배차를 확인해 주세요.');
+    }
+    const queue = commandQueueRef.current;
+    if (queue === null) throw new Error('명령 저장소를 확인하지 못했습니다.');
+    const command = await queue.enqueueDeliveryException(context, { targetStopId: target.id, reasonCode, explanation });
+    if (command.status !== 'confirmed') throw new Error(command.status === 'blocked'
+      ? '배차 또는 배송지가 변경되어 보고 명령이 차단됐습니다.'
+      : '서버 승인을 기다리고 있습니다. 연결 후 저장된 명령을 다시 시도해 주세요.');
   }
 
   async function acknowledgeTimeConstraint(deliveryStopId: string) {
     if (route === null) return;
+    const acknowledgingRoute = route;
 
     await acknowledgeDriverTimeConstraint(
       route.routeAccessToken,
       route.routeId,
       deliveryStopId,
     );
-    setLoadAttempt((attempt) => attempt + 1);
+    if (mountedRef.current && routeRef.current?.routePlanId === acknowledgingRoute.routePlanId) {
+      setLoadAttempt((attempt) => attempt + 1);
+    }
   }
 
   async function readDriverMessage(messageId: string) {
     if (route === null) return;
+    const readingRoute = route;
 
     await markDriverOrderMessageRead(route.routeAccessToken, messageId);
-    setLoadAttempt((attempt) => attempt + 1);
+    if (mountedRef.current && routeRef.current?.routePlanId === readingRoute.routePlanId) {
+      setLoadAttempt((attempt) => attempt + 1);
+    }
   }
 
   async function saveDestinationNotes(
@@ -447,14 +733,17 @@ export function DriverWorkspace({
     values: DestinationNoteValues,
   ): Promise<DestinationNotes> {
     if (route === null) return previous;
+    const savingRoute = route;
     const notes = await updateDriverDestinationNotes(
       route.routeAccessToken,
       destinationId,
       previous,
       values,
     );
-    setRoute((currentRoute) => currentRoute === null
-      ? null
+    if (!mountedRef.current) return notes;
+    setRoute((currentRoute) => currentRoute === null || currentRoute.routePlanId !== savingRoute.routePlanId ||
+      currentRoute.routeVersionId !== savingRoute.routeVersionId
+      ? currentRoute
       : {
           ...currentRoute,
           destinationNotesById: {
@@ -490,7 +779,7 @@ export function DriverWorkspace({
         nextOrders,
       );
     } catch (error) {
-      if (
+      if (mountedRef.current &&
         error instanceof DriverRouteApiError &&
         [
           'COMMAND_IN_PROGRESS',
@@ -514,7 +803,7 @@ export function DriverWorkspace({
         latestRoute.routeVersionId !== savedOrder.routeVersionId
       )
     ) {
-      setLoadAttempt((attempt) => attempt + 1);
+      if (mountedRef.current) setLoadAttempt((attempt) => attempt + 1);
       throw new DriverRouteApiError(
         'ROUTE_CHANGED_DURING_ORDER_SAVE',
         '배송 경로가 변경됐습니다. 최신 순서를 확인해 주세요.',
@@ -549,6 +838,10 @@ export function DriverWorkspace({
     });
   }
 
+  const activeDeliveryStopId = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
+    ? notificationTarget.targetStopId : route?.nextDeliveryStopId ?? null;
+  const targetOrder = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
+    ? orders.find((order) => order.id === notificationTarget.targetStopId) : undefined;
   const deliveryExecution = useDeliveryExecution({
     etaStatus: route?.etaStatus ?? 'READY',
     isReadOnly: isRouteReadOnly,
@@ -559,8 +852,14 @@ export function DriverWorkspace({
     orderCount: orders.length,
     summary: route === null
       ? null
-      : buildCurrentDeliverySummary(orders, route.nextDeliveryStopId),
+      : buildCurrentDeliverySummary(orders, activeDeliveryStopId),
   });
+
+  function handleLogout() {
+    // Block account-scoped commands immediately; root owns session and UI teardown.
+    void commandQueueRef.current?.invalidateSession().catch(() => undefined);
+    onLogout();
+  }
 
   return (
     <View style={styles.workspace}>
@@ -599,7 +898,7 @@ export function DriverWorkspace({
             accessibilityRole="button"
             accessibilityState={{ disabled: isSequenceSaving }}
             disabled={isSequenceSaving}
-            onPress={onLogout}
+            onPress={handleLogout}
             style={({ pressed }) => [
               styles.logoutButton,
               pressed && styles.buttonPressed,
@@ -611,6 +910,39 @@ export function DriverWorkspace({
       </View>
 
       <View style={styles.screenArea}>
+        {pendingCommands.length > 0 || commandError !== undefined ? (
+          <View accessibilityRole="alert" style={styles.commandStatus}>
+            {pendingCommands.map((command) => (
+              <Text key={command.payload.commandId}>{command.type === 'START_EXECUTION' ? '배송 시작' : '미배송 보고'}: {command.status === 'blocked' ? '배차 변경 또는 서버 거부로 차단됨' : '서버 승인 대기'}</Text>
+            ))}
+            {commandError ? <Text>{commandError}</Text> : null}
+            <Pressable accessibilityRole="button" disabled={isRetryingCommands} onPress={() => { void retryCommands(); }}>
+              <Text>{isRetryingCommands ? '확인 중' : '저장된 명령 다시 시도'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {route?.executionStatus === 'IN_PROGRESS' && completesDeliveryRoute(orders, []) ? (
+          <Pressable
+            accessibilityLabel="배차 완료 복구"
+            accessibilityRole="button"
+            disabled={deliveryExecution.isLocked || isRecoveringCompletion}
+            onPress={() => {
+              if (recoveryLockRef.current) return;
+              recoveryLockRef.current = true; setIsRecoveringCompletion(true);
+              void completeRoute().catch((error: unknown) => {
+                if (mountedRef.current) setLoadErrorMessage(error instanceof Error ? error.message : '배차 완료 상태를 저장하지 못했습니다.');
+              }).finally(() => {
+                recoveryLockRef.current = false;
+                if (mountedRef.current) setIsRecoveringCompletion(false);
+              });
+            }}
+            style={styles.recoveryButton}
+          >
+            <Text style={styles.recoveryButtonText}>배차 완료 복구</Text>
+            <Text>모든 배송지 처리가 끝났습니다. 확인 후 배차를 완료합니다.</Text>
+            {loadErrorMessage ? <Text>{loadErrorMessage}</Text> : null}
+          </Pressable>
+        ) : null}
         {activeTab === 'delivery' &&
         loadState !== 'loading' &&
         !isDeliverySpaceOpen &&
@@ -634,6 +966,23 @@ export function DriverWorkspace({
           />
         ) : (
           <>
+            {targetOrder !== undefined ? (
+              <View accessibilityRole="summary" style={styles.notificationTarget}>
+                <Text style={styles.recoveryButtonText}>알림 배송지</Text>
+                <Text>{targetOrder.destinationName}</Text>
+                <Text>{targetOrder.address}</Text>
+                <Text>이 배송지의 현재 배정과 상태를 확인했습니다.</Text>
+              </View>
+            ) : null}
+            {DRIVER_OPERATIONAL_ENABLED && executionContext?.expectedRouteVersionId === route.routeVersionId &&
+              !isRouteReadOnly && activeDeliveryStopId !== null ? (
+              <DriverDeliveryException
+                key={`${route.routePlanId}:${activeDeliveryStopId}`}
+                destinationName={orders.find((order) => order.id === activeDeliveryStopId)?.destinationName ?? '배송지'}
+                reasons={deliveryExceptionReasons}
+                onSubmit={reportDeliveryException}
+              />
+            ) : null}
             {isDeliverySpaceOpen ? (
               <DeliverySpaceScreen
                 key={`${route.routePlanId}:${route.deliveryDate}`}
@@ -651,7 +1000,7 @@ export function DriverWorkspace({
                 isReadOnly={isRouteReadOnly}
                 isSequenceEditingSupported={route.routeVersionId !== null}
                 lastUpdatedAt={lastRouteUpdatedAt}
-                nextDeliveryStopId={route.nextDeliveryStopId}
+                nextDeliveryStopId={activeDeliveryStopId}
                 onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
                 onEditingChange={changeSequenceEditing}
                 onOpenDeliverySpace={openDeliverySpace}
@@ -672,7 +1021,7 @@ export function DriverWorkspace({
                 etaStatus={route.etaStatus}
                 isReadOnly={isRouteReadOnly}
                 lastUpdatedAt={lastRouteUpdatedAt}
-                nextDeliveryStopId={route.nextDeliveryStopId}
+                nextDeliveryStopId={activeDeliveryStopId}
                 onRefresh={refreshRoute}
                 orders={orders}
                 refreshing={isRefreshingRoute}
@@ -694,7 +1043,7 @@ export function DriverWorkspace({
             resetRootBackPress();
             setIsSettingsOpen(false);
           }}
-          onAccountDeletionRequested={onLogout}
+          onAccountDeletionRequested={handleLogout}
         />
       ) : null}
 
@@ -757,6 +1106,12 @@ function completedDeliveryRoute(
   };
 }
 
+function sameExecutionFences(left: DriverExecutionContext, right: DriverExecutionContext): boolean {
+  return left.executionContextId === right.executionContextId && left.routePlanId === right.routePlanId &&
+    left.routeVersion === right.routeVersion && left.assignmentEpoch === right.assignmentEpoch &&
+    left.assignmentGeneration === right.assignmentGeneration && left.expectedRouteVersionId === right.expectedRouteVersionId;
+}
+
 function completedRouteFromHistory(
   summary: DriverCompletedRouteHistory,
   accessRoute: DriverDeliveryRouteChoice,
@@ -782,36 +1137,6 @@ function completedRouteFromHistory(
     serverRouteGeometry: null,
     timezone: summary.timezone,
   };
-}
-
-async function reconcileCompletedRoutes(
-  accountAccessToken: string,
-  routeChoices: DriverDeliveryRouteChoice[],
-): Promise<DriverDeliveryRoute[]> {
-  const candidates = routeChoices.filter(({ executionStatus }) => (
-    executionStatus === 'IN_PROGRESS'
-  ));
-  const reconciledRoutes = await Promise.all(candidates.map(async (choice) => {
-    try {
-      // ponytail: active route counts are small; reuse the existing verified loader.
-      const route = await loadDriverDeliveryRoute(
-        accountAccessToken,
-        choice.routePlanId,
-      );
-      if (!completesDeliveryRoute(route.orders, [])) return null;
-      await completeDriverDeliveryRoute(
-        route.routeAccessToken,
-        route.routePlanId,
-      );
-      return completedDeliveryRoute(route, route.orders);
-    } catch {
-      return null;
-    }
-  }));
-
-  return reconciledRoutes.filter(
-    (route): route is DriverDeliveryRoute => route !== null,
-  );
 }
 
 function mergeRouteChoices(
@@ -1143,6 +1468,10 @@ function formatDeliveryDate(deliveryDate: string): string {
 }
 
 const styles = StyleSheet.create({
+  commandStatus: { backgroundColor: '#FFF4D6', padding: 12, gap: 6 },
+  notificationTarget: { backgroundColor: '#EFF6FF', padding: 12, gap: 4 },
+  recoveryButton: { backgroundColor: '#FFF4D6', margin: 12, padding: 12, borderRadius: 12, gap: 6 },
+  recoveryButtonText: { fontSize: 16, fontWeight: '700', color: '#7A4B00' },
   workspace: {
     backgroundColor: '#f7f9fc',
     flex: 1,

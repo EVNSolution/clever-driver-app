@@ -15,7 +15,10 @@ describe('Driver push notification lifecycle wiring', () => {
     assert.match(source, /revokeExpoDriverPushNotifications/u);
     assert.match(source, /notificationRefreshKey/u);
     assert.match(source, /refreshRequestKey=\{notificationRefreshKey\}/u);
-    assert.match(source, /await revokeExpoDriverPushNotifications/u);
+    const logoutStart = source.indexOf('const logout =');
+    const logout = source.slice(logoutStart, source.indexOf('\n  useEffect(', logoutStart));
+    assert.ok(logout.indexOf('revokeExpoDriverPushNotifications(') < logout.indexOf('await discardAuthSession()'));
+    assert.match(logout, /await revoke;/u);
   });
 
   it('makes a notification refresh reload the authenticated route', () => {
@@ -39,5 +42,44 @@ describe('Driver push notification lifecycle wiring', () => {
       source,
       /if \(state === 'active'\) \{[\s\S]{0,240}setNotificationRefreshKey/u,
     );
+  });
+});
+
+
+const servicePath = join(appDirectory, '../platform/expo/notifications/expoDriverNotificationService.ts');
+
+describe('Authenticated notification destination boundaries', () => {
+  it('receives cold-start clicks before login without a handled marker', () => {
+    const source = readFileSync(join(appDirectory, 'AppRoot.tsx'), 'utf8');
+    assert.match(source, /notificationRecovery\.restore\(\)/u);
+    assert.match(source, /subscribeToExpoDriverNotificationClicks/u);
+    assert.match(source, /notificationRecovery\.receiveClick/u);
+    assert.match(source, /notificationRecovery\.setAccount\(session\.account\.id\)/u);
+    const platform = readFileSync(servicePath, 'utf8');
+    assert.match(platform, /addNotificationResponseReceivedListener/u);
+    assert.match(platform, /getLastNotificationResponseAsync/u);
+    assert.doesNotMatch(platform, /LAST_HANDLED_NOTIFICATION|last-handled-notification/u);
+  });
+
+  it('keeps notification receipts separate from click resolution and token capability', () => {
+    const platform = readFileSync(servicePath, 'utf8');
+    const receiptFunction = platform.slice(platform.indexOf('export function subscribeToExpoDriverPushNotifications'), platform.indexOf('function registerToken'));
+    assert.match(receiptFunction, /addNotificationReceivedListener/u);
+    assert.match(receiptFunction, /addPushTokenListener/u);
+    assert.doesNotMatch(receiptFunction, /addNotificationResponseReceivedListener|getLastNotificationResponseAsync/u);
+    assert.match(platform, /registerDriverPushTokenWithCapability/u);
+    assert.match(platform, /operationalEnabled: DRIVER_OPERATIONAL_ENABLED/u);
+    assert.match(platform, /deviceId: Application\.getAndroidId\(\)/u);
+    assert.match(platform, /ROUTE_UPDATES_CHANNEL_ID = 'route-updates'/u);
+    assert.doesNotMatch(platform, /getExpoPushTokenAsync|scheduleNotificationAsync/u);
+  });
+
+  it('holds the click until authenticated destination acceptance and clears logout state', () => {
+    const source = readFileSync(join(appDirectory, 'AppRoot.tsx'), 'utf8');
+    assert.match(source, /notificationRecovery\.acquirePending\(\)/u);
+    assert.match(source, /notificationRecovery\.isCurrent\(lease\)/u);
+    assert.match(source, /onNotificationDestinationAccepted/u);
+    assert.match(source, /notificationRecovery\.clearForLogout\(\)/u);
+    assert.match(source, /clearExpoDriverNotificationResponse/u);
   });
 });

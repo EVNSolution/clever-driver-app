@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  BackHandler,
   Linking,
   Platform,
   Pressable,
@@ -47,10 +48,20 @@ import {
   registerExpoDriverPushNotifications,
   revokeExpoDriverPushNotifications,
   subscribeToExpoDriverPushNotifications,
+  subscribeToExpoDriverNotificationClicks,
+  createExpoDriverNotificationRecovery,
+  clearExpoDriverNotificationResponse,
+  type DriverPushRegistrationState,
 } from '../platform/expo/notifications/expoDriverNotificationService';
 import { DriverAppUpdateScreen } from '../ui/appUpdate/DriverAppUpdateScreen';
 import { AuthEntryScreen } from '../ui/auth/AuthEntryScreen';
 import { DriverWorkspace } from '../ui/driver/DriverWorkspace';
+import { DriverNotificationNotice, DriverOperationalInbox } from '../ui/driver/DriverOperationalInbox';
+import { DRIVER_OPERATIONAL_ENABLED } from '../config/driverOperational';
+import { acknowledgeDriverOperationalNotification, DriverOperationalApiError, loadDriverOperationalInbox } from '../api/dsvDriverOperational';
+import { isDriverOperationalPushNotification } from '../domain/notifications/driverPushNotification';
+import type { DriverNotificationClickLease } from '../domain/notifications/driverNotificationRecovery';
+import { resolveDriverNotificationClick, type DriverNotificationDestination } from './driverNotificationNavigation';
 
 const INSTALLED_APP_VERSION = readInstalledDriverAppVersion();
 const CAN_CHECK_ANDROID_APP_UPDATE =
@@ -64,7 +75,7 @@ const INITIAL_APP_UPDATE_STATE: DriverAppUpdateState =
 const APP_UPDATE_RECHECK_INTERVAL_MS = 5 * 60 * 1_000;
 const APP_UPDATE_FAILURE_RETRY_INTERVAL_MS = 5 * 60 * 1_000;
 
-export function AppRoot() {
+export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; deliveryExceptionReasons?: readonly { code: string; label: string; requiresExplanation?: boolean }[] } = {}) {
   const [appUpdateState, setAppUpdateState] = useState<DriverAppUpdateState>(INITIAL_APP_UPDATE_STATE);
   const [dismissedOptionalVersionCode, setDismissedOptionalVersionCode] = useState<number | null>(null);
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
@@ -78,6 +89,26 @@ export function AppRoot() {
   const lastAppUpdateCheckAt = useRef<number | null>(null);
   const lastAppUpdateCheckSucceeded = useRef(false);
   const isMounted = useRef(true);
+  const [notificationRecovery] = useState(createExpoDriverNotificationRecovery);
+  const [clickAttempt, setClickAttempt] = useState(0);
+  const [notificationDestination, setNotificationDestination] = useState<DriverNotificationDestination>();
+  const [notificationNotice, setNotificationNotice] = useState<{ message: string; retryable: boolean; ackOnClose?: boolean }>();
+  const [pushRegistration, setPushRegistration] = useState<DriverPushRegistrationState>();
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
+  const clickLease = useRef<DriverNotificationClickLease | null>(null);
+  const authGeneration = useRef(0);
+  const authWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const accountIdRef = useRef<string | null>(null);
+  const authRecoveryInFlight = useRef<{ generation: number; promise: Promise<void> } | null>(null);
+
+  useEffect(() => {
+    void notificationRecovery.restore().then(() => setClickAttempt((value) => value + 1)).catch(() => setNotificationNotice({ message: '저장된 알림을 복구하지 못했습니다. 다시 눌러 주세요.', retryable: false }));
+    return subscribeToExpoDriverNotificationClicks((notification) => {
+      void notificationRecovery.receiveClick(notification)
+        .then(() => setClickAttempt((value) => value + 1))
+        .catch(() => setNotificationNotice({ message: '알림 이동을 저장하지 못했습니다. 다시 눌러 주세요.', retryable: false }));
+    });
+  }, [notificationRecovery]);
 
   const checkForAppUpdate = useCallback(async (force = false) => {
     if (!CAN_CHECK_ANDROID_APP_UPDATE || INSTALLED_APP_VERSION === null) {
@@ -141,40 +172,94 @@ export function AppRoot() {
     };
   }, [checkForAppUpdate]);
 
-  const acceptAuthSession = useCallback(async (session: DriverAuthSession) => {
-    await saveDriverAuthSession(session);
-    setAutoLoginEnabled(true);
-    setHasAutoLoginConnectionError(false);
-    setAuthSession(session);
-  }, []);
+  const acceptAuthSession = useCallback(async (session: DriverAuthSession, expectedGeneration?: number) => {
+    if (expectedGeneration === undefined && accountIdRef.current !== null && accountIdRef.current !== session.account.id) authGeneration.current += 1;
+    const generation = expectedGeneration ?? authGeneration.current;
+    const write = authWrites.current.then(async () => {
+      if (generation !== authGeneration.current) return;
+      if (expectedGeneration !== undefined && accountIdRef.current !== null && accountIdRef.current !== session.account.id) throw new Error('AUTH_ACCOUNT_CHANGED');
+      await saveDriverAuthSession(session);
+      if (generation !== authGeneration.current) return;
+      const accountChanged = accountIdRef.current !== null && accountIdRef.current !== session.account.id;
+      await notificationRecovery.setAccount(session.account.id);
+      if (generation !== authGeneration.current) return;
+      if (accountChanged) {
+        await clearExpoDriverNotificationResponse();
+        clickLease.current = null;
+        setNotificationDestination(undefined);
+        setNotificationNotice(undefined);
+        setIsInboxOpen(false);
+      }
+      accountIdRef.current = session.account.id;
+      setAutoLoginEnabled(true);
+      setHasAutoLoginConnectionError(false);
+      setAuthSession(session);
+      setClickAttempt((value) => value + 1);
+    });
+    authWrites.current = write.catch(() => undefined);
+    await write;
+  }, [notificationRecovery]);
 
   const discardAuthSession = useCallback(async () => {
+    authGeneration.current += 1;
+    await notificationRecovery.setAccount(null);
+    clickLease.current = null;
+    setNotificationDestination(undefined);
+    setNotificationNotice(undefined);
+    setIsInboxOpen(false);
     setAutoLoginEnabled(false);
     setHasAutoLoginConnectionError(false);
     setIsRestoringSession(false);
     setAuthSession(null);
-    await clearDriverAuthSession();
-  }, []);
+    const write = authWrites.current.then(clearDriverAuthSession);
+    authWrites.current = write.catch(() => undefined);
+    await write;
+  }, [notificationRecovery]);
 
   const logout = useCallback(async () => {
-    if (authSession !== null) {
-      try {
-        await revokeExpoDriverPushNotifications(authSession.accessToken);
-      } catch {
-        // Logout must remain available when the push-token endpoint is unavailable.
-      }
-    }
+    const previous = authSession;
+    const revoke = previous === null ? Promise.resolve() : revokeExpoDriverPushNotifications(previous.accessToken).catch(() => undefined);
+    // Clear identity synchronously before any remote revocation can wait.
+    const clearClicks = notificationRecovery.clearForLogout();
+    accountIdRef.current = null;
     await discardAuthSession();
-  }, [authSession, discardAuthSession]);
+    await clearClicks;
+    await clearExpoDriverNotificationResponse();
+    await revoke;
+  }, [authSession, discardAuthSession, notificationRecovery]);
+
+  const recoverAuthentication = useCallback(async () => {
+    if (authSession === null) return;
+    const generation = authGeneration.current;
+    if (authRecoveryInFlight.current?.generation === generation) return authRecoveryInFlight.current.promise;
+    const promise = refreshDriverAccountSession({ refreshToken: authSession.refreshToken })
+      .then((session) => acceptAuthSession(session, generation))
+      .catch(async (error: unknown) => {
+        if (generation !== authGeneration.current) return;
+        if (resolveDriverAuthRecoveryAction(error) === 'discard') await discardAuthSession();
+        else throw error;
+      })
+      .finally(() => { if (authRecoveryInFlight.current?.promise === promise) authRecoveryInFlight.current = null; });
+    authRecoveryInFlight.current = { generation, promise };
+    await promise;
+  }, [acceptAuthSession, authSession, discardAuthSession]);
+
+  const recoverCommandAuthentication = useCallback(() => {
+    void recoverAuthentication().catch(() => setNotificationNotice({ message: '로그인 연결을 복구하지 못했습니다. 연결 후 다시 시도해 주세요.', retryable: true }));
+  }, [recoverAuthentication]);
 
   useEffect(() => {
     if (authSession === null) return undefined;
-    void registerExpoDriverPushNotifications(authSession.accessToken).catch(() => undefined);
-    return subscribeToExpoDriverPushNotifications(
+    let active = true;
+    const registrationChanged = (state: DriverPushRegistrationState) => { if (active) setPushRegistration(state); };
+    void registerExpoDriverPushNotifications(authSession.accessToken).then(registrationChanged).catch(() => registrationChanged({ status: 'registration-error' }));
+    const unsubscribe = subscribeToExpoDriverPushNotifications(
       authSession.accessToken,
       () => setNotificationRefreshKey((key) => key + 1),
+      registrationChanged,
     );
-  }, [authSession]);
+    return () => { active = false; unsubscribe(); };
+  }, [authSession, notificationRefreshKey]);
 
   useEffect(() => {
     if (!autoLoginEnabled) {
@@ -182,6 +267,7 @@ export function AppRoot() {
     }
 
     let isActive = true;
+    const generation = authGeneration.current;
     let retryTimeout: ReturnType<typeof setTimeout> | undefined;
     void readDriverAuthRefreshToken()
       .then(async (refreshToken) => {
@@ -191,7 +277,7 @@ export function AppRoot() {
         }
         const session = await refreshDriverAccountSession({ refreshToken });
         if (!isActive) return;
-        await acceptAuthSession(session);
+        await acceptAuthSession(session, generation);
       })
       .catch(async (error: unknown) => {
         if (resolveDriverAuthRecoveryAction(error) === 'discard') {
@@ -224,12 +310,15 @@ export function AppRoot() {
     const refreshAt = Date.parse(authSession.expiresAt) - 60_000;
     const delay = Math.max(0, Math.min(refreshAt - Date.now(), 2_147_000_000));
     let timeout: ReturnType<typeof setTimeout>;
+    let active = true;
+    const generation = authGeneration.current;
     const refreshSession = () => {
       void refreshDriverAccountSession({
         refreshToken: authSession.refreshToken,
       })
-        .then(acceptAuthSession)
+        .then((session) => { if (active) return acceptAuthSession(session, generation); })
         .catch((error: unknown) => {
+          if (!active || generation !== authGeneration.current) return;
           if (resolveDriverAuthRecoveryAction(error) === 'discard') {
             void discardAuthSession();
             return;
@@ -238,8 +327,159 @@ export function AppRoot() {
         });
     };
     timeout = setTimeout(refreshSession, delay);
-    return () => clearTimeout(timeout);
+    return () => { active = false; clearTimeout(timeout); };
   }, [acceptAuthSession, authSession, discardAuthSession]);
+
+  useEffect(() => {
+    if (authSession === null || clickLease.current !== null) return;
+    const lease = notificationRecovery.acquirePending();
+    if (lease === null) return;
+    clickLease.current = lease;
+    if (!DRIVER_OPERATIONAL_ENABLED && isDriverOperationalPushNotification(lease.notification)) {
+      void Promise.resolve().then(() => {
+        if (notificationRecovery.isCurrent(lease)) {
+          setIsInboxOpen(false);
+          setNotificationNotice({ message: '운영 알림 기능은 검증 서버 연결 후 사용할 수 있습니다.', retryable: false });
+        }
+      });
+      return;
+    }
+    const generation = authGeneration.current;
+    void resolveDriverNotificationClick(lease.notification, authSession.accessToken)
+      .then(async (navigation) => {
+        if (!notificationRecovery.isCurrent(lease)) return;
+        setIsInboxOpen(false);
+        if (navigation.kind === 'destination') setNotificationDestination(navigation.destination);
+        else if (navigation.kind === 'notice') setNotificationNotice({ message: navigation.message, retryable: false, ackOnClose: isDriverOperationalPushNotification(lease.notification) && lease.notification.status === 'current' });
+        else {
+          setNotificationRefreshKey((key) => key + 1);
+          const accepted = await notificationRecovery.accept(lease);
+          if (!accepted || generation !== authGeneration.current || accountIdRef.current !== lease.accountId) return;
+          await clearExpoDriverNotificationResponse().catch(() => undefined);
+          if (generation !== authGeneration.current || clickLease.current !== lease || accountIdRef.current !== lease.accountId) return;
+          clickLease.current = null;
+          setClickAttempt((value) => value + 1);
+        }
+      })
+      .catch(async (error: unknown) => {
+        if (!notificationRecovery.isCurrent(lease)) return;
+        if (error instanceof DriverOperationalApiError && error.status === 401) {
+          notificationRecovery.release(lease);
+          clickLease.current = null;
+          try { await recoverAuthentication(); }
+          catch { if (generation === authGeneration.current) setNotificationNotice({ message: '로그인 연결을 복구하지 못했습니다. 다시 시도해 주세요.', retryable: true }); }
+          return;
+        }
+        const unavailable = error instanceof DriverOperationalApiError && [403, 404, 409, 410].includes(error.status);
+        setNotificationNotice({ message: unavailable
+          ? '배차가 취소·재배정되었거나 알림이 만료되었습니다. 최신 알림함을 확인해 주세요.'
+          : '알림 화면을 확인하지 못했습니다. 연결 복구 후 다시 시도해 주세요.', retryable: !unavailable });
+      });
+  }, [authSession, clickAttempt, notificationRecovery, recoverAuthentication]);
+
+  const acceptNotificationDestination = useCallback(async (notificationId: string) => {
+    const generation = authGeneration.current;
+    const lease = clickLease.current;
+    if (lease === null || authSession === null || lease.notification.notificationId !== notificationId || !notificationRecovery.isCurrent(lease)) return;
+    try {
+      if (isDriverOperationalPushNotification(lease.notification)) {
+        await acknowledgeDriverOperationalNotification(authSession.accessToken, notificationId, 'OPENED');
+      }
+      if (!notificationRecovery.isCurrent(lease)) return;
+      const accepted = await notificationRecovery.accept(lease);
+      if (!accepted || generation !== authGeneration.current || accountIdRef.current !== lease.accountId) return;
+      await clearExpoDriverNotificationResponse().catch(() => undefined);
+      if (generation !== authGeneration.current || clickLease.current !== lease || accountIdRef.current !== lease.accountId) return;
+      clickLease.current = null;
+      setNotificationDestination(undefined);
+      setNotificationNotice(undefined);
+      setClickAttempt((value) => value + 1);
+    } catch {
+      if (notificationRecovery.isCurrent(lease)) setNotificationNotice({ message: '알림 열람 기록을 저장하지 못했습니다. 다시 시도해 주세요.', retryable: true });
+    }
+  }, [authSession, notificationRecovery]);
+
+  const rejectNotificationDestination = useCallback((notificationId: string) => {
+    const lease = clickLease.current;
+    if (lease === null || lease.notification.notificationId !== notificationId || !notificationRecovery.isCurrent(lease)) return;
+    setNotificationNotice({ message: '현재 배정된 배송지를 확인할 수 없습니다. 최신 배차를 확인해 주세요.', retryable: false });
+  }, [notificationRecovery]);
+
+  function retryNotification() {
+    const lease = clickLease.current;
+    if (lease !== null) notificationRecovery.release(lease);
+    clickLease.current = null;
+    setNotificationDestination(undefined);
+    setNotificationNotice(undefined);
+    setClickAttempt((value) => value + 1);
+  }
+
+  const dismissNotification = useCallback(async () => {
+    const lease = clickLease.current;
+    const generation = authGeneration.current;
+    const notice = notificationNotice;
+    const remainsCurrent = () => generation === authGeneration.current && clickLease.current === lease
+      && (lease === null || accountIdRef.current === lease.accountId);
+    if (lease !== null) {
+      if (notice?.ackOnClose && authSession !== null) {
+        try { await acknowledgeDriverOperationalNotification(authSession.accessToken, lease.notification.notificationId, 'OPENED'); }
+        catch {
+          if (remainsCurrent() && notificationRecovery.isCurrent(lease)) setNotificationNotice({ message: '알림 열람 기록을 저장하지 못했습니다. 다시 시도해 주세요.', retryable: true });
+          return;
+        }
+        if (!remainsCurrent() || !notificationRecovery.isCurrent(lease)) return;
+      }
+      if (notice?.retryable) notificationRecovery.release(lease);
+      else {
+        try {
+          const accepted = await notificationRecovery.accept(lease);
+          if (!accepted || !remainsCurrent()) return;
+        } catch {
+          if (remainsCurrent()) setNotificationNotice({ message: '알림 처리 기록을 저장하지 못했습니다. 다시 시도해 주세요.', retryable: true });
+          return;
+        }
+      }
+    }
+    if (!remainsCurrent()) return;
+    clickLease.current = null;
+    setNotificationDestination(undefined);
+    setNotificationNotice(undefined);
+    if (!notice?.retryable) {
+      await clearExpoDriverNotificationResponse().catch(() => undefined);
+      if (generation === authGeneration.current && clickLease.current === null) setClickAttempt((value) => value + 1);
+    }
+  }, [authSession, notificationNotice, notificationRecovery]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || authSession === null || (!isInboxOpen && notificationNotice === undefined)) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (notificationNotice !== undefined) void dismissNotification();
+      else setIsInboxOpen(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [authSession, dismissNotification, isInboxOpen, notificationNotice]);
+
+  async function openInboxNotification(notificationId: string) {
+    if (authSession === null) return;
+    const generation = authGeneration.current;
+    const accountId = authSession.account.id;
+    // Inbox identity is reloaded from the authenticated list; its summary is never a destination.
+    try {
+      let page = await loadDriverOperationalInbox(authSession.accessToken);
+      let item = page.items.find((entry) => entry.id === notificationId);
+      while (item === undefined && page.nextCursor !== null) {
+        if (generation !== authGeneration.current || accountIdRef.current !== accountId) return;
+        page = await loadDriverOperationalInbox(authSession.accessToken, page.nextCursor);
+        item = page.items.find((entry) => entry.id === notificationId);
+      }
+      if (item === undefined || generation !== authGeneration.current || accountIdRef.current !== accountId) return;
+      await notificationRecovery.receiveClick({ kind: item.kind, notificationId, schemaVersion: '1', expiresAt: item.expiresAt, status: Date.parse(item.expiresAt) > Date.now() ? 'current' : 'expired' }, { reopen: true });
+      if (generation !== authGeneration.current || accountIdRef.current !== accountId) return;
+      setClickAttempt((value) => value + 1);
+      setIsInboxOpen(false);
+    } catch { if (generation === authGeneration.current && accountIdRef.current === accountId) setNotificationNotice({ message: '알림을 확인하지 못했습니다. 다시 시도해 주세요.', retryable: true }); }
+  }
 
   const canPresentAppUpdate = authSession !== null || !isRestoringSession;
   const shouldShowAppUpdate = canPresentAppUpdate && shouldPresentDriverAppUpdate({
@@ -317,11 +557,28 @@ export function AppRoot() {
           ) : authSession === null ? (
             <AuthEntryScreen onAuthenticated={acceptAuthSession} />
           ) : (
-            <DriverWorkspace
-              authSession={authSession}
-              onLogout={logout}
-              refreshRequestKey={notificationRefreshKey}
-            />
+            <View style={styles.root}>
+              <View style={[styles.root, (notificationNotice !== undefined || isInboxOpen) && styles.hiddenWorkspace]}>
+                {pushRegistration?.status === 'permission-denied' ? <Pressable accessibilityRole="button" onPress={() => { void Linking.openSettings(); }} style={styles.inboxButton}><Text>알림 권한이 꺼져 있습니다. 설정 열기</Text></Pressable> : null}
+                {DRIVER_OPERATIONAL_ENABLED ? <Pressable accessibilityRole="button" onPress={() => setIsInboxOpen(true)} style={styles.inboxButton}><Text style={styles.secondaryButtonText}>알림함</Text></Pressable> : null}
+                <DriverWorkspace
+                  key={authSession.account.id}
+                  authSession={authSession}
+                  deliveryExceptionReasons={deliveryExceptionReasons}
+                  notificationDestination={notificationDestination}
+                  onNotificationDestinationAccepted={acceptNotificationDestination}
+                  onNotificationDestinationRejected={rejectNotificationDestination}
+                  onAuthenticationRequired={recoverCommandAuthentication}
+                  onLogout={logout}
+                  refreshRequestKey={notificationRefreshKey}
+                />
+              </View>
+              {notificationNotice !== undefined ? (
+                <DriverNotificationNotice message={notificationNotice.message} onClose={() => { void dismissNotification(); }} onRetry={notificationNotice.retryable ? retryNotification : undefined} />
+              ) : isInboxOpen ? (
+                <DriverOperationalInbox accessToken={authSession.accessToken} key={authSession.account.id} onClose={() => setIsInboxOpen(false)} onOpen={(id) => { void openInboxNotification(id); }} />
+              ) : null}
+            </View>
           )}
           </SafeAreaView>
         </SafeAreaProvider>
@@ -334,6 +591,8 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
+  hiddenWorkspace: { display: 'none' },
+  inboxButton: { alignItems: 'flex-end', paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#fff' },
   safeArea: {
     flex: 1,
     backgroundColor: '#f7f9fc',
