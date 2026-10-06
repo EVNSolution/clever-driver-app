@@ -1,5 +1,6 @@
 export type DeliveryExecutionProof = {
   completesRoute: boolean | null;
+  completedAt: string | null;
   deliveryStopIds: string[];
   deliveryStopId: string;
   destinationId: string;

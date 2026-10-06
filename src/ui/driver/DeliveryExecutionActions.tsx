@@ -95,6 +95,7 @@ export function useDeliveryExecution({
     dispatch({
       proof: {
         completesRoute: null,
+        completedAt: null,
         deliveryStopId: summary.deliveryStopId,
         deliveryStopIds: summary.deliveryStopIds,
         destinationId: summary.destinationId,
@@ -206,7 +207,7 @@ export function useDeliveryExecution({
           proof.deliveryStopIds,
           occurredAt,
         );
-        proof = { ...proof, completesRoute };
+        proof = { ...proof, completesRoute, completedAt: occurredAt };
         dispatch({ proof, type: 'STOP_COMPLETED' });
       } catch (error) {
         dispatch({ type: 'STOP_COMPLETION_FAILED' });
@@ -388,6 +389,7 @@ export function DeliveryExecutionOverlay({
   return (
     <DeliveryProofModal
       destinationName={proof.destinationName}
+      savedCompletionOccurredAt={proof.completedAt}
       executionDialog={controller.dialog}
       executionPending={[
         'completing-route',

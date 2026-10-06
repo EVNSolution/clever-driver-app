@@ -32,6 +32,7 @@ type SelectedProofPhoto = Omit<
 
 type DeliveryProofModalProps = {
   destinationName: string;
+  savedCompletionOccurredAt: string | null;
   executionDialog?: ReactNode;
   executionPending?: boolean;
   onClose(): void;
@@ -40,6 +41,7 @@ type DeliveryProofModalProps = {
 
 export function DeliveryProofModal({
   destinationName,
+  savedCompletionOccurredAt,
   executionDialog,
   executionPending = false,
   onClose,
@@ -52,6 +54,10 @@ export function DeliveryProofModal({
     () => formatDeliveryCompletionTime(openedAt),
   );
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedProofPhoto | null>(null);
+  const canEditCompletionTime = !executionPending && savedCompletionOccurredAt === null;
+  const displayedCompletionTime = savedCompletionOccurredAt === null
+    ? completionTime
+    : formatDeliveryCompletionTime(new Date(savedCompletionOccurredAt));
 
   async function selectPhoto(source: DriverProofPhotoSource) {
     try {
@@ -125,7 +131,8 @@ export function DeliveryProofModal({
 
   async function confirmCompletion() {
     if (executionPending) return;
-    const occurredAt = resolveDeliveryCompletionOccurredAt(completionTime, openedAt);
+    const occurredAt = savedCompletionOccurredAt
+      ?? resolveDeliveryCompletionOccurredAt(completionTime, openedAt);
     if (occurredAt === null) {
       showDialog({
         message: '완료 시간을 24시간 형식으로 입력해 주세요. 예: 14:30',
@@ -170,6 +177,7 @@ export function DeliveryProofModal({
               <Text style={styles.sectionLabel}>완료 시간</Text>
               <Pressable
                 accessibilityRole="button"
+                disabled={!canEditCompletionTime}
                 onPress={() => setCompletionTime(formatDeliveryCompletionTime(new Date()))}
               >
                 <Text style={styles.nowButtonText}>현재 시간</Text>
@@ -177,16 +185,20 @@ export function DeliveryProofModal({
             </View>
             <TextInput
               accessibilityLabel="배송 완료 시간"
-              editable={!executionPending}
+              editable={canEditCompletionTime}
               keyboardType="number-pad"
               maxLength={5}
               onChangeText={updateCompletionTime}
               placeholder={formatDeliveryCompletionTime(openedAt)}
               selectTextOnFocus
               style={styles.timeInput}
-              value={completionTime}
+              value={displayedCompletionTime}
             />
-            <Text style={styles.timeHint}>24시간 형식 · 시:분</Text>
+            <Text style={styles.timeHint}>
+              {savedCompletionOccurredAt === null
+                ? '24시간 형식 · 시:분'
+                : '완료 시간이 저장되었습니다.'}
+            </Text>
           </View>
 
           <Text style={styles.sectionLabel}>배송 증빙 사진 · 선택</Text>

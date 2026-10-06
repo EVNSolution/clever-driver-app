@@ -9,6 +9,7 @@ import {
 
 const finalProof = {
   completesRoute: true,
+  completedAt: '2026-09-10T05:42:00.000Z',
   deliveryStopIds: ['stop-final'],
   deliveryStopId: 'stop-final',
   destinationId: 'destination-final',
@@ -18,7 +19,7 @@ const finalProof = {
 
 describe('delivery execution state', () => {
   it('opens the combined completion sheet before saving the stop', () => {
-    const pendingProof = { ...finalProof, completesRoute: null };
+    const pendingProof = { ...finalProof, completesRoute: null, completedAt: null };
     const proofState = reduceDeliveryExecutionState(
       INITIAL_DELIVERY_EXECUTION_STATE,
       { proof: pendingProof, type: 'COMPLETION_OPENED' },

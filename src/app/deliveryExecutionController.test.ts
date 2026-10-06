@@ -152,6 +152,62 @@ describe('persistent delivery execution controller callbacks', () => {
     assert.equal(controller.isLocked, false);
   });
 
+  it('retains the saved completion time while retrying a failed proof upload', async () => {
+    const harness = createHarness();
+    const savedTimes: string[] = [];
+    let uploads = 0;
+    const props = options({
+      onCompleteDelivery: async (_destinationId, _stopIds, occurredAt) => {
+        savedTimes.push(occurredAt);
+        return false;
+      },
+      onUploadProof: async () => {
+        uploads += 1;
+        if (uploads === 1) throw new Error('offline during proof upload');
+      },
+    });
+    const photo = {
+      uri: 'file:///proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'camera' as const,
+    };
+    let controller = harness.render(props);
+    controller.confirmDeliveryCompletion();
+    controller = harness.render(props);
+    await controller.submitDeliveryCompletion('2026-09-10T05:42:00.000Z', photo);
+    controller = harness.render(props);
+    assert.equal(controller.executionState.proof?.completedAt, '2026-09-10T05:42:00.000Z');
+    assert.equal(harness.dialog?.title, '증빙 업로드 실패');
+
+    await controller.submitDeliveryCompletion('2026-09-10T06:00:00.000Z', photo);
+    controller = harness.render(props);
+    assert.deepEqual(savedTimes, ['2026-09-10T05:42:00.000Z']);
+    assert.equal(uploads, 2);
+    assert.equal(controller.executionState.phase, 'idle');
+  });
+
+  it('keeps completion time editable when the completion request itself fails', async () => {
+    const harness = createHarness();
+    const attemptedTimes: string[] = [];
+    const props = options({
+      onCompleteDelivery: async (_destinationId, _stopIds, occurredAt) => {
+        attemptedTimes.push(occurredAt);
+        if (attemptedTimes.length === 1) throw new Error('completion not saved');
+        return false;
+      },
+    });
+    let controller = harness.render(props);
+    controller.confirmDeliveryCompletion();
+    controller = harness.render(props);
+    await controller.submitDeliveryCompletion('2026-09-10T05:42:00.000Z', null);
+    controller = harness.render(props);
+    assert.equal(controller.executionState.proof?.completedAt, null);
+    assert.equal(controller.executionState.phase, 'proof');
+
+    await controller.submitDeliveryCompletion('2026-09-10T06:00:00.000Z', null);
+    controller = harness.render(props);
+    assert.deepEqual(attemptedTimes, ['2026-09-10T05:42:00.000Z', '2026-09-10T06:00:00.000Z']);
+    assert.equal(controller.executionState.phase, 'idle');
+  });
+
   it('allows only one start request while another tab presentation is pending', async () => {
     const harness = createHarness();
     const pending = deferred<void>();
