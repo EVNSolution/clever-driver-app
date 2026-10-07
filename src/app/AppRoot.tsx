@@ -648,7 +648,7 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
                 />
               </View>
               {notificationHold !== undefined ? (
-                <View accessibilityRole="alert" style={styles.notificationHold}>
+                <SafeAreaView accessibilityRole="alert" edges={['bottom', 'left', 'right']} style={styles.notificationHold}>
                   {notificationHold.continueWorking ? (
                     <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: false })}>
                       <Text>보류된 알림</Text>
@@ -659,15 +659,17 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
                       <Text>{notificationHold.moveRequested
                         ? '현재 작업을 저장하거나 종료하면 알림 목적지를 다시 확인하고 이동합니다.'
                         : '알림으로 이동하려면 현재 작업을 저장하거나 종료해 주세요.'}</Text>
-                      <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: true, moveRequested: false })}>
-                        <Text>현재 작업 계속</Text>
-                      </Pressable>
-                      <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, moveRequested: true })}>
-                        <Text>알림으로 이동</Text>
-                      </Pressable>
+                      <View style={styles.notificationHoldActions}>
+                        <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: true, moveRequested: false })} style={styles.notificationHoldButton}>
+                          <Text style={styles.notificationHoldButtonText}>현재 작업 계속</Text>
+                        </Pressable>
+                        <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, moveRequested: true })} style={[styles.notificationHoldButton, styles.notificationHoldMoveButton]}>
+                          <Text style={[styles.notificationHoldButtonText, styles.notificationHoldMoveButtonText]}>알림으로 이동</Text>
+                        </Pressable>
+                      </View>
                     </>
                   )}
-                </View>
+                </SafeAreaView>
               ) : null}
               {notificationNotice !== undefined ? (
                 <DriverNotificationNotice message={notificationNotice.message} onClose={() => { void dismissNotification(); }} onRetry={notificationNotice.retryable ? retryNotification : undefined} />
@@ -688,7 +690,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   hiddenWorkspace: { display: 'none' },
-  notificationHold: { padding: 16, gap: 8, backgroundColor: '#fff4db' },
+  notificationHold: {
+    backgroundColor: '#fff4db',
+    bottom: 0,
+    gap: 8,
+    left: 0,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    position: 'absolute',
+    right: 0,
+    zIndex: 10,
+  },
+  notificationHoldActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  notificationHoldButton: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderColor: '#d0d5dd',
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
+  notificationHoldButtonText: {
+    color: '#344054',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  notificationHoldMoveButton: {
+    backgroundColor: '#0b57d0',
+    borderColor: '#0b57d0',
+  },
+  notificationHoldMoveButtonText: { color: '#ffffff' },
   inboxButton: { alignItems: 'flex-end', paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#fff' },
   safeArea: {
     flex: 1,

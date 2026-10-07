@@ -195,6 +195,7 @@ export function appRootHarness(options: {
     async logout() { const workspace = harness.workspace(); assert.ok(workspace); await workspace.onLogout(); render(); await harness.settle(); },
     workspace: () => find('DriverWorkspace')?.props as WorkspaceProps | undefined,
     find,
+    alert: () => nodes(tree).find((element) => element.props.accessibilityRole === 'alert')?.props,
     hasText: (text: string) => nodes(tree).some((element) => element.type === 'Text' && element.props.children === text),
     click(notification = click) { assert.ok(onClick); onClick(notification); },
     hardwareBack() { assert.ok(onBack); return onBack(); },
@@ -202,6 +203,7 @@ export function appRootHarness(options: {
       const button = nodes(tree).find((element) => element.type === 'Pressable' && nodes(element.props.children).some((child) => child.type === 'Text' && child.props.children === text));
       assert.ok(button); (button.props.onPress as () => void)();
     },
+    pressable: (text: string) => nodes(tree).find((element) => element.type === 'Pressable' && nodes(element.props.children).some((child) => child.type === 'Text' && child.props.children === text))?.props,
     receive(notification = click as payloads.DriverPushNotification) { assert.ok(onReceipt); onReceipt(notification); },
     foreground() { assert.ok(onActive); onActive('active'); },
     fireAuthRefresh() {

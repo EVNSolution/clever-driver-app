@@ -162,6 +162,18 @@ describe('Connected notification navigation preserves active work', () => {
       h.app.click(click); await h.settle();
       assert.ok(h.app.hasText('현재 작업 계속'));
       assert.ok(h.app.hasText('알림으로 이동'));
+      const hold = h.app.alert();
+      const holdStyle = hold?.style as { bottom?: number; left?: number; paddingBottom?: number; position?: string; right?: number };
+      assert.equal(holdStyle.position, 'absolute');
+      assert.equal(holdStyle.bottom, 0);
+      assert.equal(holdStyle.left, 0);
+      assert.equal(holdStyle.right, 0);
+      assert.equal(holdStyle.paddingBottom, 16);
+      assert.equal((hold?.edges as string[]).includes('bottom'), true);
+      const continueStyle = h.app.pressable('현재 작업 계속')?.style as { minHeight?: number };
+      const moveStyle = h.app.pressable('알림으로 이동')?.style as [{ minHeight?: number }, unknown];
+      assert.equal(continueStyle.minHeight, 44);
+      assert.equal(moveStyle[0].minHeight, 44);
       assert.equal(h.app.workspace()?.notificationDestination, undefined);
       assert.deepEqual(h.snapshotReads(), reads);
       assert.equal(h.screen().isEditing, true);
