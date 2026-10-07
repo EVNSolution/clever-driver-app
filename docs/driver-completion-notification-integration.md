@@ -141,6 +141,7 @@ media ID는 `e8aed99a-196b-4f21-a180-c87a41fcb3f5`다.
 | lint / Expo alignment / whitespace | PASS. 기존 검사 유지. |
 | isolated → 일반 native 생성 | PASS. 일반 package의 환경 오염과 cleartext 제거 검사 포함. |
 | exact source Android APK | PASS. 보존한 캐시 사용, 37.4초. 설치 base.apk 해시도 일치. |
+| [통합 CI 37600176843](https://github.com/EVNSolution/clever-driver-app/actions/runs/37600176843) | HEAD `456ffbf791bfd0058b5d04db908a5910617ad5b3`. Typecheck, 360 tests, lint와 Android/iOS export PASS. audit 실패. 이후 정합성·whitespace는 skip이며 같은 로컬 검사는 PASS. |
 | `npm audit --audit-level=moderate` | BLOCKED. high 의존 항목 20, critical 0. braces / node-forge 두 advisory. Issue62 유지. |
 
 전체 source 검사 로그의 디렉터리 이름은 commit 전 `40eb21c87850`을 표시한다.
@@ -172,4 +173,4 @@ observer의 오류 문자열 집계는 부정 검사 이름도 센다. 실제 ex
 - 업무용 release signing을 사용하지 않았다. suffix APK는 격리 시험 산출물이다.
 
 격리 API, proxy와 PostgreSQL의 종료 결과는 공개 증거의 `runtime-cleanup-result.json`에 기록한다.
-suffix 설치본과 합성 앱 상태는 보존한다. 소유 adb reverse와 기기 합성 원본 사진은 검증 후 제거한다.
+suffix 설치본과 합성 앱 상태는 보존했다. 소유 adb reverse와 기기 합성 원본 사진은 검증 후 제거했다.
