@@ -1,3 +1,5 @@
+import { isDriverOperationalUuid } from './driverOperationalIdentity';
+
 export const DRIVER_OPERATIONAL_NOTIFICATION_KINDS = ['N01', 'N02', 'N03', 'N04', 'N05', 'N06'] as const;
 export type DriverOperationalPushKind = typeof DRIVER_OPERATIONAL_NOTIFICATION_KINDS[number];
 export type DriverOperationalPushNotification = {
@@ -24,7 +26,6 @@ export type DriverNotificationClick = DriverPushNotification | {
 
 type DriverBundleHandoffEvent = NonNullable<Extract<DriverPushNotification, { kind: 'bundle_handoff' }>['event']>;
 const HANDOFF_EVENTS = new Set(['applied', 'cancelled', 'invalidated', 'proposed', 'rejected']);
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 
 export function isDriverOperationalPushNotification(
@@ -42,7 +43,7 @@ export function parseDriverPushNotification(
     if (data.schemaVersion !== '1'
       || typeof data.kind !== 'string'
       || !(DRIVER_OPERATIONAL_NOTIFICATION_KINDS as readonly string[]).includes(data.kind)
-      || typeof data.notificationId !== 'string' || !UUID.test(data.notificationId)
+      || !isDriverOperationalUuid(data.notificationId)
       || !isUtcInstant(data.expiresAt)
       || Object.keys(data).some((key) => !['schemaVersion', 'kind', 'notificationId', 'expiresAt'].includes(key))) {
       return null;

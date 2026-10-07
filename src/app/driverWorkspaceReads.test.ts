@@ -9,6 +9,7 @@ import * as events from '../api/dsvDriverEvents';
 import type { DriverDeliveryRoute } from '../api/dsvDriverRoute';
 import * as plan from '../domain/delivery/deliveryPlan';
 import * as commandQueue from '../domain/delivery/driverCommandQueue';
+import * as executionState from '../domain/delivery/deliveryExecutionState';
 import { DriverOperationalApiError, type DriverExecutionContext } from '../api/dsvDriverOperational';
 
 type Props = Parameters<typeof import('../ui/driver/DriverWorkspace')['DriverWorkspace']>[0];
@@ -41,6 +42,9 @@ export function workspaceHarness(overrides: {
   commands?: unknown;
   storedCommands?: { current: commandQueue.DriverQueuedCommand[] };
   storage?: Map<string, string>;
+  executionLock?: { current: boolean };
+  realExecution?: boolean;
+  proofApi?: Record<string, unknown>;
 } = {}) {
   const slots: unknown[] = [];
   type Effect = { deps: unknown[]; cleanup?: void | (() => void) };
@@ -50,6 +54,8 @@ export function workspaceHarness(overrides: {
   let dirty = false;
   let active = true;
   let execution!: Execution;
+  let controller: ReturnType<typeof import('../ui/driver/DeliveryExecutionActions')['useDeliveryExecution']> | undefined;
+  let dialog: { actions?: { label: string; onPress?(): void }[] } | undefined;
   let tree: unknown;
   let lateWrites = 0;
   let uuidCounter = 0;
@@ -72,6 +78,17 @@ export function workspaceHarness(overrides: {
           if (!Object.is(next, slots[i])) { slots[i] = next; dirty = true; }
         }];
       },
+      useReducer: (reducer: (state: unknown, event: unknown) => unknown, initial: unknown) => {
+        const i = index++; if (!(i in slots)) slots[i] = initial;
+        return [slots[i], (event: unknown) => { const next = reducer(slots[i], event);
+          if (!Object.is(next, slots[i])) { slots[i] = next; dirty = true; }
+        }];
+      },
+      useCallback: (callback: unknown, deps: unknown[]) => {
+        const i = index++; const old = slots[i] as { callback: unknown; deps: unknown[] } | undefined;
+        if (!same(old?.deps, deps)) slots[i] = { callback, deps };
+        return (slots[i] as { callback: unknown }).callback;
+      },
       useEffect: (setup: () => void | (() => void), deps: unknown[]) => {
         const i = index++; const old = effects.get(i);
         if (!same(old?.deps, deps)) pending.push(() => { old?.cleanup?.(); effects.set(i, { deps, cleanup: setup() }); });
@@ -89,7 +106,7 @@ export function workspaceHarness(overrides: {
       removeItem: async (key: string) => { storage.delete(key); },
     } },
     '../../api/dsvDriverEvents': events,
-    '../../api/dsvDriverProofMedia': {},
+    '../../api/dsvDriverProofMedia': { ...overrides.proofApi },
     '../../api/dsvDriverRoute': {
       DriverRouteApiError: class extends Error {}, loadDriverDeliveryRouteChoices: async () => [choice],
       loadDriverCompletedRouteHistory: async () => [], loadDriverDeliveryRoute: async () => loadedRoute,
@@ -107,12 +124,35 @@ export function workspaceHarness(overrides: {
     './DeliveryScreen': { DeliveryScreen: 'DeliveryScreen' },
     './DeliveryMapScreen': { DeliveryMapScreen: 'DeliveryMapScreen' },
     './DriverDeliveryException': { DriverDeliveryException: 'DriverDeliveryException' },
-    './AppDialog': { useAppDialog: () => ({ dialog: null, showDialog: () => undefined }) },
+    './AppDialog': { useAppDialog: () => ({ dialog: null, showDialog: (value: typeof dialog) => { dialog = value; } }) },
     './DeliveryExecutionActions': { DeliveryExecutionOverlay: 'Overlay', useDeliveryExecution: (options: Execution) => {
-      execution = options; return { isLocked: false };
+      execution = options; return { isLocked: overrides.executionLock?.current ?? false };
     } },
     './DriverRefreshControl': {}, './DriverSettingsModal': {}, './DeliverySpaceScreen': {},
   };
+  const react = dependencies.react as { useEffect: unknown; useLayoutEffect?: unknown };
+  react.useLayoutEffect = react.useEffect;
+  if (overrides.realExecution) {
+    dependencies['../../domain/delivery/deliveryExecutionState'] = executionState;
+    dependencies['../../platform/destinationMap'] = { openDestinationMap: async () => undefined };
+    dependencies['./DeliveryProofModal'] = { DeliveryProofModal: 'DeliveryProofModal' };
+    const dialogModule = { exports: {} };
+    runInNewContext(ts.transpileModule(readFileSync(new URL('../ui/driver/AppDialog.tsx', import.meta.url), 'utf8'), { compilerOptions: {
+      module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
+    } }).outputText, { module: dialogModule, exports: dialogModule.exports,
+      require: (name: string) => { assert.ok(name in dependencies); return dependencies[name]; } });
+    dependencies['./AppDialog'] = dialogModule.exports;
+    const hookSource = readFileSync(new URL('../ui/driver/DeliveryExecutionActions.tsx', import.meta.url), 'utf8');
+    const hookModule = { exports: {} };
+    runInNewContext(ts.transpileModule(hookSource, { compilerOptions: {
+      module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
+    } }).outputText, { module: hookModule, exports: hookModule.exports, Error,
+      require: (name: string) => { assert.ok(name in dependencies, `Unexpected hook dependency: ${name}`); return dependencies[name]; } });
+    const hooks = hookModule.exports as typeof import('../ui/driver/DeliveryExecutionActions');
+    dependencies['./DeliveryExecutionActions'] = { ...hooks, useDeliveryExecution: (options: Execution) => {
+      execution = options; controller = hooks.useDeliveryExecution(options); return controller;
+    } };
+  }
   const source = readFileSync(new URL('../ui/driver/DriverWorkspace.tsx', import.meta.url), 'utf8');
   const { outputText } = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
@@ -140,6 +180,16 @@ export function workspaceHarness(overrides: {
     select(id = loadedRoute.routePlanId) { const selector = nodes(tree).find((element) => 'onSelect' in element.props);
       assert.ok(selector); (selector.props.onSelect as (id: string) => void)(id); render(); },
     get execution() { return execution; },
+    get controller() { return controller; },
+    pressDialog(label: string) {
+      if (dirty) render();
+      const live = controller?.dialog as Element | null | undefined;
+      const options = live?.props.options as typeof dialog;
+      const action = (options ?? dialog)?.actions?.find((entry) => entry.label === label);
+      assert.ok(action);
+      (live?.props.onDismiss as (() => void) | undefined)?.();
+      action.onPress?.(); dialog = undefined;
+    },
     get lateWrites() { return lateWrites; },
     unmount() { active = false; for (const effect of effects.values()) effect.cleanup?.(); },
   };

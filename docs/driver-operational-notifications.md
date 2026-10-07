@@ -35,6 +35,22 @@ FCM data는 `schemaVersion: "1"`, `kind: N01..N06`, UUID `notificationId`, UTC `
 - 로그아웃은 클릭과 native last response를 삭제한다. 계정 변경은 이전 목적지와 데이터, 진행 중 응답을 무효화한다.
 - 인증 갱신은 access token을 메모리에서 교체한다. refresh token 보관은 기존 SecureStore 계약을 따른다.
 
+알림 수신은 알림함만 갱신한다. 기존 알림의 업무 갱신과 앱 활성화의 갱신 요청은 별도로 유지한다.
+순서 편집·저장, 배송 증빙, 미배송 보고와 배송지 정보 입력 중에는 업무 조회 응답과 알림 이동을 보류한다.
+이미 진행 중인 조회도 보호 상태가 시작되면 화면에 적용하지 않는다.
+
+보류 안내의 `현재 작업 계속`은 초안과 화면을 유지하며 클릭을 pending으로 남긴다.
+`보류된 알림`을 누르면 이동 선택을 다시 연다.
+`알림으로 이동`은 이동 의사만 기록한다. 저장·전송을 완료하거나 사용자가 현재 작업을 종료할 때까지 기다린다.
+앱은 초안을 자동 폐기하거나 자동 저장하지 않는다. 안전한 시점에 서버 resolver를 다시 호출한다.
+확인한 배차와 정확한 배송지가 실제 표시된 뒤에만 OPENED와 클릭 완료를 저장한다.
+
+N06은 EXECUTION 응답과 유효한 UUID `targetStopId`를 필수로 요구한다.
+대상이 누락되거나 잘못되면 안전 안내 후 종료하며 다른 배송지나 `nextDeliveryStopId`로 대체하지 않는다.
+잘못된 N06에는 OPENED를 전송하지 않는다.
+Push와 API는 같은 UUID 검증 함수를 사용한다. 버전 1~5와 RFC variant만 허용한다.
+nil UUID와 잘못된 version/variant는 unsupported 안내로 종료한다. 영속 재시도 명령을 만들지 않는다.
+
 기존 `route-updates` Android 채널과 직접 FCM 토큰을 사용한다. 토큰 등록 응답의 `pushToken.id`를 capability의 `tokenId`로 전달한다. capability `installationId`는 토큰 등록 `deviceId`와 동일하다. 갱신된 토큰 등록 후 capability를 다시 등록한다. 권한 거부 시 토큰을 등록하지 않으며, 앱 활성화 시 권한 복구를 다시 확인한다.
 
 ## 읽기와 업무 명령

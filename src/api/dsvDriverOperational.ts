@@ -1,3 +1,4 @@
+import { isDriverOperationalUuid as isUuid } from '../domain/notifications/driverOperationalIdentity';
 import { resolveDsvApiUrl } from './dsvApiUrl';
 
 export type DriverOperationalNotificationKind = 'N01' | 'N02' | 'N03' | 'N04' | 'N05' | 'N06';
@@ -93,7 +94,6 @@ export class DriverOperationalApiError extends Error {
 
 const root = '/api/dsv/driver';
 const notifications = `${root}/operational-notifications`;
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const bigintPattern = /^[1-9]\d{0,18}$/u;
 const instantPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const commandKeys = [
@@ -107,10 +107,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function hasOnlyKeys(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
   return isObject(value) && Object.keys(value).every((key) => keys.includes(key));
-}
-
-function isUuid(value: unknown): value is string {
-  return typeof value === 'string' && uuidPattern.test(value);
 }
 
 function isPositiveBigint(value: unknown): value is string {

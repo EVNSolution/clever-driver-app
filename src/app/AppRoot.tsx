@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
@@ -80,6 +80,12 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
   const [dismissedOptionalVersionCode, setDismissedOptionalVersionCode] = useState<number | null>(null);
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
+  const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
+  const [pushRegistrationRefreshKey, setPushRegistrationRefreshKey] = useState(0);
+  const [isWorkProtected, setIsWorkProtected] = useState(false);
+  const workProtectedRef = useRef(false);
+  const workspaceVisibleRef = useRef(false);
+  const [notificationHold, setNotificationHold] = useState<{ notificationId: string; continueWorking: boolean; moveRequested: boolean }>();
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [autoLoginEnabled, setAutoLoginEnabled] = useState(true);
   const [autoLoginAttempt, setAutoLoginAttempt] = useState(0);
@@ -91,6 +97,7 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
   const isMounted = useRef(true);
   const [notificationRecovery] = useState(createExpoDriverNotificationRecovery);
   const [clickAttempt, setClickAttempt] = useState(0);
+  const [notificationRefreshId, setNotificationRefreshId] = useState<string>();
   const [notificationDestination, setNotificationDestination] = useState<DriverNotificationDestination>();
   const [notificationNotice, setNotificationNotice] = useState<{ message: string; retryable: boolean; ackOnClose?: boolean }>();
   const [pushRegistration, setPushRegistration] = useState<DriverPushRegistrationState>();
@@ -159,6 +166,8 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
       if (state === 'active') {
         void checkForAppUpdate(true);
         setNotificationRefreshKey((key) => key + 1);
+        setInboxRefreshKey((key) => key + 1);
+        setPushRegistrationRefreshKey((key) => key + 1);
       }
     });
     const interval = setInterval(() => {
@@ -187,6 +196,10 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
         await clearExpoDriverNotificationResponse();
         clickLease.current = null;
         setNotificationDestination(undefined);
+        setNotificationRefreshId(undefined);
+        setNotificationHold(undefined);
+        workProtectedRef.current = false;
+        setIsWorkProtected(false);
         setNotificationNotice(undefined);
         setIsInboxOpen(false);
       }
@@ -205,6 +218,10 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     await notificationRecovery.setAccount(null);
     clickLease.current = null;
     setNotificationDestination(undefined);
+    setNotificationRefreshId(undefined);
+    setNotificationHold(undefined);
+    workProtectedRef.current = false;
+    setIsWorkProtected(false);
     setNotificationNotice(undefined);
     setIsInboxOpen(false);
     setAutoLoginEnabled(false);
@@ -255,11 +272,14 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     void registerExpoDriverPushNotifications(authSession.accessToken).then(registrationChanged).catch(() => registrationChanged({ status: 'registration-error' }));
     const unsubscribe = subscribeToExpoDriverPushNotifications(
       authSession.accessToken,
-      () => setNotificationRefreshKey((key) => key + 1),
+      (notification) => {
+        setInboxRefreshKey((key) => key + 1);
+        if (!isDriverOperationalPushNotification(notification)) setNotificationRefreshKey((key) => key + 1);
+      },
       registrationChanged,
     );
     return () => { active = false; unsubscribe(); };
-  }, [authSession, notificationRefreshKey]);
+  }, [authSession, pushRegistrationRefreshKey]);
 
   useEffect(() => {
     if (!autoLoginEnabled) {
@@ -335,6 +355,11 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     const lease = notificationRecovery.acquirePending();
     if (lease === null) return;
     clickLease.current = lease;
+    if (workProtectedRef.current) {
+      setIsInboxOpen(false);
+      setNotificationHold({ notificationId: lease.notification.notificationId, continueWorking: false, moveRequested: false });
+      return;
+    }
     if (!DRIVER_OPERATIONAL_ENABLED && isDriverOperationalPushNotification(lease.notification)) {
       void Promise.resolve().then(() => {
         if (notificationRecovery.isCurrent(lease)) {
@@ -348,21 +373,30 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     void resolveDriverNotificationClick(lease.notification, authSession.accessToken)
       .then(async (navigation) => {
         if (!notificationRecovery.isCurrent(lease)) return;
+        if (workProtectedRef.current) {
+          setNotificationHold({ notificationId: lease.notification.notificationId, continueWorking: false, moveRequested: false });
+          return;
+        }
         setIsInboxOpen(false);
-        if (navigation.kind === 'destination') setNotificationDestination(navigation.destination);
-        else if (navigation.kind === 'notice') setNotificationNotice({ message: navigation.message, retryable: false, ackOnClose: isDriverOperationalPushNotification(lease.notification) && lease.notification.status === 'current' });
+        if (navigation.kind === 'destination') {
+          setNotificationNotice(undefined);
+          setNotificationHold(undefined);
+          setNotificationDestination(navigation.destination);
+        }
+        else if (navigation.kind === 'notice') setNotificationNotice({ message: navigation.message, retryable: false, ackOnClose: navigation.acknowledgeOpened });
         else {
+          setNotificationNotice(undefined);
+          setNotificationHold(undefined);
+          setNotificationRefreshId(lease.notification.notificationId);
           setNotificationRefreshKey((key) => key + 1);
-          const accepted = await notificationRecovery.accept(lease);
-          if (!accepted || generation !== authGeneration.current || accountIdRef.current !== lease.accountId) return;
-          await clearExpoDriverNotificationResponse().catch(() => undefined);
-          if (generation !== authGeneration.current || clickLease.current !== lease || accountIdRef.current !== lease.accountId) return;
-          clickLease.current = null;
-          setClickAttempt((value) => value + 1);
         }
       })
       .catch(async (error: unknown) => {
         if (!notificationRecovery.isCurrent(lease)) return;
+        if (workProtectedRef.current) {
+          setNotificationHold({ notificationId: lease.notification.notificationId, continueWorking: false, moveRequested: false });
+          return;
+        }
         if (error instanceof DriverOperationalApiError && error.status === 401) {
           notificationRecovery.release(lease);
           clickLease.current = null;
@@ -380,7 +414,7 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
   const acceptNotificationDestination = useCallback(async (notificationId: string) => {
     const generation = authGeneration.current;
     const lease = clickLease.current;
-    if (lease === null || authSession === null || lease.notification.notificationId !== notificationId || !notificationRecovery.isCurrent(lease)) return;
+    if (!workspaceVisibleRef.current || workProtectedRef.current || lease === null || authSession === null || lease.notification.notificationId !== notificationId || !notificationRecovery.isCurrent(lease)) return;
     try {
       if (isDriverOperationalPushNotification(lease.notification)) {
         await acknowledgeDriverOperationalNotification(authSession.accessToken, notificationId, 'OPENED');
@@ -392,6 +426,7 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
       if (generation !== authGeneration.current || clickLease.current !== lease || accountIdRef.current !== lease.accountId) return;
       clickLease.current = null;
       setNotificationDestination(undefined);
+      setNotificationRefreshId(undefined);
       setNotificationNotice(undefined);
       setClickAttempt((value) => value + 1);
     } catch {
@@ -406,13 +441,43 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
   }, [notificationRecovery]);
 
   function retryNotification() {
+    setNotificationHold(undefined);
     const lease = clickLease.current;
     if (lease !== null) notificationRecovery.release(lease);
     clickLease.current = null;
     setNotificationDestination(undefined);
+    setNotificationRefreshId(undefined);
     setNotificationNotice(undefined);
     setClickAttempt((value) => value + 1);
   }
+
+  const reportWorkProtection = useCallback((value: boolean) => {
+    workProtectedRef.current = value;
+    setIsWorkProtected(value);
+  }, []);
+
+  const deferNotificationDestination = useCallback((notificationId: string) => {
+    const lease = clickLease.current;
+    if (lease === null || lease.notification.notificationId !== notificationId || !notificationRecovery.isCurrent(lease)) return;
+    setNotificationDestination(undefined);
+    setNotificationRefreshId(undefined);
+    setNotificationHold({ notificationId, continueWorking: false, moveRequested: false });
+  }, [notificationRecovery]);
+
+  useEffect(() => {
+    if (notificationHold?.moveRequested && !isWorkProtected) {
+      const lease = clickLease.current;
+      if (lease !== null && lease.notification.notificationId === notificationHold.notificationId && notificationRecovery.isCurrent(lease)) {
+        notificationRecovery.release(lease);
+        clickLease.current = null;
+        setNotificationDestination(undefined);
+        setNotificationRefreshId(undefined);
+        setNotificationNotice(undefined);
+        setNotificationHold(undefined);
+        setClickAttempt((value) => value + 1);
+      }
+    }
+  }, [isWorkProtected, notificationHold, notificationRecovery]);
 
   const dismissNotification = useCallback(async () => {
     const lease = clickLease.current;
@@ -443,6 +508,7 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     if (!remainsCurrent()) return;
     clickLease.current = null;
     setNotificationDestination(undefined);
+    setNotificationRefreshId(undefined);
     setNotificationNotice(undefined);
     if (!notice?.retryable) {
       await clearExpoDriverNotificationResponse().catch(() => undefined);
@@ -486,6 +552,10 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     dismissedOptionalVersionCode,
     state: appUpdateState,
   });
+
+  const isWorkspaceVisible = authSession !== null && !isRestoringSession && !shouldShowAppUpdate &&
+    notificationNotice === undefined && !isInboxOpen;
+  useLayoutEffect(() => { workspaceVisibleRef.current = isWorkspaceVisible; }, [isWorkspaceVisible]);
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -564,19 +634,45 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
                 <DriverWorkspace
                   key={authSession.account.id}
                   authSession={authSession}
+                  isVisible={isWorkspaceVisible}
                   deliveryExceptionReasons={deliveryExceptionReasons}
                   notificationDestination={notificationDestination}
+                  notificationRefreshId={notificationRefreshId}
                   onNotificationDestinationAccepted={acceptNotificationDestination}
                   onNotificationDestinationRejected={rejectNotificationDestination}
+                  onNotificationDestinationDeferred={deferNotificationDestination}
+                  onWorkProtectionChange={reportWorkProtection}
                   onAuthenticationRequired={recoverCommandAuthentication}
                   onLogout={logout}
                   refreshRequestKey={notificationRefreshKey}
                 />
               </View>
+              {notificationHold !== undefined ? (
+                <View accessibilityRole="alert" style={styles.notificationHold}>
+                  {notificationHold.continueWorking ? (
+                    <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: false })}>
+                      <Text>보류된 알림</Text>
+                    </Pressable>
+                  ) : (
+                    <>
+                      <Text>알림 이동을 보류했습니다. 현재 입력과 화면을 유지합니다.</Text>
+                      <Text>{notificationHold.moveRequested
+                        ? '현재 작업을 저장하거나 종료하면 알림 목적지를 다시 확인하고 이동합니다.'
+                        : '알림으로 이동하려면 현재 작업을 저장하거나 종료해 주세요.'}</Text>
+                      <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: true, moveRequested: false })}>
+                        <Text>현재 작업 계속</Text>
+                      </Pressable>
+                      <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, moveRequested: true })}>
+                        <Text>알림으로 이동</Text>
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              ) : null}
               {notificationNotice !== undefined ? (
                 <DriverNotificationNotice message={notificationNotice.message} onClose={() => { void dismissNotification(); }} onRetry={notificationNotice.retryable ? retryNotification : undefined} />
               ) : isInboxOpen ? (
-                <DriverOperationalInbox accessToken={authSession.accessToken} key={authSession.account.id} onClose={() => setIsInboxOpen(false)} onOpen={(id) => { void openInboxNotification(id); }} />
+                <DriverOperationalInbox refreshRequestKey={inboxRefreshKey} accessToken={authSession.accessToken} key={authSession.account.id} onClose={() => setIsInboxOpen(false)} onOpen={(id) => { void openInboxNotification(id); }} />
               ) : null}
             </View>
           )}
@@ -592,6 +688,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   hiddenWorkspace: { display: 'none' },
+  notificationHold: { padding: 16, gap: 8, backgroundColor: '#fff4db' },
   inboxButton: { alignItems: 'flex-end', paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#fff' },
   safeArea: {
     flex: 1,

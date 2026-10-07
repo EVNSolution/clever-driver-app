@@ -1,7 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uuid } from 'expo-modules-core';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   BackHandler,
   Platform,
@@ -79,8 +79,10 @@ type DriverRouteGroup = 'active' | 'terminal';
 
 type DriverWorkspaceProps = {
   authSession: DriverAuthSession;
+  isVisible?: boolean;
   onLogout(): void;
   refreshRequestKey: number;
+  notificationRefreshId?: string;
   notificationDestination?: {
     notificationId: string;
     executionContextId: string;
@@ -89,18 +91,24 @@ type DriverWorkspaceProps = {
   };
   onNotificationDestinationAccepted?(notificationId: string): void;
   onNotificationDestinationRejected?(notificationId: string): void;
+  onNotificationDestinationDeferred?(notificationId: string): void;
+  onWorkProtectionChange?(isProtected: boolean): void;
   onAuthenticationRequired?(): void;
   deliveryExceptionReasons?: readonly DriverDeliveryExceptionReason[];
 };
 
 export function DriverWorkspace({
   authSession,
+  isVisible = true,
   onLogout,
   refreshRequestKey,
   notificationDestination,
+  notificationRefreshId,
   onNotificationDestinationAccepted,
   onNotificationDestinationRejected,
   onAuthenticationRequired,
+  onNotificationDestinationDeferred,
+  onWorkProtectionChange,
   deliveryExceptionReasons = [],
 }: DriverWorkspaceProps) {
   const insets = useSafeAreaInsets();
@@ -109,6 +117,11 @@ export function DriverWorkspace({
   const [isSequenceEditing, setIsSequenceEditing] = useState(false);
   const [isSequenceSaving, setIsSequenceSaving] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [hasDeliveryInput, setHasDeliveryInput] = useState(false);
+  const [hasExceptionInput, setHasExceptionInput] = useState(false);
+  const displayedNotificationRef = useRef<DriverWorkspaceProps['notificationDestination']>(undefined);
+  const displayedRefreshRef = useRef<string | undefined>(undefined);
+  const notifiedRefreshRef = useRef<string | undefined>(undefined);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const routeRef = useRef<DriverDeliveryRoute | null>(null);
   const [executionContext, setExecutionContext] = useState<DriverExecutionContext | null>(null);
@@ -154,6 +167,48 @@ export function DriverWorkspace({
     authSession.account.linkedDrivers[0]?.name ?? authSession.account.name;
   const isRouteReadOnly = route !== null &&
     routeStatusGroup(route.executionStatus) === 'terminal';
+
+  const [workProtectionRevision, setWorkProtectionRevision] = useState(0);
+  const workProtectedRef = useRef(false);
+  const protectWorkNow = useCallback(() => {
+    workProtectedRef.current = true;
+    setWorkProtectionRevision((revision) => revision + 1);
+    onWorkProtectionChange?.(true);
+  }, [onWorkProtectionChange]);
+  const reportDeliveryInput = useCallback((value: boolean) => {
+    if (value) protectWorkNow();
+    setHasDeliveryInput(value);
+  }, [protectWorkNow]);
+  const reportExceptionInput = useCallback((value: boolean) => {
+    if (value) protectWorkNow();
+    setHasExceptionInput(value);
+  }, [protectWorkNow]);
+
+  const activeDeliveryStopId = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
+    ? notificationTarget.targetStopId : route?.nextDeliveryStopId ?? null;
+  const targetOrder = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
+    ? orders.find((order) => order.id === notificationTarget.targetStopId) : undefined;
+  const deliveryExecution = useDeliveryExecution({
+    etaStatus: route?.etaStatus ?? 'READY',
+    isReadOnly: isRouteReadOnly,
+    onCompleteDelivery: completeDelivery,
+    onCompleteRoute: completeRoute,
+    onStartDelivery: startDelivery,
+    onUploadProof: uploadDeliveryProof,
+    onWorkStarted: protectWorkNow,
+    orderCount: orders.length,
+    summary: route === null
+      ? null
+      : buildCurrentDeliverySummary(orders, activeDeliveryStopId),
+  });
+
+  const isWorkProtected = isSequenceEditing || isSequenceSaving || deliveryExecution.isLocked ||
+    isRecoveringCompletion || isRetryingCommands || isDeliverySpaceOpen || isSettingsOpen ||
+    hasDeliveryInput || hasExceptionInput;
+  useLayoutEffect(() => {
+    workProtectedRef.current = isWorkProtected;
+    onWorkProtectionChange?.(isWorkProtected);
+  }, [isWorkProtected, workProtectionRevision, onWorkProtectionChange]);
 
   useEffect(() => {
     routeRef.current = route;
@@ -220,10 +275,22 @@ export function DriverWorkspace({
   }, [authSession.accessToken, authSession.account.id]);
 
   useEffect(() => {
+    notifiedRefreshRef.current = undefined;
+    if (notificationRefreshId !== undefined && isWorkProtected) {
+      onNotificationDestinationDeferred?.(notificationRefreshId);
+    }
+  }, [notificationRefreshId, isWorkProtected, onNotificationDestinationDeferred]);
+
+  useEffect(() => {
     if (notificationDestination === undefined) return;
+    if (isWorkProtected) {
+      onNotificationDestinationDeferred?.(notificationDestination.notificationId);
+      return;
+    }
+    displayedNotificationRef.current = undefined;
     let active = true;
     void Promise.resolve().then(() => {
-      if (!active) return;
+      if (!active || workProtectedRef.current) return;
       notifiedRef.current = undefined;
       setActiveTab('delivery');
       setIsDeliverySpaceOpen(false);
@@ -237,7 +304,7 @@ export function DriverWorkspace({
       setLoadAttempt((attempt) => attempt + 1);
     });
     return () => { active = false; };
-  }, [notificationDestination]);
+  }, [notificationDestination, isWorkProtected, onNotificationDestinationDeferred]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -281,7 +348,8 @@ export function DriverWorkspace({
   }, [isDeliverySpaceOpen, isSequenceEditing, isSequenceSaving]);
 
   useEffect(() => {
-    if (isSequenceSaving) return undefined;
+    // Defer reads as well as navigation: their responses replace the editing surface.
+    if (isWorkProtected) return undefined;
 
     const sequenceSaveBaseline = sequenceSaveReloadBaselineRef.current;
     if (sequenceSaveBaseline !== null) {
@@ -325,7 +393,7 @@ export function DriverWorkspace({
                 )
               )))
               .catch(() => []);
-          if (!isActive) return;
+          if (!isActive || workProtectedRef.current) return;
           const completedRoutes = historyRoutes;
           if (completedRoutes.length > 0) {
             terminalRoutesRef.current = {
@@ -345,6 +413,7 @@ export function DriverWorkspace({
           setOrders([]);
           setLoadErrorMessage(undefined);
           setLastRouteUpdatedAt(new Date());
+          displayedRefreshRef.current = notificationRefreshId;
           setLoadState(mergedRouteChoices.length === 0 ? 'empty' : 'select');
         })
       : (cachedTerminalRoute === undefined
@@ -353,7 +422,7 @@ export function DriverWorkspace({
         ).then(async (nextRoute) => {
         const contexts = DRIVER_OPERATIONAL_ENABLED
           ? await loadDriverExecutionContexts(authSession.accessToken) : [];
-        if (!isActive) return;
+        if (!isActive || workProtectedRef.current) return;
         const context = contexts.find((candidate) => candidate.routePlanId === nextRoute.routePlanId);
         const previousTarget = notificationTargetRef.current;
         if (notificationDestination === undefined && previousTarget?.routePlanId === nextRoute.routePlanId) {
@@ -412,11 +481,13 @@ export function DriverWorkspace({
         setIsSequenceEditing(false);
         setLoadErrorMessage(undefined);
         setLastRouteUpdatedAt(new Date());
+        displayedNotificationRef.current = notificationDestination;
+        displayedRefreshRef.current = notificationRefreshId;
         setLoadState('ready');
       });
 
     void routeRequest.catch((error: unknown) => {
-      if (!isActive) {
+      if (!isActive || workProtectedRef.current) {
         return;
       }
 
@@ -446,13 +517,17 @@ export function DriverWorkspace({
     loadAttempt,
     refreshRequestKey,
     selectedRoutePlanId,
-    isSequenceSaving,
+    isWorkProtected,
+    workProtectionRevision,
     notificationDestination,
+    notificationRefreshId,
     onNotificationDestinationRejected,
   ]);
 
   useEffect(() => {
-    if (loadState !== 'ready' || route === null || notificationDestination === undefined ||
+    if (!isVisible || isWorkProtected || activeTab !== 'delivery' || isDeliverySpaceOpen ||
+      loadState !== 'ready' || route === null || notificationDestination === undefined ||
+      displayedNotificationRef.current !== notificationDestination ||
       route.routePlanId !== notificationDestination.routePlanId ||
       executionContext?.executionContextId !== notificationDestination.executionContextId ||
       (notificationDestination.targetStopId !== undefined &&
@@ -460,12 +535,21 @@ export function DriverWorkspace({
       notifiedRef.current === notificationDestination.notificationId) return;
     notifiedRef.current = notificationDestination.notificationId;
     onNotificationDestinationAccepted?.(notificationDestination.notificationId);
-  }, [loadState, route, executionContext, notificationDestination, notificationTarget, onNotificationDestinationAccepted]);
+  }, [isVisible, isWorkProtected, activeTab, isDeliverySpaceOpen, loadState, route, executionContext, notificationDestination, notificationTarget, onNotificationDestinationAccepted]);
+
+  useEffect(() => {
+    if (!isVisible || isWorkProtected || notificationRefreshId === undefined ||
+      !['ready', 'select', 'empty'].includes(loadState) ||
+      displayedRefreshRef.current !== notificationRefreshId || notifiedRefreshRef.current === notificationRefreshId) return;
+    notifiedRefreshRef.current = notificationRefreshId;
+    onNotificationDestinationAccepted?.(notificationRefreshId);
+  }, [isVisible, isWorkProtected, notificationRefreshId, loadState, lastRouteUpdatedAt, onNotificationDestinationAccepted]);
 
   async function retryCommands() {
     if (isRetryingCommands || commandQueueRef.current === null) return;
     const hadPending = commandQueueRef.current.listForAccount(authSession.account.id)
       .some((command) => command.status === 'pending');
+    protectWorkNow();
     setIsRetryingCommands(true); setCommandError(undefined);
     try {
       await commandQueueRef.current.retryPending();
@@ -534,11 +618,13 @@ export function DriverWorkspace({
   function changeSequenceEditing(isEditing: boolean) {
     if (deliveryExecution.isLocked) return;
     resetRootBackPress();
+    if (isEditing) protectWorkNow();
     setIsSequenceEditing(isEditing);
   }
 
   function changeSequenceSaving(isSaving: boolean) {
     if (isSaving) {
+      protectWorkNow();
       sequenceSaveReloadBaselineRef.current = {
         loadAttempt,
         refreshRequestKey,
@@ -550,6 +636,7 @@ export function DriverWorkspace({
 
   function openDeliverySpace() {
     if (deliveryExecution.isLocked) return;
+    protectWorkNow();
     resetRootBackPress();
     setIsSequenceEditing(false);
     setIsDeliverySpaceOpen(true);
@@ -838,23 +925,6 @@ export function DriverWorkspace({
     });
   }
 
-  const activeDeliveryStopId = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
-    ? notificationTarget.targetStopId : route?.nextDeliveryStopId ?? null;
-  const targetOrder = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
-    ? orders.find((order) => order.id === notificationTarget.targetStopId) : undefined;
-  const deliveryExecution = useDeliveryExecution({
-    etaStatus: route?.etaStatus ?? 'READY',
-    isReadOnly: isRouteReadOnly,
-    onCompleteDelivery: completeDelivery,
-    onCompleteRoute: completeRoute,
-    onStartDelivery: startDelivery,
-    onUploadProof: uploadDeliveryProof,
-    orderCount: orders.length,
-    summary: route === null
-      ? null
-      : buildCurrentDeliverySummary(orders, activeDeliveryStopId),
-  });
-
   function handleLogout() {
     // Block account-scoped commands immediately; root owns session and UI teardown.
     void commandQueueRef.current?.invalidateSession().catch(() => undefined);
@@ -880,6 +950,7 @@ export function DriverWorkspace({
             accessibilityState={{ disabled: isSequenceSaving }}
             disabled={isSequenceSaving}
             onPress={() => {
+              protectWorkNow();
               resetRootBackPress();
               setIsSettingsOpen(true);
             }}
@@ -928,6 +999,7 @@ export function DriverWorkspace({
             disabled={deliveryExecution.isLocked || isRecoveringCompletion}
             onPress={() => {
               if (recoveryLockRef.current) return;
+              protectWorkNow();
               recoveryLockRef.current = true; setIsRecoveringCompletion(true);
               void completeRoute().catch((error: unknown) => {
                 if (mountedRef.current) setLoadErrorMessage(error instanceof Error ? error.message : '배차 완료 상태를 저장하지 못했습니다.');
@@ -981,6 +1053,7 @@ export function DriverWorkspace({
                 destinationName={orders.find((order) => order.id === activeDeliveryStopId)?.destinationName ?? '배송지'}
                 reasons={deliveryExceptionReasons}
                 onSubmit={reportDeliveryException}
+                onWorkProtectionChange={reportExceptionInput}
               />
             ) : null}
             {isDeliverySpaceOpen ? (
@@ -1007,6 +1080,7 @@ export function DriverWorkspace({
                 onReadDriverMessage={readDriverMessage}
                 onRefresh={refreshRoute}
                 onSequenceSavingChange={changeSequenceSaving}
+                onWorkProtectionChange={reportDeliveryInput}
                 onSaveDestinationNotes={saveDestinationNotes}
                 onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}

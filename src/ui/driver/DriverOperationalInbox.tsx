@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -7,8 +7,9 @@ import {
   type DriverOperationalInboxItem,
 } from '../../api/dsvDriverOperational';
 
-export function DriverOperationalInbox({ accessToken, onClose, onOpen }: {
+export function DriverOperationalInbox({ accessToken, onClose, onOpen, refreshRequestKey = 0 }: {
   accessToken: string;
+  refreshRequestKey?: number;
   onClose(): void;
   onOpen(notificationId: string): void;
 }) {
@@ -16,15 +17,18 @@ export function DriverOperationalInbox({ accessToken, onClose, onOpen }: {
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const loadedRefreshKeyRef = useRef(refreshRequestKey);
   const [request, setRequest] = useState<{ cursor?: string; sequence: number }>({ sequence: 0 });
 
   useEffect(() => {
     let active = true;
+    const pageCursor = loadedRefreshKeyRef.current === refreshRequestKey ? request.cursor : undefined;
     void Promise.resolve().then(() => { if (active) setLoading(true); });
-    void loadDriverOperationalInbox(accessToken, request.cursor)
+    void loadDriverOperationalInbox(accessToken, pageCursor)
       .then((page) => {
         if (!active) return;
-        setItems((previous) => request.cursor === undefined ? page.items : [
+        loadedRefreshKeyRef.current = refreshRequestKey;
+        setItems((previous) => pageCursor === undefined ? page.items : [
           ...previous, ...page.items.filter((item) => !previous.some((old) => old.id === item.id)),
         ]);
         setCursor(page.nextCursor);
@@ -33,7 +37,7 @@ export function DriverOperationalInbox({ accessToken, onClose, onOpen }: {
       .catch(() => { if (active) setError('알림을 불러오지 못했습니다. 다시 시도해 주세요.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [accessToken, request]);
+  }, [accessToken, request, refreshRequestKey]);
 
   async function markRead(id: string) {
     try {

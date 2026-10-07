@@ -84,3 +84,25 @@ it('provides a visible safe click for unsupported payload without forwarding det
     kind: 'N07', schemaVersion: '2', routePlanId: 'unsafe-route', targetStopId: 'unsafe-stop', customer: 'private',
   }), { kind: 'unsupported', notificationId: 'provider-unsupported', reason: 'UNSUPPORTED_PAYLOAD' });
 });
+
+it('aligns operational push IDs with the API UUID version and RFC variant rules', () => {
+  const payload = { kind: 'N06', schemaVersion: '1', expiresAt: '2099-10-07T01:00:00.000Z' };
+  for (const notificationId of [
+    '00000000-0000-0000-0000-000000000000',
+    '10000000-0000-0000-8000-000000000001',
+    '10000000-0000-6000-8000-000000000001',
+    '10000000-0000-4000-0000-000000000001',
+    '10000000-0000-4000-c000-000000000001',
+  ]) {
+    assert.equal(parseDriverPushNotification('provider-id', { ...payload, notificationId }), null);
+    assert.deepEqual(classifyDriverNotificationClick('provider-id', { ...payload, notificationId }), {
+      kind: 'unsupported', notificationId: 'provider-id', reason: 'UNSUPPORTED_PAYLOAD',
+    });
+  }
+  for (const version of ['1', '2', '3', '4', '5']) {
+    for (const variant of ['8', '9', 'a', 'b']) {
+      const notificationId = `10000000-0000-${version}000-${variant}000-000000000001`;
+      assert.equal(parseDriverPushNotification('provider-id', { ...payload, notificationId })?.notificationId, notificationId);
+    }
+  }
+});

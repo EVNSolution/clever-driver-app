@@ -28,6 +28,7 @@ type UseDeliveryExecutionOptions = {
     deliveryStopId: string,
     photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
   ): Promise<void>;
+  onWorkStarted?(): void;
   orderCount: number;
   summary: CurrentDeliverySummary | null;
 };
@@ -41,6 +42,7 @@ export function useDeliveryExecution({
   onUploadProof,
   orderCount,
   summary,
+  onWorkStarted,
 }: UseDeliveryExecutionOptions) {
   const { dialog, showDialog } = useAppDialog();
   const [executionState, dispatch] = useReducer(
@@ -78,12 +80,14 @@ export function useDeliveryExecution({
   function confirmDeliveryCompletion() {
     if (summary === null || isCompletionDisabled) return;
 
+    onWorkStarted?.();
     showDialog({
       actions: [
         { label: '취소', tone: 'secondary' },
         {
           onPress: () => {
             if (actionRef.current !== null || executionState.proof !== null) return;
+            onWorkStarted?.();
             actionRef.current = 'stop';
             transactionCallbacksRef.current = { onCompleteRoute, onUploadProof };
             dispatch({ type: 'STOP_COMPLETION_STARTED' });
@@ -131,6 +135,7 @@ export function useDeliveryExecution({
       actionRef.current !== null
     ) return;
 
+    onWorkStarted?.();
     actionRef.current = 'route';
     dispatch({ type: 'ROUTE_COMPLETION_STARTED' });
     void completeRoute()
@@ -171,12 +176,14 @@ export function useDeliveryExecution({
   function confirmDeliveryStart() {
     if (!canStart || actionRef.current !== null || executionState.proof !== null) return;
 
+    onWorkStarted?.();
     showDialog({
       actions: [
         { label: '취소', tone: 'secondary' },
         {
           onPress: () => {
             if (actionRef.current !== null || executionState.proof !== null) return;
+            onWorkStarted?.();
             actionRef.current = 'start';
             dispatch({ type: 'START_STARTED' });
             void onStartDelivery()
@@ -226,7 +233,7 @@ export function useDeliveryExecution({
     executionState,
     handleOpenMap,
     isCompletionDisabled,
-    isLocked: isDeliveryExecutionLocked(executionState) || actionRef.current !== null,
+    isLocked: dialog !== null || isDeliveryExecutionLocked(executionState) || actionRef.current !== null,
     shouldShowActions,
     summary,
     uploadProof,

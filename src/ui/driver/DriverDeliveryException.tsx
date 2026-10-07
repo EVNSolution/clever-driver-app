@@ -11,10 +11,12 @@ export function DriverDeliveryException({
   destinationName,
   reasons,
   onSubmit,
+  onWorkProtectionChange,
 }: {
   destinationName: string;
   reasons: readonly DriverDeliveryExceptionReason[];
   onSubmit(reasonCode: string, explanation?: string): Promise<void>;
+  onWorkProtectionChange?(isProtected: boolean): void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [reasonCode, setReasonCode] = useState<string>();
@@ -30,6 +32,20 @@ export function DriverDeliveryException({
   }, []);
   const selected = reasons.find((reason) => reason.code === reasonCode);
   const canSubmit = selected !== undefined && (!selected.requiresExplanation || explanation.trim() !== '');
+  const isWorkProtected = isOpen || isSending;
+  useEffect(() => {
+    onWorkProtectionChange?.(isWorkProtected);
+  }, [isWorkProtected, onWorkProtectionChange]);
+  useEffect(() => () => onWorkProtectionChange?.(false), [onWorkProtectionChange]);
+
+  function openReport() {
+    onWorkProtectionChange?.(true);
+    setIsOpen(true);
+  }
+
+  function closeReport() {
+    if (!sendingRef.current) setIsOpen(false);
+  }
 
   async function submit() {
     if (sendingRef.current || !canSubmit || selected === undefined || isConfirmed) return;
@@ -47,12 +63,12 @@ export function DriverDeliveryException({
 
   return (
     <View style={styles.entry}>
-      <Pressable accessibilityRole="button" disabled={reasons.length === 0} onPress={() => setIsOpen(true)}>
+      <Pressable accessibilityRole="button" disabled={reasons.length === 0} onPress={openReport}>
         <Text style={styles.buttonText}>미배송 보고</Text>
       </Pressable>
       {reasons.length === 0 ? <Text style={styles.help}>보고 사유 승인 후 사용할 수 있습니다.</Text> : null}
       {isOpen ? (
-        <Modal transparent animationType="fade" onRequestClose={() => { if (!isSending) setIsOpen(false); }}>
+        <Modal transparent animationType="fade" onRequestClose={closeReport}>
           <View style={styles.backdrop}>
             <ScrollView keyboardShouldPersistTaps="handled" style={styles.card} contentContainerStyle={styles.content}>
               <Text style={styles.title}>미배송 보고</Text>
@@ -76,7 +92,7 @@ export function DriverDeliveryException({
                   </Pressable>
                 </>
               )}
-              <Pressable accessibilityRole="button" disabled={isSending} onPress={() => setIsOpen(false)} style={styles.reason}>
+              <Pressable accessibilityRole="button" disabled={isSending} onPress={closeReport} style={styles.reason}>
                 <Text>닫기</Text>
               </Pressable>
             </ScrollView>

@@ -90,7 +90,7 @@ describe('authenticated driver screens', () => {
     assert.equal(workspace.match(/disabled=\{isSequenceSaving\}/gu)?.length, 4);
     assert.match(
       workspace,
-      /useEffect\(\(\) => \{\s+if \(isSequenceSaving\) return undefined;/u,
+      /useEffect\(\(\) => \{\s+\/\/[^\n]+\n\s+if \(isWorkProtected\) return undefined;/u,
     );
     assert.match(workspace, /sequenceSaveReloadBaselineRef/u);
     assert.match(

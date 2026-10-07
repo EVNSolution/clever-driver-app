@@ -21,7 +21,7 @@ const click: payloads.DriverNotificationClick = {
 };
 const destination: DriverNotificationResolution = {
   notificationId: ID,
-  destination: { type: 'EXECUTION', executionContextId: '31200000-0000-4000-8000-000000000002', routePlanId: 'route-A', targetStopId: 'delivery-stop-A' },
+  destination: { type: 'EXECUTION', executionContextId: '31200000-0000-4000-8000-000000000002', routePlanId: 'route-A', targetStopId: '31200000-0000-4000-8000-000000000003' },
 };
 function auth(accountId = 'account-A'): DriverAuthSession {
   return {
@@ -49,7 +49,7 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 // Executes production AppRoot effects/handlers and the real identity coordinator.
 // Native layout, FCM delivery, and OS process launch still require device evidence.
-function appRootHarness(options: {
+export function appRootHarness(options: {
   storage?: ReturnType<typeof memoryStorage>;
   coldClick?: payloads.DriverNotificationClick;
   resolver?: (token: string, id: string) => Promise<DriverNotificationResolution>;
@@ -77,6 +77,7 @@ function appRootHarness(options: {
   let lateWrites = 0;
   let active = true;
   let onClick: ((notification: payloads.DriverNotificationClick) => void) | undefined;
+  let onReceipt: ((notification: payloads.DriverPushNotification) => void) | undefined;
   let onBack: (() => boolean) | undefined;
   let onActive: ((state: string) => void) | undefined;
   let authenticate: ((session: DriverAuthSession) => Promise<void>) | undefined;
@@ -137,7 +138,7 @@ function appRootHarness(options: {
         if (options.coldClick) callback?.(options.coldClick);
         return () => { onClick = undefined; };
       },
-      subscribeToExpoDriverPushNotifications: () => () => undefined,
+      subscribeToExpoDriverPushNotifications: (_token: string, callback: typeof onReceipt) => { onReceipt = callback; return () => { onReceipt = undefined; }; },
       revokeExpoDriverPushNotifications: async () => undefined,
       clearExpoDriverNotificationResponse: async () => { clearedNativeResponses += 1; await options.clearNativeResponse?.(); },
     },
@@ -159,6 +160,8 @@ function appRootHarness(options: {
       }),
     },
   };
+  const react = dependencies.react as { useEffect: unknown; useLayoutEffect?: unknown };
+  react.useLayoutEffect = react.useEffect;
   const source = readFileSync(new URL('./AppRoot.tsx', import.meta.url), 'utf8');
   const { outputText } = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
@@ -199,6 +202,7 @@ function appRootHarness(options: {
       const button = nodes(tree).find((element) => element.type === 'Pressable' && nodes(element.props.children).some((child) => child.type === 'Text' && child.props.children === text));
       assert.ok(button); (button.props.onPress as () => void)();
     },
+    receive(notification = click as payloads.DriverPushNotification) { assert.ok(onReceipt); onReceipt(notification); },
     foreground() { assert.ok(onActive); onActive('active'); },
     fireAuthRefresh() {
       const entry = [...timeouts.entries()].find(([, timer]) => timer.delay === 2_147_000_000);
@@ -230,7 +234,7 @@ describe('Driver AppRoot synthetic click and authentication flow', () => {
     assert.equal(h.resolutions.length, 1);
     resolution.resolve(destination); await h.settle();
     const workspace = h.workspace(); assert.ok(workspace);
-    assert.equal(workspace.notificationDestination?.targetStopId, 'delivery-stop-A');
+    assert.equal(workspace.notificationDestination?.targetStopId, '31200000-0000-4000-8000-000000000003');
     assert.equal(workspace.notificationDestination?.routePlanId, 'route-A');
     assert.equal(h.acknowledgements.length, 0);
     assert.match(h.storage.snapshot()[0]!, /pending.*N06/u);
@@ -271,7 +275,7 @@ describe('Driver AppRoot synthetic click and authentication flow', () => {
     const restarted = appRootHarness({ storage: h.storage });
     restarted.render(); await restarted.settle(); await restarted.login();
     assert.equal(restarted.resolutions.length, 1);
-    assert.equal(restarted.workspace()?.notificationDestination?.targetStopId, 'delivery-stop-A');
+    assert.equal(restarted.workspace()?.notificationDestination?.targetStopId, '31200000-0000-4000-8000-000000000003');
     assert.equal(restarted.acknowledgements.length, 0);
     restarted.unmount();
   });
@@ -374,7 +378,7 @@ it('recovers a resolver 401 and retries the same click with the renewed account 
   assert.deepEqual(h.resolutions, [
     { token: 'account-A-access', id: ID }, { token: 'account-A-renewed-access', id: ID },
   ]);
-  assert.equal(h.workspace()?.notificationDestination?.targetStopId, 'delivery-stop-A');
+  assert.equal(h.workspace()?.notificationDestination?.targetStopId, '31200000-0000-4000-8000-000000000003');
   assert.equal(h.acknowledgements.length, 0);
   await h.workspace()?.onNotificationDestinationAccepted?.(ID); await h.settle();
   assert.deepEqual(h.acknowledgements, [{ token: 'account-A-renewed-access', id: ID, kind: 'OPENED' }]);
@@ -438,7 +442,7 @@ it('keeps account-B destination while account-A N03 acknowledgement finishes lat
     acknowledge: async (token) => { if (token === 'account-A-access') await oldAck.promise; },
     resolver: async (token, id) => token === 'account-A-access'
       ? { notificationId: id, destination: { type: 'ASSIGNMENT_RELEASED' } }
-      : { notificationId: id, destination: { type: 'EXECUTION', executionContextId: 'context-B', routePlanId: 'route-B', targetStopId: 'delivery-stop-B' } },
+      : { notificationId: id, destination: { type: 'EXECUTION', executionContextId: 'context-B', routePlanId: 'route-B', targetStopId: '31200000-0000-4000-8000-000000000004' } },
   });
   h.render(); await h.settle(); await h.login();
   const notice = h.find('Notice'); assert.ok(notice);
@@ -477,7 +481,7 @@ it('does not clear account-B destination when account-A native-response cleanup 
     clearNativeResponse: async () => { if (++clears === 1) await oldClear.promise; },
     resolver: async (token, id) => ({ notificationId: id, destination: {
       type: 'EXECUTION', executionContextId: token === 'account-B-access' ? 'context-B' : 'context-A',
-      routePlanId: token === 'account-B-access' ? 'route-B' : 'route-A', targetStopId: token === 'account-B-access' ? 'delivery-stop-B' : 'delivery-stop-A',
+      routePlanId: token === 'account-B-access' ? 'route-B' : 'route-A', targetStopId: token === 'account-B-access' ? '31200000-0000-4000-8000-000000000004' : '31200000-0000-4000-8000-000000000003',
     } }),
   });
   h.render(); await h.settle(); await h.login(); h.click(); await h.settle();
@@ -507,4 +511,59 @@ it('closes inbox and release notice with Android back while retaining the worksp
   assert.equal(h.find('Notice'), undefined); assert.ok(h.workspace());
   assert.equal(h.acknowledgements.length, 1);
   h.unmount();
+});
+
+
+it('refreshes only the inbox when an operational notification arrives in foreground', async () => {
+  const h = appRootHarness(); h.render(); await h.settle(); await h.login();
+  const before = h.workspace()?.refreshRequestKey;
+  h.receive(); await h.settle();
+  assert.equal(h.workspace()?.refreshRequestKey, before);
+  assert.equal(h.resolutions.length, 0);
+  assert.equal(h.acknowledgements.length, 0);
+  h.unmount();
+});
+
+it('ends malformed N06 and unsupported UUID clicks without OPENED or restart retries', async () => {
+  for (const malformed of [true, false]) {
+    const notification = malformed ? click : payloads.classifyDriverNotificationClick('provider-invalid-uuid', {
+      kind: 'N06', schemaVersion: '1', notificationId: '00000000-0000-0000-0000-000000000000', expiresAt: click.expiresAt,
+    });
+    const h = appRootHarness({ coldClick: notification, resolver: async () => ({
+      ...destination, destination: { type: 'EXECUTION', executionContextId: destination.destination.type === 'EXECUTION' ? destination.destination.executionContextId : '', routePlanId: 'route-A' },
+    }) });
+    h.render(); await h.settle(); await h.login();
+    const notice = h.find('Notice'); assert.ok(notice);
+    assert.equal(h.workspace()?.notificationDestination, undefined);
+    assert.equal(notice.props.onRetry, undefined);
+    (notice.props.onClose as () => void)(); await h.settle();
+    assert.equal(h.acknowledgements.length, 0);
+    assert.equal(JSON.parse(h.storage.snapshot()[0]!).pending.length, 0);
+    h.unmount();
+    const restarted = appRootHarness({ storage: h.storage });
+    restarted.render(); await restarted.settle(); await restarted.login();
+    assert.equal(restarted.resolutions.length, 0);
+    assert.equal(restarted.find('Notice'), undefined);
+    restarted.unmount();
+  }
+});
+
+it('keeps legacy clicks pending until the refreshed destination is visible', async () => {
+  for (const kind of ['route_changed', 'bundle_handoff'] as const) {
+    const h = appRootHarness(); h.render(); await h.settle(); await h.login();
+    h.click(kind === 'route_changed' ? { kind, notificationId: `provider-${kind}` } : { kind, notificationId: `provider-${kind}`, handoffRequestId: 'handoff-A' }); await h.settle();
+    assert.equal(h.resolutions.length, 0);
+    assert.equal(h.acknowledgements.length, 0);
+    assert.equal(h.workspace()?.notificationRefreshId, `provider-${kind}`);
+    assert.equal(JSON.parse(h.storage.snapshot()[0]!).pending.length, 1);
+    h.pressText('알림함'); await h.settle();
+    await h.workspace()?.onNotificationDestinationAccepted?.(`provider-${kind}`); await h.settle();
+    assert.equal(JSON.parse(h.storage.snapshot()[0]!).pending.length, 1);
+    (h.find('Inbox')!.props.onClose as () => void)(); await h.settle();
+    await h.workspace()?.onNotificationDestinationAccepted?.(`provider-${kind}`); await h.settle();
+    assert.equal(JSON.parse(h.storage.snapshot()[0]!).pending.length, 0);
+    assert.equal(h.acknowledgements.length, 0);
+    assert.equal(h.clearedNativeResponses, 1);
+    h.unmount();
+  }
 });
