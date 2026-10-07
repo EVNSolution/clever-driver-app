@@ -36,6 +36,7 @@ describe('DSV driver proof media API client', () => {
       {
         deliveryStopId: 'stop-1',
         fileName: 'proof.jpg',
+        idempotencyKey: 'proof-media-v1:0123456789abcdef0123456789abcdef',
         mimeType: 'image/jpeg',
         routePlanId: 'route-1',
         source: 'library',
@@ -62,5 +63,22 @@ describe('DSV driver proof media API client', () => {
     assert.equal(body.get('deliveryStopId'), 'stop-1');
     assert.equal(body.get('routePlanId'), 'route-1');
     assert.equal(body.get('source'), 'library');
+  });
+
+  it('retains the selected photo idempotency key across a stored response loss', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    const keys: unknown[] = [];
+    const input = { deliveryStopId: 'stop-1', fileName: 'proof.jpg', mimeType: 'image/jpeg', routePlanId: 'route-1', source: 'library' as const, uri: 'file:///proof.jpg', idempotencyKey: 'proof-media-v1:0123456789abcdef0123456789abcdef' };
+    const runtime = {
+      file: new Blob(['proof'], { type: 'image/jpeg' }),
+      fetch: async (_url: string, request: RequestInit) => {
+        keys.push((request.headers as Record<string, string>)['Idempotency-Key']);
+        if (keys.length === 1) throw new Error('stored response lost');
+        return new Response(JSON.stringify({ data: { mediaId: 'original-media' } }));
+      },
+    };
+    await assert.rejects(uploadDriverProofPhoto('route-token', input, runtime), /stored response lost/u);
+    assert.equal((await uploadDriverProofPhoto('route-token', input, runtime)).mediaId, 'original-media');
+    assert.deepEqual(keys, [input.idempotencyKey, input.idempotencyKey]);
   });
 });

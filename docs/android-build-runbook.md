@@ -1,5 +1,9 @@
 # Android APK 빌드 런북
 
+> **먼저 읽기:** 8GB Mac에서 Android 네이티브 빌드를 실행하거나 빌드가
+> 10분을 넘었다면 [`android-build-lesson-8gb-mac.md`](./android-build-lesson-8gb-mac.md)의
+> 중지 기준과 메모리 회복 확인 절차를 먼저 적용한다.
+
 ## 목적
 
 CLEVER Driver의 Android APK를 동일한 소스와 서명으로 반복 가능하게 만들면서
@@ -75,6 +79,10 @@ npm run release:android:drive
 빌드 명령은 다음 조건을 정본으로 유지한다.
 
 - Expo prebuild와 Gradle 모두에 `NODE_ENV=production` 적용
+- 생성 mode 전환 또는 관리된 격리 tree의 Firebase 잔존 때만 clean prebuild 적용
+- marker 없는 기존 release tree는 nonclean 생성 후 package·manifest·Firebase hash 검증
+- 같은 mode에서는 nonclean prebuild와 Gradle Build Cache 유지
+- 업무용 release 명령은 격리 flag, 운영 flag와 API override를 제거한다. 이 명령은 custom API 주소를 허용하지 않는다.
 - Expo prebuild의 암묵적 패키지 설치 차단
 - Gradle 로컬 Build Cache 활성화
 - 실제 기기용 `armeabi-v7a`, `arm64-v8a`만 빌드

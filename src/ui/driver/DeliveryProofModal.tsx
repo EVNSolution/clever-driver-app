@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { uuid } from 'expo-modules-core';
 import { type ReactNode, useState } from 'react';
 import {
   ActivityIndicator,
@@ -6,8 +7,10 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +19,10 @@ import type {
   DriverProofPhotoSource,
   DriverProofPhotoUpload,
 } from '../../api/dsvDriverProofMedia';
+import {
+  formatDeliveryCompletionTime,
+  resolveDeliveryCompletionOccurredAt,
+} from '../../domain/delivery/deliveryCompletionTime';
 import { useAppDialog } from './AppDialog';
 
 const MAX_PROOF_PHOTO_BYTES = 10 * 1024 * 1024;
@@ -27,25 +34,43 @@ type SelectedProofPhoto = Omit<
 
 type DeliveryProofModalProps = {
   destinationName: string;
+  savedCompletionOccurredAt: string | null;
+  submittedCompletionOccurredAt?: string;
+  requiresAssignmentRefresh?: boolean;
   executionDialog?: ReactNode;
+  protectedNotificationOverlay?: ReactNode;
   executionPending?: boolean;
   onClose(): void;
-  onUpload(photo: SelectedProofPhoto): Promise<void>;
+  onConfirm(occurredAt: string, photo: SelectedProofPhoto | null): Promise<void>;
 };
 
 export function DeliveryProofModal({
   destinationName,
+  savedCompletionOccurredAt,
+  submittedCompletionOccurredAt,
+  requiresAssignmentRefresh = false,
   executionDialog,
+  protectedNotificationOverlay,
   executionPending = false,
   onClose,
-  onUpload,
+  onConfirm,
 }: DeliveryProofModalProps) {
   const { dialog, showDialog } = useAppDialog();
   const insets = useSafeAreaInsets();
-  const [isUploading, setIsUploading] = useState(false);
+  const [openedAt] = useState(() => new Date());
+  const [completionTime, setCompletionTime] = useState(
+    () => formatDeliveryCompletionTime(openedAt),
+  );
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedProofPhoto | null>(null);
+  const lockedCompletionOccurredAt = savedCompletionOccurredAt ?? submittedCompletionOccurredAt ?? null;
+  const canClose = !executionPending && !(submittedCompletionOccurredAt !== undefined && savedCompletionOccurredAt === null);
+  const canEditCompletionTime = !executionPending && lockedCompletionOccurredAt === null;
+  const displayedCompletionTime = lockedCompletionOccurredAt === null
+    ? completionTime
+    : formatDeliveryCompletionTime(new Date(lockedCompletionOccurredAt));
 
   async function selectPhoto(source: DriverProofPhotoSource) {
+    if (requiresAssignmentRefresh) return;
     try {
       if (source === 'camera') {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -94,6 +119,7 @@ export function DeliveryProofModal({
       }
 
       setSelectedPhoto({
+        idempotencyKey: `proof-media-v1:${uuid.v4().replace(/-/gu, '')}`,
         fileName: asset.fileName ?? `delivery-proof-${Date.now()}.jpg`,
         mimeType: asset.mimeType ?? 'image/jpeg',
         source,
@@ -108,46 +134,44 @@ export function DeliveryProofModal({
     }
   }
 
-  async function uploadPhoto() {
-    if (selectedPhoto === null || isUploading) return;
+  function updateCompletionTime(value: string) {
+    const digits = value.replace(/\D/gu, '').slice(0, 4);
+    setCompletionTime(
+      digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits,
+    );
+  }
 
-    setIsUploading(true);
-    try {
-      await onUpload(selectedPhoto);
+  async function confirmCompletion() {
+    if (executionPending || requiresAssignmentRefresh) return;
+    const occurredAt = lockedCompletionOccurredAt
+      ?? resolveDeliveryCompletionOccurredAt(completionTime, openedAt);
+    if (occurredAt === null) {
       showDialog({
-        actions: [{ label: '확인', onPress: onClose, tone: 'primary' }],
-        dismissible: false,
-        message: '배송 증빙 사진을 저장했습니다.',
-        title: '증빙 업로드 완료',
-        tone: 'success',
+        message: '완료 시간을 24시간 형식으로 입력해 주세요. 예: 14:30',
+        title: '완료 시간을 확인해 주세요',
+        tone: 'warning',
       });
-    } catch (error) {
-      showDialog({
-        message: error instanceof Error
-          ? error.message
-          : '배송 증빙 사진을 업로드하지 못했습니다.',
-        title: '증빙 업로드 실패',
-        tone: 'danger',
-      });
-    } finally {
-      setIsUploading(false);
+      return;
     }
+
+    await onConfirm(occurredAt, selectedPhoto);
   }
 
   return (
     <Modal
       animationType="slide"
-      onRequestClose={isUploading || executionPending ? undefined : onClose}
+      onRequestClose={() => { if (canClose) onClose(); }}
       transparent
       visible
     >
       <View style={styles.backdrop}>
         <Pressable
           accessibilityLabel="배송 증빙 닫기"
-          disabled={isUploading || executionPending}
+          disabled={!canClose}
           onPress={onClose}
           style={StyleSheet.absoluteFill}
         />
+        {protectedNotificationOverlay}
         <View
           accessibilityViewIsModal
           style={[
@@ -156,32 +180,65 @@ export function DeliveryProofModal({
           ]}
         >
           <View style={styles.handle} />
-          <Text style={styles.title}>배송 증빙 추가</Text>
-          <Text numberOfLines={2} style={styles.description}>
-            {destinationName} 배송을 완료했습니다. 사진을 남겨 주세요.
+          <Text style={styles.title}>배송 완료</Text>
+          <Text style={styles.description}>
+            {destinationName}의 완료 시간과 증빙을 확인해 주세요.
           </Text>
 
-          {selectedPhoto === null ? (
-            <View style={styles.emptyPreview}>
-              <Text style={styles.emptyPreviewIcon}>▧</Text>
-              <Text style={styles.emptyPreviewText}>등록된 사진이 없습니다</Text>
+          <ScrollView
+            contentContainerStyle={styles.scrollBodyContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+            style={styles.scrollBody}
+          >
+            <View style={styles.timeSection}>
+              <View style={styles.timeHeading}>
+                <Text style={styles.sectionLabel}>완료 시간</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!canEditCompletionTime}
+                  onPress={() => setCompletionTime(formatDeliveryCompletionTime(new Date()))}
+                >
+                  <Text style={styles.nowButtonText}>현재 시간</Text>
+                </Pressable>
+              </View>
+              <TextInput
+                accessibilityLabel="배송 완료 시간"
+                editable={canEditCompletionTime}
+                keyboardType="number-pad"
+                maxLength={5}
+                onChangeText={updateCompletionTime}
+                placeholder={formatDeliveryCompletionTime(openedAt)}
+                selectTextOnFocus
+                style={styles.timeInput}
+                value={displayedCompletionTime}
+              />
+              <Text style={styles.timeHint}>
+                {lockedCompletionOccurredAt === null
+                  ? '24시간 형식 · 시:분'
+                  : savedCompletionOccurredAt === null
+                    ? '요청한 완료 시간을 유지합니다.'
+                    : '완료 시간이 저장되었습니다.'}
+              </Text>
             </View>
-          ) : (
-            <Image
-              accessibilityLabel="선택한 배송 증빙 사진"
-              resizeMode="cover"
-              source={{ uri: selectedPhoto.uri }}
-              style={styles.preview}
-            />
-          )}
 
-          {executionPending ? (
-            <View accessibilityLiveRegion="polite" style={styles.executionPending}>
-              <ActivityIndicator color="#0b57d0" size="small" />
-              <Text style={styles.executionPendingText}>배차 완료 저장 중</Text>
-            </View>
-          ) : (
-            <>
+            <Text style={styles.sectionLabel}>배송 증빙 사진 · 선택</Text>
+
+            {selectedPhoto === null ? (
+              <View style={styles.emptyPreview}>
+                <Text style={styles.emptyPreviewIcon}>▧</Text>
+                <Text style={styles.emptyPreviewText}>등록된 사진이 없습니다</Text>
+              </View>
+            ) : (
+              <Image
+                accessibilityLabel="선택한 배송 증빙 사진"
+                resizeMode="cover"
+                source={{ uri: selectedPhoto.uri }}
+                style={styles.preview}
+              />
+            )}
+
+            {!executionPending && !requiresAssignmentRefresh ? (
               <View style={styles.sourceActions}>
                 <ProofSourceButton
                   icon="●"
@@ -194,38 +251,52 @@ export function DeliveryProofModal({
                   onPress={() => void selectPhoto('library')}
                 />
               </View>
+            ) : null}
+          </ScrollView>
 
-              {selectedPhoto === null ? (
+          <View style={styles.footer}>
+            {executionPending ? (
+              <View accessibilityLiveRegion="polite" style={styles.executionPending}>
+                <ActivityIndicator color="#0b57d0" size="small" />
+                <Text style={styles.executionPendingText}>배송 완료 처리 중</Text>
+              </View>
+            ) : requiresAssignmentRefresh ? (
+              <>
+                <Text style={styles.assignmentRefreshHint}>현재 배정을 확인한 뒤 증빙을 등록해 주세요.</Text>
                 <Pressable
                   accessibilityRole="button"
+                  onPress={onClose}
+                  style={[styles.uploadButton, styles.assignmentRefreshButton]}
+                >
+                  <Text style={styles.uploadButtonText}>닫고 배정 확인</Text>
+                </Pressable>
+              </>
+            ) : (
+              <View style={styles.completionActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!canClose}
                   onPress={onClose}
                   style={({ pressed }) => [
                     styles.closeButton,
                     pressed && styles.buttonPressed,
                   ]}
                 >
-                  <Text style={styles.closeButtonText}>나중에 등록</Text>
+                  <Text style={styles.closeButtonText}>취소</Text>
                 </Pressable>
-              ) : (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityState={{ busy: isUploading, disabled: isUploading }}
-                  disabled={isUploading}
-                  onPress={() => void uploadPhoto()}
+                  onPress={() => void confirmCompletion()}
                   style={({ pressed }) => [
                     styles.uploadButton,
                     pressed && styles.buttonPressed,
                   ]}
                 >
-                  {isUploading ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.uploadButtonText}>증빙 사진 업로드</Text>
-                  )}
+                  <Text style={styles.uploadButtonText}>완료 확정</Text>
                 </Pressable>
-              )}
-            </>
-          )}
+              </View>
+            )}
+          </View>
         </View>
       </View>
       {executionDialog}
@@ -268,6 +339,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    maxHeight: '92%',
     paddingBottom: 24,
     paddingHorizontal: 20,
     paddingTop: 10,
@@ -291,6 +363,58 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 19,
     marginTop: 6,
+  },
+  scrollBody: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  scrollBodyContent: {
+    paddingBottom: 4,
+  },
+  timeSection: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 16,
+    marginTop: 18,
+    padding: 14,
+  },
+  timeHeading: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  sectionLabel: {
+    color: '#344054',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  nowButtonText: {
+    color: '#0b57d0',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  timeInput: {
+    backgroundColor: '#ffffff',
+    borderColor: '#bfdbfe',
+    borderRadius: 12,
+    borderWidth: 1,
+    color: '#101828',
+    fontSize: 24,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '900',
+    height: 52,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    textAlign: 'center',
+  },
+  timeHint: {
+    color: '#667085',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 6,
+    textAlign: 'center',
   },
   emptyPreview: {
     alignItems: 'center',
@@ -326,6 +450,21 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 14,
   },
+  footer: {
+    backgroundColor: '#ffffff',
+    paddingTop: 14,
+  },
+  assignmentRefreshHint: {
+    color: '#667085',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  assignmentRefreshButton: {
+    alignSelf: 'stretch',
+    flex: 0,
+  },
   sourceButton: {
     alignItems: 'center',
     backgroundColor: '#eff6ff',
@@ -349,9 +488,12 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     alignItems: 'center',
+    borderColor: '#d0d5dd',
+    borderRadius: 14,
+    borderWidth: 1,
+    flex: 1,
     height: 48,
     justifyContent: 'center',
-    marginTop: 12,
   },
   closeButtonText: {
     color: '#667085',
@@ -362,9 +504,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#0b57d0',
     borderRadius: 14,
+    flex: 1.5,
     height: 52,
     justifyContent: 'center',
-    marginTop: 12,
   },
   uploadButtonText: {
     color: '#ffffff',
@@ -377,7 +519,11 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: 'center',
     minHeight: 52,
-    marginTop: 14,
+  },
+  completionActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
   },
   executionPendingText: {
     color: '#0b57d0',
