@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
@@ -99,6 +100,52 @@ test('keeps signed iOS candidates on reviewed EAS profiles', () => {
   assert.equal(easConfig.build.production.distribution, 'store');
   assert.equal(easConfig.build.production.credentialsSource, 'remote');
   assert.equal(easConfig.submit.production.ios.ascAppId, '6806955523');
+});
+
+test('keeps the Android integration candidate isolated from the business install and Firebase', () => {
+  const require = createRequire(import.meta.url);
+  const configPath = require.resolve('../../app.config.js');
+  const previous = process.env.CLEVER_DRIVER_ISOLATED_ANDROID;
+
+  try {
+    delete process.env.CLEVER_DRIVER_ISOLATED_ANDROID;
+    delete require.cache[configPath];
+    const productionConfig = require(configPath) as {
+      android: {
+        googleServicesFile?: string;
+        package: string;
+        usesCleartextTraffic?: boolean;
+      };
+      name: string;
+    };
+    assert.equal(productionConfig.name, 'CLEVER Driver');
+    assert.equal(productionConfig.android.package, 'com.evnsolution.clever.driver');
+    assert.equal(productionConfig.android.googleServicesFile, './.private/google-services.json');
+    assert.equal(productionConfig.android.usesCleartextTraffic, undefined);
+
+    process.env.CLEVER_DRIVER_ISOLATED_ANDROID = 'true';
+    delete require.cache[configPath];
+    const isolatedConfig = require(configPath) as {
+      android: {
+        googleServicesFile?: string;
+        package: string;
+        usesCleartextTraffic?: boolean;
+      };
+      name: string;
+    };
+
+    assert.equal(isolatedConfig.name, 'CLEVER Driver Integration');
+    assert.equal(
+      isolatedConfig.android.package,
+      'com.evnsolution.clever.driver.integration',
+    );
+    assert.equal(isolatedConfig.android.usesCleartextTraffic, true);
+    assert.equal(isolatedConfig.android.googleServicesFile, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.CLEVER_DRIVER_ISOLATED_ANDROID;
+    else process.env.CLEVER_DRIVER_ISOLATED_ANDROID = previous;
+    delete require.cache[configPath];
+  }
 });
 
 test('keeps Google Play submissions on internal testing until promotion', () => {
