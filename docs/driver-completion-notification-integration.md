@@ -1,11 +1,151 @@
 # DSV Driver 배송 완료·알림 통합 검증
 
-검증일: 2026-10-07, Asia/Seoul. Target: Driver #63. Change-control: #312.
+최종 실행 검증일: 2026-10-08, Asia/Seoul. Target: Driver #63. Change-control: #312.
 
-이 문서의 기존 실기기 결과는 `eb9264b4` 실행 소스의 이력이다.
-후속 관리 검토에서 확정 완료 거절 후 화면 잠금 H1을 발견했다.
-현재 후보의 인수 판정은 보류한다. H1 수정과 새 격리 검증 결과를 아래에 별도로 기록한다.
-Issue62의 npm audit 차단은 유지한다. 이 결과는 운영 출시 승인이 아니다.
+현재 실행 후보는 `f5609529a00d9a39ea12ad81319183e5de5bac20`이다.
+PR61과 PR64를 결합한 Draft PR65에 H1 수정과 실기기 footer 수정을 포함했다.
+Issue62의 npm audit 차단은 유지한다. 운영 출시 판정은 하지 않았다.
+이 문서 이후 문서만 수정한 HEAD는 PR에 별도로 기록한다. APK 소스 SHA와 구분한다.
+
+## 현재 후보와 연결 기준
+
+| 대상 | SHA / 연결 |
+|---|---|
+| [Driver 통합 Draft PR65](https://github.com/EVNSolution/clever-driver-app/pull/65) 실행 소스 | `f5609529a00d9a39ea12ad81319183e5de5bac20` |
+| [서버 최소 계약 Draft PR487](https://github.com/EVNSolution/clever-route-server/pull/487) | `18ea784934ec3cf511f56646b708d141617c404b` |
+| 보존한 Driver PR61 | `a7959e5a84393d7dc57e2caa654ea2f8edad202c` |
+| 보존한 Driver PR64 | `6e2db49e0415786c018762a26a6b136bcef5b743` |
+| 보존한 서버 PR483 / PR487 base | `44e6d880684609f7d075f3102c634a999b5c24ca` |
+| 보존한 웹 PR85 | `72709e3afe67eb2700e9baf035a89c090b0effdf` |
+
+서버 PR487은 PR483의 `codex/dsv-server-notifications` branch 위에 쌓은 별도 Draft다.
+원본 PR61·64·483·85의 원격 SHA는 최종 확인에서도 같다.
+원본 worktree, 업무용 앱·데이터와 서명 자료를 보존했다.
+업무용 package의 APK 4개 해시, version과 설치 시각은 전후가 같다.
+
+## H1과 실기기 결함 수정
+
+첫 완료 요청에서 서버가 `completionOutcome=NOT_APPLIED`를 확인하면 완료 시간 수정과 닫기를 허용한다.
+선택 사진과 사진 key는 유지한다. HTTP status만 보고 결과를 확정하지 않는다.
+이전 요청의 결과가 불명확하면 이후 거절에도 원래 완료 identity와 시간을 유지한다.
+완료 승인 후 사진 재시도는 완료 API를 다시 호출하지 않는다.
+
+불명확한 완료의 같은 요청이 직접 200으로 확인되면 원래 결과를 채택한다.
+현재 route 권한이 바뀌면 ACTIVE 계정의 `/driver/destinations/complete/result`로 원래 결과를 조회한다.
+두 복구 경로는 사진과 원래 시간을 유지하며 자동 사진 업로드와 자동 배정 갱신을 중단한다.
+사용자가 “닫고 배정 확인”을 누른 뒤 현재 배정을 다시 조회한다.
+
+서버는 실제 `DriverEvent.completionOwnerAccountId` UUID column으로 완료 소유자를 기록한다.
+현재 Driver.accountId나 payload owner를 조회 권한으로 사용하지 않는다.
+추가 migration은 nullable column과 조회 index만 만든다. 기존 이벤트를 backfill하지 않는다.
+전체 stop, route, destination, identity, 시각과 소유자가 모두 일치해야 확인 결과를 반환한다.
+부분 완료, 기존 null owner, foreign 계정과 fingerprint 충돌은 UNKNOWN으로 남긴다.
+초기 duplicate 조회와 P2002 race fallback 모두 같은 소유자·fingerprint 검사를 적용했다.
+서버의 계약과 migration은 PR487에 기록했다.
+
+실기기 `e37122e`에서는 복구 안내가 추가될 때 안전 닫기 버튼이 화면 밖으로 밀렸다.
+`f560952`는 sheet 높이를 제한하고 본문을 스크롤 영역으로 분리했다.
+작업 버튼은 고정 footer에 남긴다. 사진, 시간, modal identity와 알림 보호 상태는 유지한다.
+수정 APK에서 안전 닫기 버튼의 표시와 실제 탭을 다시 검증했다.
+새 전체 사진 오프라인 큐는 추가하지 않았다.
+
+합성 미배송 사유와 로컬 알림의 공유 guard도 현재 후보에서 유지한다.
+실제 package가 `com.evnsolution.clever.driver.integration`이어야 한다.
+`EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION`과 `EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED`는 모두 정확히 `true`여야 한다.
+API는 `http:`이며 hostname은 `localhost` 또는 `127.0.0.1`이어야 한다.
+일반 package에서 두 flag와 loopback URL이 오염된 부정 검사도 전체 회귀에 포함한다.
+
+## 최종 격리 검증
+
+Samsung Galaxy Note20 SM-N981N, Android 13/API33을 사용했다.
+실제 Fastify API와 Prisma repository를 실행했다. 독립 PostgreSQL17에 114 migrations를 적용했다.
+API4908, 기록 proxy4910, PostgreSQL55496은 loopback만 사용했다.
+suffix 앱은 소유 adb reverse4910으로 연결했다. 증빙은 private proof-media에 저장했다.
+실제 승인과 저장 응답을 합성하지 않았다. 합성 계정·배차·주문·사진만 사용했다.
+
+모든 새 raw 자료는 다음 비공개 디렉터리에 보존했다.
+`/Users/jiin/Documents/Files/03_Work_EVnSolution/01_Repos/04_CLEVER_Route/.omx/private-evidence/dsv-completion-recovery-20261007`
+
+token, password, cookie와 원본 multipart body는 HTTP 증거에 기록하지 않는다.
+아래 prefix는 새 후보의 최종 검증이다. 기존 `A/B`, `FA` preflight와 구분한다.
+
+| 흐름 | 실제 증거와 결과 |
+|---|---|
+| F2: N06 정확한 대상 | `F205` 화면과 HTTP/DB가 route의 두 번째 primary stop을 연결한다. 첫 next stop을 대신 열지 않았다. 읽기와 알림 탭은 자동 완료를 만들지 않았다. |
+| 카메라·앨범 | 같은 f560952 APK의 `FA06/07/08b`에서 권한 요청·거부·허용을 검사했다. `FA09`는 native camera controls다. Android Photo Picker에서 합성 사진을 선택했다. 카메라 촬영본 업로드는 검사하지 않았다. |
+| F2: 실제 연결 거절 | canonical 연결을 잘못 구성했다. `F208/211`은 실제 403 NOT_APPLIED다. `F209/210`에서 같은 사진 유지와 01:00 시간 편집을 확인했다. 취소 후 `F212` DB의 완료·media는0건이다. |
+| F2: 4단계 알림 보호 | Android 묶음을 펼쳐 개별 알림을 눌렀다. `F218/221/223/226`은 완료 확인·picker·미리보기·업로드 중 같은 사진과 01:21을 유지한다. picker는 알림 탭 후 앱 modal로 돌아왔다. native picker 화면의 연속 유지는 주장하지 않는다. |
+| F2: 업로드 중 명시적 이동 | `F227`에서도 이동을 보류했다. 서버 목적지 조회와 ACK를 작업 종료 전 실행하지 않았다. |
+| F2: 승인 후 사진 재시도 | 정상 최초202 → 사진503 → 실제201 저장 후 응답 유실 → 같은 key의201을 수행했다. `F228/230/232/233`의 완료 event 전체 값과 시각은 같다. 같은 media·uploadedAt·저장 파일을 재사용했다. 완료 POST를 반복하지 않았다. |
+| F2: 종료 후 이동 | 마지막 사진201 뒤 보류 알림의 목적지를 서버에서 다시 조회했다. 현재 assigned-route를 적용했다. `F232/233`에 화면·DB를 연결했다. |
+| FB: 불명확 → 직접200 확인 | 실제202 승인 응답을 폐기하고 untagged502를 전달했다. 원래 identity/time으로 직접200과 같은 event를 확인했다. 사진을 유지하고 명시적 안전 닫기 전 follow-up은0건이다. 계정 결과 조회를 사용한 사례가 아니다. |
+| FC: 불명확 → 재배정 → 계정 결과 | 실제202 응답 유실 뒤 같은 shop의 다른 합성 Driver로 route를 재배정했다. 원래 route 요청은401 NOT_APPLIED다. 원래 ACTIVE 계정 조회는 APPLIED다. 사진·시간·완료 event를 유지했다. 안전 닫기 후 현재 route0건을 확인했다. |
+| 실제 API 부정 검사 | foreign 계정, 계정 연결 변경, inactive 계정, route token, legacy payload owner 위조, 부분 완료, canonical 연결 오류와 duplicate fingerprint 충돌을 검사했다. 잘못된 승인과 새 완료 event를 만들지 않았다. |
+
+FB/FC의 파일명 `03-exact-n06`는 helper의 고정 label이다. 실제 N06 대상 증거로 사용하지 않는다.
+최종 N06 증거는 F205다. FB/FC는 새 fixture의 명시적 완료와 복구를 검증한다.
+
+F2 완료 event의 identity와 KST 01:21 승인 시각을 유지했다. 원본 event는 비공개 DB 기록에 보존했다.
+현재 F2 fixture의 완료 event, READY media와 저장 파일은 각각1개다.
+다음 stop은 PENDING이다. 배송 결과는 DeliveryStop.status와 STOP_DELIVERED로 검증했다.
+Order.deliveryStatus는 기존 PENDING 값이다. 운영 주문 상태 정책은 이 범위에서 결정하지 않았다.
+이전 fixture와 기존 사진 파일은 별도 이력으로 보존했다.
+요청 사진은56,262 bytes, 저장 사진은56,172 bytes다. 서버는 JPEG EXIF를 제거한다.
+저장 SHA256은 `86124939da23570285c7d64011963798979bb918d89c40bf6ff81f59377073bd`다.
+원본 multipart bytes를 저장하지 않았으므로 별도 바이트 변환 재현은 주장하지 않는다.
+
+Android socket drop은 SDK가 투명 재시도할 수 있었다. 그 preflight는 보존했다.
+FB/FC는 실제 upstream202를 폐기한 뒤 untagged502를 전달해 앱의 불명확 상태를 노출했다.
+FA의 collapsed group summary 탭은 앱에 전달되지 않았다. 최종 알림 보호 증거에서 제외했다.
+F2는 개별 row의 실제 탭, 보호 화면, HTTP·DB로 검증했다.
+notificationMode OFF의 불필요한 geofence helper500은 harness 선행조건 누락이다.
+seeded N06를 사용했다. GPS 또는 운영 정책을 활성화하지 않았다.
+
+## 회귀·검토·APK
+
+| 검사 | 결과 |
+|---|---|
+| Driver 전체 | TypeScript 및401/401 tests PASS, skip0. lint·Expo alignment·whitespace PASS. |
+| Driver 완료·알림 회귀 |118/118 PASS. 전체401에 포함되는 부분집합이다. |
+| 서버 전체 | Prisma generate/validate, TypeScript, 명령 단위4GiB lint,3284 tests PASS, guarded/optional314 skip, build·whitespace PASS. |
+| 실제 HTTP·독립 DB | 계정 소유권·부분 완료·충돌·proof 멱등성·재배정 부정 검사 PASS. 별도 결과 JSON 보존. |
+| 독립 소스 검토 | H1 code review APPROVE, architecture OKAY, 실제 footer 수정 focused review APPROVE. |
+| 독립 실기기 검토 | APPROVE. 최종 연결 증거와 주장 제한은 private evidence-review-final-f560952.md에 보존한다. |
+| [서버 CI37643790521](https://github.com/EVNSolution/clever-route-server/actions/runs/37643790521) |18ea7849에서 SUCCESS. disposable PostgreSQL profile 포함. |
+| [Driver CI37649139688](https://github.com/EVNSolution/clever-driver-app/actions/runs/37649139688) |f560952에서 workspace·lint·Android/iOS export PASS. audit20high로 FAILURE. 이후 alignment·whitespace는 skipped이며 같은 로컬 검사는 PASS. |
+
+| 최종 APK 항목 | 값 |
+|---|---|
+| 파일 | `driver-f560952-integration.apk` |
+| 실행·빌드 소스 | `f5609529a00d9a39ea12ad81319183e5de5bac20` |
+| SHA256 | `c40780e63c0ce24c823091b1950d3e0222c3315dffdc4274e73fe15f2d49274d` |
+| 크기 |38,607,537 bytes |
+| package | `com.evnsolution.clever.driver.integration` |
+| version |0.1.15 / versionCode26 |
+| 서명 |Android Debug / APKv2 / RSA2048 |
+| 인증서 SHA256 | `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` |
+
+설치 직후와 실기기 완료 후의 base.apk raw 해시를 보존했다. 위 산출물 해시와 일치한다.
+최종 APK는34.8초에 빌드했다. 정상 캐시를 보존했고 C++ 재컴파일은 없었다.
+최종 문서 변경은 실행 소스를 변경하지 않는다.
+
+## 남은 차단과 제외 범위
+
+- Issue62: npm audit high20/critical0. 예외, gate 해제와 강제 dependency 변경은 하지 않았다.
+- 최종 증빙은 Photo Picker의 합성 사진이다. 카메라 촬영본 업로드는 미검증이다.
+- 실차 ETA와 GPS는 미검증이다. fixture의 ETA 계산 실패는 보존했다.
+- 사진 유지와 재시도는 현재 완료 modal의 범위다. 새 전체 사진 오프라인 큐는 없다.
+- 실제 FCM, 실차 GPS, 운영 정책, 운영 DB, AWS, GitHub 병합, 배포, 스토어 게시와 P7은 제외했다.
+- Android Debug suffix APK는 운영 release 서명을 사용하지 않는다.
+
+격리 런타임을 종료했다. 소유 adb reverse와 기기의 합성 원본 사진만 제거했다.
+비공개 runtime-cleanup-result.json과 device-cleanup-result.json에 PASS를 기록했다.
+독립 PG 데이터, fixture, 사진 증빙, APK와 원본 PR·worktree는 보존한다.
+
+<details>
+<summary>2026-10-07 이전 실행 후보 eb9264b4의 검증 이력</summary>
+
+이하 내용은 이전 후보의 이력이다. 현재 H1 후보의 판정과 산출물은 위 표를 따른다.
 
 ## 기준과 보존
 
@@ -175,3 +315,5 @@ observer의 오류 문자열 집계는 부정 검사 이름도 센다. 실제 ex
 
 격리 API, proxy와 PostgreSQL의 종료 결과는 공개 증거의 `runtime-cleanup-result.json`에 기록한다.
 suffix 설치본과 합성 앱 상태는 보존했다. 소유 adb reverse와 기기 합성 원본 사진은 검증 후 제거했다.
+
+</details>
