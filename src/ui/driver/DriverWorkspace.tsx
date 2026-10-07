@@ -32,6 +32,8 @@ import {
   acknowledgeDriverTimeConstraint,
   completeDriverDeliveryDestination,
   completeDriverDeliveryRoute,
+  DriverDeliveryCompletionApiError,
+  lookupDriverDeliveryCompletionResult,
   markDriverOrderMessageRead,
   startDriverDeliveryRoute,
   type DriverLifecycleCommandIdentity,
@@ -194,6 +196,8 @@ export function DriverWorkspace({
     etaStatus: route?.etaStatus ?? 'READY',
     isReadOnly: isRouteReadOnly,
     onCompleteDelivery: completeDelivery,
+    onResolveDeliveryCompletion: resolveDeliveryCompletion,
+    onRefreshAssignment: refreshAssignmentAfterCompletion,
     onCompleteRoute: completeRoute,
     onStartDelivery: startDelivery,
     onUploadProof: uploadDeliveryProof,
@@ -655,7 +659,7 @@ export function DriverWorkspace({
     deliveryStopIds: string[],
     identity: DriverLifecycleCommandIdentity,
   ): Promise<boolean> {
-    if (route === null) throw new Error('현재 배차를 확인해 주세요.');
+    if (route === null) throw new DriverDeliveryCompletionApiError(0, 'COMPLETION_NOT_SENT', 'rejected', '현재 배차를 확인해 주세요.');
     const completingRoute = route;
 
     const completesRoute = completesDeliveryRoute(orders, deliveryStopIds);
@@ -677,6 +681,38 @@ export function DriverWorkspace({
       setLoadAttempt((attempt) => attempt + 1);
     }
     return completesRoute;
+  }
+
+  async function resolveDeliveryCompletion(
+    destinationId: string,
+    deliveryStopIds: string[],
+    identity: DriverLifecycleCommandIdentity,
+  ): Promise<boolean> {
+    if (route === null || !mountedRef.current || sessionRef.current.account.id !== authSession.account.id) return false;
+    const accountId = authSession.account.id;
+    try {
+      const applied = await lookupDriverDeliveryCompletionResult(
+        sessionRef.current.accessToken, route.routeId, destinationId, deliveryStopIds, identity,
+      );
+      return applied && mountedRef.current && sessionRef.current.account.id === accountId;
+    } catch (error) {
+      if (error instanceof DriverDeliveryCompletionApiError && error.status === 401
+        && mountedRef.current && sessionRef.current.account.id === accountId) {
+        authenticationRequiredRef.current?.();
+      }
+      throw error;
+    }
+  }
+
+  function refreshAssignmentAfterCompletion(completedStopIds: string[]) {
+    if (!mountedRef.current || sessionRef.current.account.id !== authSession.account.id) return;
+    const completedTarget = notificationTargetRef.current;
+    if (completedTarget !== null && completedTarget.routePlanId === route?.routePlanId
+      && completedStopIds.includes(completedTarget.targetStopId)) {
+      notificationTargetRef.current = null;
+      setNotificationTarget(null);
+    }
+    setLoadAttempt((attempt) => attempt + 1);
   }
 
   async function completeRoute() {

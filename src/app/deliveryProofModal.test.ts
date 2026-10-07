@@ -197,3 +197,86 @@ it('keeps an existing camera preview when the Android album picker is cancelled'
   assert.equal(libraryRequests, 0, 'Android uses the system photo picker without requesting broad library permission');
   assert.deepEqual(JSON.parse(JSON.stringify(elements(tree).find(({ type }) => type === 'Image')!.props.source)), { uri: 'file:///camera-proof.jpg' });
 });
+
+it('keeps input and the selected photo editable and closeable after the first completion is definitively rejected', async () => {
+  const confirmations: Parameters<Parameters<Modal>[0]['onConfirm']>[] = [];
+  let closeCalls = 0;
+  const render = createProofModalHarness({
+    launchImageLibraryAsync: async () => ({ canceled: false, assets: [{ uri: 'file:///scope-rejection-proof.jpg', fileName: 'rejection-proof.jpg', mimeType: 'image/jpeg' }] }),
+  });
+  const props: Parameters<Modal>[0] = {
+    destinationName: '명확한 거절 대상', savedCompletionOccurredAt: null,
+    onClose: () => { closeCalls += 1; },
+    onConfirm: async (...request) => { confirmations.push(request); },
+  };
+  const input = (tree: Element) => elements(tree).find(({ type }) => type === 'TextInput')!;
+  const confirm = (tree: Element) => elements(tree).find(({ type, props: item }) => type === 'Pressable'
+    && elements(item.children).some(({ props: child }) => child.children === '완료 확정'))!;
+  let tree = render(props);
+  (input(tree).props.onChangeText as (value: string) => void)('1540');
+  (elements(tree).find(({ props: item }) => item.label === '앨범에서 선택')!.props.onPress as () => void)();
+  await flush(); tree = render(props);
+  (confirm(tree).props.onPress as () => void)(); await flush();
+  assert.equal(confirmations.length, 1);
+  const firstPhoto = confirmations[0]![1]!;
+  tree = render({ ...props, submittedCompletionOccurredAt: confirmations[0]![0], executionPending: true });
+  assert.equal(input(tree).props.editable, false);
+  tree = render(props);
+  assert.equal(input(tree).props.value, '15:40');
+  assert.equal(input(tree).props.editable, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(elements(tree).find(({ type }) => type === 'Image')!.props.source)), { uri: firstPhoto.uri });
+  assert.ok(!elements(tree).some(({ props: item }) => item.children === '완료 시간이 저장되었습니다.'));
+  (input(tree).props.onChangeText as (value: string) => void)('1545'); tree = render(props);
+  (confirm(tree).props.onPress as () => void)(); await flush();
+  assert.equal(confirmations.length, 2);
+  assert.equal(completionTime.formatDeliveryCompletionTime(new Date(confirmations[1]![0])), '15:45');
+  assert.equal(confirmations[1]![1]?.uri, firstPhoto.uri);
+  assert.equal(confirmations[1]![1]?.idempotencyKey, firstPhoto.idempotencyKey);
+  const cancel = elements(tree).find(({ type, props: item }) => type === 'Pressable'
+    && elements(item.children).some(({ props: child }) => child.children === '취소'))!;
+  assert.equal(cancel.props.disabled, false);
+  (tree.props.onRequestClose as () => void)();
+  assert.equal(closeCalls, 1);
+});
+
+it('keeps the original input and preview after receipt recovery and offers only closing to check assignment', async () => {
+  let closeCalls = 0;
+  let confirmCalls = 0;
+  let cameraCalls = 0;
+  let libraryCalls = 0;
+  const render = createProofModalHarness({
+    requestCameraPermissionsAsync: async () => { cameraCalls += 1; return { granted: true }; },
+    launchImageLibraryAsync: async () => {
+      libraryCalls += 1;
+      return { canceled: false, assets: [{ uri: 'file:///receipt-recovery-proof.jpg', fileName: 'original.jpg', mimeType: 'image/jpeg' }] };
+    },
+  });
+  const protectedOverlay: Element = { type: 'ProtectedNotification', props: { children: '원래 배송 작업 유지' } };
+  const props: Parameters<Modal>[0] = {
+    destinationName: '응답 유실 뒤 재배정된 배송지', savedCompletionOccurredAt: null,
+    protectedNotificationOverlay: protectedOverlay as unknown as ReactNode,
+    onClose: () => { closeCalls += 1; }, onConfirm: async () => { confirmCalls += 1; },
+  };
+  let tree = render(props);
+  (elements(tree).find(({ type }) => type === 'TextInput')!.props.onChangeText as (value: string) => void)('1540');
+  (elements(tree).find(({ props: item }) => item.label === '앨범에서 선택')!.props.onPress as () => void)();
+  await flush();
+  const approvedAt = '2026-10-07T06:40:00.000Z';
+  tree = render({ ...props, savedCompletionOccurredAt: approvedAt, submittedCompletionOccurredAt: approvedAt, requiresAssignmentRefresh: true });
+  const input = elements(tree).find(({ type }) => type === 'TextInput')!;
+  assert.equal(input.props.value, completionTime.formatDeliveryCompletionTime(new Date(approvedAt)));
+  assert.equal(input.props.editable, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(elements(tree).find(({ type }) => type === 'Image')!.props.source)), { uri: 'file:///receipt-recovery-proof.jpg' });
+  assert.ok(elements(tree).includes(protectedOverlay));
+  assert.ok(!elements(tree).some(({ props: item }) => ['사진 촬영', '앨범에서 선택'].includes(item.label as string)));
+  assert.ok(!elements(tree).some(({ props: item }) => item.children === '완료 확정'));
+  const close = elements(tree).find(({ type, props: item }) => type === 'Pressable'
+    && elements(item.children).some(({ props: child }) => child.children === '닫고 배정 확인'));
+  assert.ok(close);
+  (close.props.onPress as () => void)();
+  (tree.props.onRequestClose as () => void)();
+  assert.equal(closeCalls, 2);
+  assert.equal(confirmCalls, 0);
+  assert.equal(cameraCalls, 0);
+  assert.equal(libraryCalls, 1);
+});

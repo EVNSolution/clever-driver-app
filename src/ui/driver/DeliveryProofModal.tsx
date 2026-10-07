@@ -35,6 +35,7 @@ type DeliveryProofModalProps = {
   destinationName: string;
   savedCompletionOccurredAt: string | null;
   submittedCompletionOccurredAt?: string;
+  requiresAssignmentRefresh?: boolean;
   executionDialog?: ReactNode;
   protectedNotificationOverlay?: ReactNode;
   executionPending?: boolean;
@@ -46,6 +47,7 @@ export function DeliveryProofModal({
   destinationName,
   savedCompletionOccurredAt,
   submittedCompletionOccurredAt,
+  requiresAssignmentRefresh = false,
   executionDialog,
   protectedNotificationOverlay,
   executionPending = false,
@@ -67,6 +69,7 @@ export function DeliveryProofModal({
     : formatDeliveryCompletionTime(new Date(lockedCompletionOccurredAt));
 
   async function selectPhoto(source: DriverProofPhotoSource) {
+    if (requiresAssignmentRefresh) return;
     try {
       if (source === 'camera') {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -138,7 +141,7 @@ export function DeliveryProofModal({
   }
 
   async function confirmCompletion() {
-    if (executionPending) return;
+    if (executionPending || requiresAssignmentRefresh) return;
     const occurredAt = lockedCompletionOccurredAt
       ?? resolveDeliveryCompletionOccurredAt(completionTime, openedAt);
     if (occurredAt === null) {
@@ -233,6 +236,17 @@ export function DeliveryProofModal({
               <ActivityIndicator color="#0b57d0" size="small" />
               <Text style={styles.executionPendingText}>배송 완료 처리 중</Text>
             </View>
+          ) : requiresAssignmentRefresh ? (
+            <>
+              <Text style={styles.timeHint}>현재 배정을 확인한 뒤 증빙을 등록해 주세요.</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={onClose}
+                style={styles.uploadButton}
+              >
+                <Text style={styles.uploadButtonText}>닫고 배정 확인</Text>
+              </Pressable>
+            </>
           ) : (
             <>
               <View style={styles.sourceActions}>

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { DriverLifecycleCommandIdentity } from '../api/dsvDriverEvents';
+import * as driverEvents from '../api/dsvDriverEvents';
 
 import * as executionState from '../domain/delivery/deliveryExecutionState';
 import { buildCurrentDeliverySummary, PREVIEW_DELIVERY_ORDERS } from '../domain/delivery/deliveryPlan';
@@ -37,6 +38,7 @@ function createHarness() {
     'react-native': { StyleSheet: { create: (styles: unknown) => styles } },
     'expo-modules-core': { uuid: { v4: () => `11111111-1111-4111-8111-${String(++uuidCounter).padStart(12, '0')}` } },
     '../../domain/delivery/deliveryExecutionState': executionState,
+    '../../api/dsvDriverEvents': driverEvents,
     '../../platform/destinationMap': { openDestinationMap: async () => undefined },
     './AppDialog': { useAppDialog: () => ({
       dialog,
@@ -99,6 +101,243 @@ function options(overrides: Partial<Options> = {}): Options {
 }
 
 describe('persistent delivery execution controller callbacks', () => {
+  it('releases the first definitively rejected completion identity and accepts an edited time with the same photo', async () => {
+    const previousFetch = globalThis.fetch;
+    const requests: DriverLifecycleCommandIdentity[] = [];
+    const uploadedPhotos: unknown[] = [];
+    globalThis.fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as DriverLifecycleCommandIdentity & { deliveryStopIds: string[] };
+      requests.push({ clientEventId: body.clientEventId, occurredAt: body.occurredAt });
+      return requests.length === 1
+        ? new Response(JSON.stringify({ data: null, error: { code: 'FORBIDDEN', completionOutcome: 'NOT_APPLIED', message: 'Destination completion scope rejected' } }), { status: 403 })
+        : new Response(JSON.stringify({ data: { completedStopCount: body.deliveryStopIds.length, eventIds: body.deliveryStopIds.map((id) => `accepted-event:${id}`) }, error: null }), { status: 202 });
+    };
+    const harness = createHarness();
+    const photo = { uri: 'file:///first-rejection-proof.jpg', fileName: 'proof.jpg', idempotencyKey: 'proof-media-v1:44444444444444448444000000000001', mimeType: 'image/jpeg', source: 'camera' as const };
+    const props = options({
+      onResolveDeliveryCompletion: async () => { assert.fail('A first confirmed rejection does not need an old receipt lookup'); },
+      onRefreshAssignment: () => { assert.fail('A first rejection or normal acceptance must not invoke receipt recovery refresh'); },
+      onCompleteDelivery: async (destinationId, stopIds, identity) => {
+        await driverEvents.completeDriverDeliveryDestination('route-token', 'route-1', destinationId, stopIds, identity);
+        return false;
+      },
+      onUploadProof: async (_stopId, selected) => { uploadedPhotos.push(selected); },
+    });
+    try {
+      let controller = harness.render(props);
+      controller.confirmDeliveryCompletion(); controller = harness.render(props);
+      await controller.submitDeliveryCompletion('2026-10-07T08:40:00.000Z', photo);
+      controller = harness.render(props);
+      assert.equal(controller.executionState.phase, 'proof');
+      assert.equal(controller.executionState.proof?.completedAt, null);
+      assert.equal(controller.executionState.proof?.completionIdentity, undefined);
+      assert.equal(uploadedPhotos.length, 0);
+      harness.dismissDialog();
+      await controller.submitDeliveryCompletion('2026-10-07T08:45:00.000Z', photo);
+      controller = harness.render(props);
+      assert.equal(requests.length, 2);
+      assert.notEqual(requests[1]!.clientEventId, requests[0]!.clientEventId);
+      assert.equal(requests[1]!.occurredAt, '2026-10-07T08:45:00.000Z');
+      assert.equal(controller.executionState.phase, 'idle');
+      assert.equal(uploadedPhotos.length, 1);
+      assert.equal(uploadedPhotos[0], photo);
+    } finally {
+      if (previousFetch === undefined) delete (globalThis as { fetch?: unknown }).fetch;
+      else globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('allows closing after the first definitive destination rejection without sending another completion', async () => {
+    const previousFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ data: null, error: { code: 'FORBIDDEN', completionOutcome: 'NOT_APPLIED', message: 'Destination completion scope rejected' } }), { status: 403 });
+    };
+    const harness = createHarness();
+    const props = options({
+      onCompleteDelivery: async (destinationId, stopIds, identity) => {
+        await driverEvents.completeDriverDeliveryDestination('route-token', 'route-1', destinationId, stopIds, identity);
+        return false;
+      },
+      onRefreshAssignment: () => { assert.fail('Closing a confirmed first rejection must not invoke receipt recovery refresh'); },
+    });
+    try {
+      let controller = harness.render(props);
+      controller.confirmDeliveryCompletion(); controller = harness.render(props);
+      await controller.submitDeliveryCompletion('2026-10-07T08:40:00.000Z', null);
+      controller = harness.render(props); harness.dismissDialog();
+      controller.closeProofDelivery(); controller = harness.render(props);
+      assert.equal(controller.executionState.phase, 'idle');
+      assert.equal(controller.isLocked, false);
+      assert.equal(calls, 1);
+    } finally {
+      if (previousFetch === undefined) delete (globalThis as { fetch?: unknown }).fetch;
+      else globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('keeps the original unknown identity and time when a later retry is definitively rejected with HTTP 403', async () => {
+    const previousFetch = globalThis.fetch;
+    const requests: DriverLifecycleCommandIdentity[] = [];
+    const lookups: { destinationId: string; stopIds: string[]; identity: DriverLifecycleCommandIdentity }[] = [];
+    globalThis.fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as DriverLifecycleCommandIdentity;
+      requests.push({ clientEventId: body.clientEventId, occurredAt: body.occurredAt });
+      if (requests.length === 1) throw new Error('Committed response lost before reassignment');
+      return new Response(JSON.stringify({ data: null, error: { code: 'FORBIDDEN', completionOutcome: 'NOT_APPLIED', message: 'Current destination assignment changed' } }), { status: 403 });
+    };
+    const harness = createHarness();
+    const props = options({
+      onCompleteDelivery: async (destinationId, stopIds, identity) => {
+        await driverEvents.completeDriverDeliveryDestination('route-token', 'route-1', destinationId, stopIds, identity);
+        return false;
+      },
+      onResolveDeliveryCompletion: async (destinationId, stopIds, identity) => {
+        lookups.push({ destinationId, stopIds: [...stopIds], identity: { ...identity } });
+        return false;
+      },
+      onRefreshAssignment: () => { assert.fail('An unknown completion cannot refresh as an approved recovery'); },
+    });
+    try {
+      let controller = harness.render(props);
+      controller.confirmDeliveryCompletion(); controller = harness.render(props);
+      await controller.submitDeliveryCompletion('2026-10-07T08:40:00.000Z', null);
+      controller = harness.render(props); harness.dismissDialog();
+      await controller.submitDeliveryCompletion('2026-10-07T08:45:00.000Z', null);
+      controller = harness.render(props); harness.dismissDialog();
+      assert.equal(requests.length, 2);
+      assert.deepEqual(requests[1], requests[0]);
+      assert.deepEqual(lookups, [{ destinationId: props.summary!.destinationId, stopIds: props.summary!.deliveryStopIds, identity: requests[0] }]);
+      assert.deepEqual({ ...controller.executionState.proof?.completionIdentity }, requests[0]);
+      assert.equal(controller.executionState.proof?.completedAt, null);
+      controller.closeProofDelivery(); controller.confirmDeliveryCompletion(); controller = harness.render(props);
+      assert.equal(controller.executionState.phase, 'proof');
+      assert.deepEqual({ ...controller.executionState.proof?.completionIdentity }, requests[0]);
+      assert.equal(controller.isLocked, true);
+    } finally {
+      if (previousFetch === undefined) delete (globalThis as { fetch?: unknown }).fetch;
+      else globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('keeps the unknown identity when result-only lookup fails after a definite retry rejection', async () => {
+    const harness = createHarness();
+    const attempts: DriverLifecycleCommandIdentity[] = [];
+    let lookupCalls = 0;
+    const props = options({
+      onCompleteDelivery: async (_destinationId, _stopIds, identity) => {
+        attempts.push({ ...identity });
+        if (attempts.length === 1) throw new driverEvents.DriverDeliveryCompletionApiError(0, 'COMPLETION_OUTCOME_UNKNOWN', 'unknown');
+        throw new driverEvents.DriverDeliveryCompletionApiError(403, 'FORBIDDEN', 'rejected');
+      },
+      onResolveDeliveryCompletion: async () => {
+        lookupCalls += 1;
+        throw new Error('Account receipt lookup unavailable');
+      },
+      onRefreshAssignment: () => { assert.fail('A failed receipt lookup cannot refresh as an approved recovery'); },
+      onUploadProof: async () => { assert.fail('Unconfirmed completion must not upload proof'); },
+      onCompleteRoute: async () => { assert.fail('Unconfirmed completion must not finish the route'); },
+    });
+    let controller = harness.render(props);
+    controller.confirmDeliveryCompletion(); controller = harness.render(props);
+    await controller.submitDeliveryCompletion('2026-10-07T08:40:00.000Z', null);
+    harness.dismissDialog(); controller = harness.render(props);
+    await controller.submitDeliveryCompletion('2026-10-07T08:45:00.000Z', null);
+    harness.dismissDialog(); controller = harness.render(props);
+    assert.equal(lookupCalls, 1);
+    assert.deepEqual(attempts[1], attempts[0]);
+    assert.deepEqual({ ...controller.executionState.proof?.completionIdentity }, attempts[0]);
+    assert.equal(controller.executionState.proof?.completedAt, null);
+    controller.closeProofDelivery(); controller = harness.render(props);
+    assert.equal(controller.executionState.phase, 'proof');
+    assert.equal(controller.isLocked, true);
+  });
+
+  it('recovers an exact applied receipt after response loss and reassignment without uploading proof or completing a route', async () => {
+    const previousFetch = globalThis.fetch;
+    const requests: { url: string; authorization: string; body: Record<string, unknown> }[] = [];
+    let completeCalls = 0;
+    let originalLookupCalls = 0;
+    let foreignCallbackCalls = 0;
+    let uploadCalls = 0;
+    let routeCalls = 0;
+    const refreshedStopIds: string[][] = [];
+    globalThis.fetch = async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      const url = String(input);
+      requests.push({ url, body, authorization: (init?.headers as Record<string, string>).Authorization! });
+      if (url.endsWith('/complete/result')) return new Response(JSON.stringify({ data: {
+        ...body, status: 'APPLIED', completedStopCount: (body.deliveryStopIds as string[]).length,
+        eventIds: (body.deliveryStopIds as string[]).map((id) => `event:${id}`),
+      }, error: null }));
+      completeCalls += 1;
+      if (completeCalls === 1) throw new Error('Server committed the original command; its response was lost');
+      return new Response(JSON.stringify({ data: null, error: {
+        code: 'FORBIDDEN', completionOutcome: 'NOT_APPLIED', message: 'Original route assignment is no longer active',
+      } }), { status: 403 });
+    };
+    const harness = createHarness();
+    const photo = { uri: 'file:///before-reassignment-proof.jpg', fileName: 'proof.jpg', idempotencyKey: 'proof-media-v1:44444444444444448444000000000002', mimeType: 'image/jpeg', source: 'library' as const };
+    const original = options({
+      onCompleteDelivery: async (destinationId, stopIds, identity) => {
+        await driverEvents.completeDriverDeliveryDestination('original-route-token', 'original-route', destinationId, stopIds, identity);
+        return true;
+      },
+      onResolveDeliveryCompletion: async (destinationId, stopIds, identity) => {
+        originalLookupCalls += 1;
+        return driverEvents.lookupDriverDeliveryCompletionResult('original-account-jwt', 'original-route', destinationId, stopIds, identity);
+      },
+      onUploadProof: async () => { uploadCalls += 1; },
+      onCompleteRoute: async () => { routeCalls += 1; },
+      onRefreshAssignment: (stopIds) => { refreshedStopIds.push([...stopIds]); },
+    });
+    const changed = options({ summary: null, isReadOnly: true,
+      onCompleteDelivery: async () => { foreignCallbackCalls += 1; return true; },
+      onResolveDeliveryCompletion: async () => { foreignCallbackCalls += 1; return true; },
+      onUploadProof: async () => { foreignCallbackCalls += 1; },
+      onCompleteRoute: async () => { foreignCallbackCalls += 1; },
+      onRefreshAssignment: () => { foreignCallbackCalls += 1; },
+    });
+    try {
+      let controller = harness.render(original);
+      controller.confirmDeliveryCompletion(); controller = harness.render(original);
+      await controller.submitDeliveryCompletion('2026-10-07T08:40:00.000Z', photo);
+      assert.equal(refreshedStopIds.length, 0);
+      harness.dismissDialog(); controller = harness.render(changed);
+      await controller.submitDeliveryCompletion('2026-10-07T08:45:00.000Z', photo);
+      harness.dismissDialog(); controller = harness.render(changed);
+      assert.equal(completeCalls, 2);
+      assert.equal(originalLookupCalls, 1);
+      assert.equal(foreignCallbackCalls, 0);
+      assert.deepEqual(requests[1]!.body, requests[0]!.body);
+      assert.deepEqual(requests[2]!.body, requests[0]!.body);
+      assert.equal(requests[2]!.authorization, 'Bearer original-account-jwt');
+      assert.equal(controller.executionState.proof?.completedAt, '2026-10-07T08:40:00.000Z');
+      assert.equal(controller.executionState.proof?.requiresAssignmentRefresh, true);
+      assert.equal(controller.executionState.phase, 'proof');
+      assert.equal(controller.isLocked, true);
+      assert.equal(refreshedStopIds.length, 0);
+      const overlay = harness.hooks.DeliveryExecutionOverlay({ controller }) as unknown as { props: Record<string, unknown> };
+      assert.equal(overlay.props.requiresAssignmentRefresh, true);
+      assert.equal(overlay.props.savedCompletionOccurredAt, '2026-10-07T08:40:00.000Z');
+      await controller.submitDeliveryCompletion('2026-10-07T09:00:00.000Z', photo);
+      assert.equal(requests.length, 3);
+      assert.equal(uploadCalls, 0);
+      assert.equal(routeCalls, 0);
+      const closeRecovered = controller.closeProofDelivery;
+      closeRecovered(); closeRecovered(); await flush(); controller = harness.render(changed);
+      assert.equal(controller.executionState.phase, 'idle');
+      assert.equal(controller.isLocked, false);
+      assert.equal(uploadCalls, 0);
+      assert.equal(routeCalls, 0);
+      assert.deepEqual(refreshedStopIds, [original.summary!.deliveryStopIds]);
+      assert.equal(foreignCallbackCalls, 0);
+    } finally {
+      if (previousFetch === undefined) delete (globalThis as { fetch?: unknown }).fetch;
+      else globalThis.fetch = previousFetch;
+    }
+  });
   it('keeps one pending completion across tab presentations and retries the original final route after summary disappears', async () => {
     const harness = createHarness();
     const pending = deferred<boolean>();

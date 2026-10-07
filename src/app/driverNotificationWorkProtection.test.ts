@@ -91,7 +91,10 @@ async function connectedWorkspace(options: {
         lostCompletionResponse = true;
         throw new Error('Synthetic completion committed before its HTTP response was lost');
       }
-      return new Response(JSON.stringify({ data: { eventId: 'synthetic-STOP_DELIVERED' }, error: null }));
+      return new Response(JSON.stringify({ data: {
+        completedStopCount: body.deliveryStopIds.length,
+        eventIds: body.deliveryStopIds.map((id: string) => `synthetic-STOP_DELIVERED:${id}`),
+      }, error: null }), { status: committed === undefined ? 202 : 200 });
     }
     throw new Error('A notification read must not make a business request');
   };

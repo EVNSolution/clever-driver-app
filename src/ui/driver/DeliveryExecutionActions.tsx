@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
-import type { DriverLifecycleCommandIdentity } from '../../api/dsvDriverEvents';
+import { DriverDeliveryCompletionApiError, type DriverLifecycleCommandIdentity } from '../../api/dsvDriverEvents';
 import type { CurrentDeliverySummary } from '../../domain/delivery/deliveryPlan';
 import {
   INITIAL_DELIVERY_EXECUTION_STATE,
@@ -29,6 +29,12 @@ type UseDeliveryExecutionOptions = {
     identity: DriverLifecycleCommandIdentity,
   ): Promise<boolean>;
   onCompleteRoute(): Promise<void>;
+  onResolveDeliveryCompletion?(
+    destinationId: string,
+    deliveryStopIds: string[],
+    identity: DriverLifecycleCommandIdentity,
+  ): Promise<boolean>;
+  onRefreshAssignment?(deliveryStopIds: string[]): void;
   onStartDelivery(): Promise<void>;
   onUploadProof(
     deliveryStopId: string,
@@ -44,6 +50,8 @@ export function useDeliveryExecution({
   isReadOnly,
   onCompleteDelivery,
   onCompleteRoute,
+  onResolveDeliveryCompletion,
+  onRefreshAssignment,
   onStartDelivery,
   onUploadProof,
   orderCount,
@@ -63,12 +71,20 @@ export function useDeliveryExecution({
       identity: DriverLifecycleCommandIdentity,
     ): Promise<boolean>;
     onCompleteRoute(): Promise<void>;
+    onResolveDeliveryCompletion?(
+      destinationId: string,
+      deliveryStopIds: string[],
+      identity: DriverLifecycleCommandIdentity,
+    ): Promise<boolean>;
+    onRefreshAssignment?(deliveryStopIds: string[]): void;
     onUploadProof(
       deliveryStopId: string,
       photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
     ): Promise<void>;
   } | null>(null);
-  const completionTransactionRef = useRef<{ identity: DriverLifecycleCommandIdentity; approved: boolean } | null>(null);
+  const completionTransactionRef = useRef<{
+    identity: DriverLifecycleCommandIdentity; approved: boolean; hadUnknownOutcome: boolean;
+  } | null>(null);
   const canStart = !isReadOnly && etaStatus === 'PRE_PICKUP' && orderCount > 0;
   const isCompletionDisabled =
     isReadOnly || etaStatus === 'PRE_PICKUP' || summary === null ||
@@ -96,6 +112,8 @@ export function useDeliveryExecution({
     transactionCallbacksRef.current = {
       onCompleteDelivery,
       onCompleteRoute,
+      onResolveDeliveryCompletion,
+      onRefreshAssignment,
       onUploadProof,
     };
     dispatch({
@@ -154,14 +172,18 @@ export function useDeliveryExecution({
   function closeProofDelivery() {
     if (actionRef.current !== null || (completionTransactionRef.current !== null && !completionTransactionRef.current.approved)) return;
     if (executionState.phase === 'completing-route') return;
-    if (executionState.proof?.completesRoute === true) {
+    if (executionState.proof?.completesRoute === true && !executionState.proof.requiresAssignmentRefresh) {
       void completeFinalRoute();
       return;
     }
 
+    const refreshAssignment = executionState.proof?.requiresAssignmentRefresh
+      ? transactionCallbacksRef.current?.onRefreshAssignment : undefined;
+    const completedStopIds = executionState.proof?.deliveryStopIds ?? [];
     transactionCallbacksRef.current = null;
     completionTransactionRef.current = null;
     dispatch({ type: 'PROOF_CLOSED' });
+    refreshAssignment?.(completedStopIds);
   }
 
   function confirmDeliveryStart() {
@@ -210,13 +232,15 @@ export function useDeliveryExecution({
     const callbacks = transactionCallbacksRef.current;
     let proof = executionState.proof;
     if (proof === null || callbacks === null || actionRef.current !== null) return;
+    if (proof.requiresAssignmentRefresh) return;
 
     if (proof.completesRoute === null) {
       const identity = completionTransactionRef.current?.identity ?? proof.completionIdentity ?? {
         clientEventId: `${proof.destinationId}:delivered:${uuid.v4()}`,
         occurredAt,
       };
-      completionTransactionRef.current = { identity, approved: false };
+      const transaction = completionTransactionRef.current ?? { identity, approved: false, hadUnknownOutcome: false };
+      completionTransactionRef.current = transaction;
       proof = { ...proof, completionIdentity: identity };
       actionRef.current = 'stop';
       dispatch({ type: 'STOP_COMPLETION_STARTED', completionIdentity: identity });
@@ -230,7 +254,36 @@ export function useDeliveryExecution({
         proof = { ...proof, completesRoute, completedAt: identity.occurredAt };
         dispatch({ proof, type: 'STOP_COMPLETED' });
       } catch (error) {
-        dispatch({ type: 'STOP_COMPLETION_FAILED' });
+        const rejected = error instanceof DriverDeliveryCompletionApiError && error.outcome === 'rejected';
+        if (rejected && !transaction.hadUnknownOutcome) {
+          completionTransactionRef.current = null;
+          dispatch({ type: 'STOP_COMPLETION_REJECTED' });
+        } else {
+          // A later rejection says nothing about an earlier attempt whose response was lost.
+          const shouldResolve = rejected && transaction.hadUnknownOutcome;
+          transaction.hadUnknownOutcome = true;
+          if (shouldResolve && callbacks.onResolveDeliveryCompletion !== undefined) {
+            try {
+              const applied = await callbacks.onResolveDeliveryCompletion(
+                proof.destinationId, proof.deliveryStopIds, identity,
+              );
+              if (applied) {
+                transaction.approved = true;
+                proof = {
+                  ...proof, completesRoute: false, completedAt: identity.occurredAt, requiresAssignmentRefresh: true,
+                };
+                dispatch({ proof, type: 'STOP_COMPLETED' });
+                showDialog({
+                  message: '배송 완료 결과를 확인했습니다. 현재 배정을 확인한 뒤 증빙을 등록해 주세요.',
+                  title: '배송 완료 결과 확인',
+                  tone: 'info',
+                });
+                return;
+              }
+            } catch { /* Unknown, denied or unavailable receipts keep the original transaction. */ }
+          }
+          dispatch({ type: 'STOP_COMPLETION_FAILED' });
+        }
         showDialog({
           message: error instanceof Error
             ? error.message
@@ -414,6 +467,7 @@ export function DeliveryExecutionOverlay({
       destinationName={proof.destinationName}
       savedCompletionOccurredAt={proof.completedAt}
       submittedCompletionOccurredAt={proof.completionIdentity?.occurredAt}
+      requiresAssignmentRefresh={proof.requiresAssignmentRefresh}
       executionDialog={controller.dialog}
       protectedNotificationOverlay={protectedNotificationOverlay}
       executionPending={[
