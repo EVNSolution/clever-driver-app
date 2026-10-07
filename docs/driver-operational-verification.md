@@ -15,15 +15,24 @@ Target: Driver #63. 앱 change-control: #312. 기준 계약: 서버 PR483 `af9b4
 
 | 검사 | 결과 |
 |---|---|
-| `npm run check:workspace` | PASS. TypeScript와 테스트 319/319. 실패·skip 0. |
+| `npm run check:workspace` | PASS. source 후보 `ac1e688da250de9611dc2de0fde89f01ce41620e`의 CI 37570524933에서 TypeScript와 테스트 320/320. 실패·skip 0. |
 | `npm run lint` | PASS. 기존 규칙을 유지했다. |
 | `npx expo install --check` | PASS. Expo 56.0.23 / notifications 56.0.26 정합성. |
 | `git diff --check` | PASS. |
-| `npm run build:android -- --max-workers 1` | PASS. Android Hermes export. 최종 SHA의 로그·번들 hash는 PR에 기록한다. |
+| Android/iOS export | PASS. source 후보 `ac1e688da250de9611dc2de0fde89f01ce41620e`의 CI 37570524933에서 두 export가 통과했다. Android Hermes export는 native APK와 구분한다. |
 | `npm audit --audit-level=moderate` | BLOCKED. exit 1. braces / node-forge 두 advisory가 남는다. 의존 패키지 항목 high 20, critical 0. 독립 취약점 20개라는 의미가 아니다. |
 | 독립 소스 리뷰 | 관리 검토의 R1~R3을 반영했다. 추가 리뷰에서 확인한 경쟁 조건도 수정하고 실행 회귀에 추가했다. 독립 리뷰는 APPROVE이며 관련 실행 검사 66/66을 통과했다. 미해결 소스 결함은 0건이다. |
 
 필수 Expo patch와 기존 override의 지원되는 brace-expansion 5.0.12 / shell-quote 1.11.0 patch를 적용했다. 강제 SDK downgrade, audit 예외와 CI 검사 삭제는 사용하지 않았다. Issue62는 계속 열린 보안 차단이다.
+
+2026-10-07에 unmodified audit gate를 다시 실행했다. `npm audit --audit-level=moderate`는 exit 1, high 20, critical 0이었다. 실제 advisory root는 다음 두 건이다.
+
+- `braces <= 3.0.3` / GHSA-vfj7-8cjw-p6xm: 최신 공개 npm 버전도 3.0.3이다. GitHub advisory의 `first_patched_version`은 null이고 upstream issue 70은 open이다.
+- `node-forge <= 1.4.0` / GHSA-86w9-cpqp-85rv: 최신 공개 npm 버전도 1.4.0이다. GitHub advisory의 `first_patched_version`은 null이고 upstream PR 1152는 open·미병합이다.
+
+Expo 57의 최신 CLI도 `node-forge ^1.3.3`을 요구한다. 최신 `micromatch 4.0.8`도 `braces ^3.0.3`을 요구한다. `npm audit fix --force`가 제시한 Expo 44.0.6 downgrade는 현행 Expo 56 / React Native 계약을 깨므로 지원되는 해결책이 아니다. 두 패키지는 Metro 파일 처리와 Expo 인증서 도구를 통한 Node build-tool 경로다. 이 범위 사실과 Android runtime 번들 포함 여부는 별도 증거로 기록하며, runtime 미포함 증거로 audit 차단을 해제하지 않는다.
+
+Android export source map의 source 항목 1,322개에는 `node-forge`와 `/braces/` 경로가 없었다. 이 결과는 runtime bundle 범위만 설명한다. CI 37570524933의 audit gate는 기존 high 20 때문에 실패했고 후속 정합성 단계는 skip됐다. audit 차단은 유지한다.
 
 ## PR64 관리 검토 반영
 
@@ -74,6 +83,19 @@ Target: Driver #63. 앱 change-control: #312. 기준 계약: 서버 PR483 `af9b4
 
 앱 재시작·인증 갱신·새로고침은 **기존에 사용자가 저장한 pending 명령**을 재시도할 수 있다. 이것은 조회가 새 업무 명령을 만드는 경로와 구분한다. 새 명령이 없는 읽기 테스트에서 업무 POST는 0회다.
 
+## 실제 PostgreSQL API와 Driver 생산 코드
+
+loopback fixture의 실제 PostgreSQL, Prisma repository, JWT 로그인과 legacy Driver API에 생산 Driver 클라이언트를 연결했다. fixture 비밀번호와 token은 출력하지 않았다.
+
+- 실제 `loginDriverAccount`로 로그인했다. 실행 context와 알림함을 실제 API에서 조회했다.
+- 실제 `DriverCommandQueue`로 시작 승인과 미배송 보고를 저장하고 전송했다.
+- 서버가 commit한 뒤 클라이언트 응답을 유실시켰다. 저장된 같은 commandId와 fence를 다시 전송했다.
+- 시작과 보고 재시도는 모두 `duplicate=true` receipt를 반환했다.
+- 미배송 보고 응답은 업무 보고 상태만 변경했다. 주문·배송 결과 변경은 만들지 않았다.
+
+이 검사는 합성 Prisma repository 검사를 실제 DB 검사로 계산하지 않는다. 실제 서버 fixture와 production Driver API client 코드를 연결한 별도 HTTP 검사다.
+legacy Driver HTTP 검증 범위는 로그인, execution context, 알림함, 시작 명령과 미배송 보고다. 기기의 전체 배송 UI 흐름과 legacy API 전체를 검증한 결과가 아니다.
+
 ## Android 산출물과 기기 경계
 
 - 저장소 Android build runbook과 build-hygiene의 run 절차를 읽었다.
@@ -81,20 +103,31 @@ Target: Driver #63. 앱 change-control: #312. 기준 계약: 서버 PR483 `af9b4
 - 정상 캐시를 삭제하지 않는다. Hermes export·로그·metadata hash와 재사용 node_modules를 보존한다.
 - `build:android`는 Hermes export다. APK/AAB 서명·설치와 동일하지 않다.
 - private `google-services.json`을 제공하지 않은 export에서는 config 경고가 남는다. 실제 Firebase 및 서명 native 후보 증거가 아니다.
-- 최초 후보 검증에서 연결된 Galaxy SM-N981N을 읽기 전용으로 확인했다. 이번 관리 검토 보완의 새 기기 증거는 아니다. 설치된 `com.evnsolution.clever.driver`는 `0.1.15 (26)`이다.
+- 격리 후보는 `com.evnsolution.clever.driver.integration`과 `CLEVER Driver Integration`을 사용한다. 로컬 HTTP는 이 후보에서만 허용한다. Firebase `googleServicesFile`은 격리 후보에서 제거한다.
+- `build:android:integration:apk`는 기본 API를 `http://127.0.0.1:4908`로 고정하고 운영 알림 후보를 켠다. Gradle worker와 CMake 병렬도는 각각 1로 제한한다. JVM heap 2GiB와 Metaspace 1GiB는 전체 빌드 메모리 상한이 아니다.
+- Galaxy SM-N981N 장치 `R3CN80SCYPL`에 suffix 후보만 설치했다. 설치 전후 업무용 `com.evnsolution.clever.driver`는 `0.1.15 (26)`이다.
 - 설치본의 base.apk SHA256은 `0ed81f68648c523ea11ad4e8537126877b0f530879e7328b6c0c45fa5773189d`이다. 기기 앱·자료를 교체하거나 삭제하지 않았다.
 - 이번 dev 후보의 `app.json`은 기존 `0.1.14 (23)`을 유지한다. PR61 또는 기기 설치본을 dev에 이미 있는 릴리스로 취급하지 않는다.
 
 | 증거 | 결과 |
 |---|---|
 | 합성 payload·클릭·인증·업무 명령 실행 | 검증됨. |
-| 기기 연결·기존 패키지 버전·hash 읽기 | 검증됨. |
-| 새 후보 native APK 설치·화면·권한·카메라 | 미검증. Issue62가 열려 있고 서명/Firebase native 후보를 만들거나 설치하지 않았다. |
+| 실제 PostgreSQL API와 생산 Driver 클라이언트 | 검증됨. 실제 JWT 로그인, context·알림함 조회, 시작·미배송 보고와 응답 유실 뒤 같은 commandId 재시도를 확인했다. |
+| Android Hermes export | 검증됨. CI 37570524933에서 Android/iOS export가 통과했다. native APK 증거와 구분한다. |
+| native APK 생성 | 검증됨. `com.evnsolution.clever.driver.integration` 0.1.14(23), arm64-v8a, 45,577,823 bytes, SHA256 `9fff45386f9384f0207ca496dbf0147a10ba956c78f1113290fc03ec8d3825f5`이다. Android debug certificate로 서명했다. 배포 서명 후보가 아니다. |
+| APK source tree | 최종 APK는 `ac1e688da250de9611dc2de0fde89f01ce41620e` 위에 isolated manifest 수정이 적용된 tree에서 생성했다. 같은 수정은 후속 commit `d9740e5a6764e82e05e698c39181a8aee2e4aac8`에 기록했다. 문서 commit은 APK binary를 변경하지 않는다. |
+| native 빌드 과정 | 첫 observer는 1,200초에 terminal `lintVital` 진행 중 timeout됐다. OOM과 source error는 없었다. 보존한 Gradle·NDK cache를 사용한 1회 continuation은 57.3초에 성공했다. isolated cleartext manifest 수정 뒤 최종 incremental build는 30.1초에 성공했다. |
+| APK 매니페스트 | 검증됨. suffix package, targetSdk 36, arm64와 isolated `usesCleartextTraffic=true`를 확인했다. production config는 기존 package·Firebase 설정을 유지한다. |
+| 격리 설치·실제 로그인·복구 | 검증됨. `adb reverse tcp:4908 tcp:4908` 뒤 최종 PostgreSQL fixture의 합성 계정으로 로그인했다. 합성 배송원 홈 화면을 확인했다. force-stop과 재실행 뒤 로그인 홈이 복구됐다. |
+| native 화면 증거 | `/tmp/dsv-isolated-integration-20261007/driver-native-home.png`, SHA256 `f96264e4e8f98ddda1c9c98c647c38646d15e104571dec9ea30dc2f6f0208538`, 94,176 bytes. 합성 배송원 이름과 홈 화면을 포함한다. |
+| 업무용 설치와 데이터 보존 | 검증됨. 업무용 package는 0.1.15(26) 상태를 유지했다. suffix package만 새로 설치했다. |
+| 권한·카메라 native 화면 | 미검증. 로그인과 홈 화면까지만 기기에서 확인했다. |
 | 실제 FCM 수신·배경/종료 상태 native 클릭 | 미검증. 합성 VM 결과와 구분한다. |
-| 서버 runtime·운영 배차·실제 GPS·실발송 | 미검증. 서버 PR483은 미병합·미배포다. |
+| Firebase provider와 실제 알림 | 미검증. 격리 APK는 업무용 Firebase config를 제거했다. 실제 provider와 실발송을 사용하지 않았다. |
+| 운영 배차·실제 GPS·운영 활성화 | 미검증. 서버 후보는 미병합·미배포다. |
 
 ## 남은 차단
 
-Issue62 보안 검사, 서버 API 통합/배포 증거, D05 운영 사유 승인, 실제 FCM 및 native 기기 후보 검증이 남는다. 기능은 기본 OFF다. 앱 플래그는 서버 지오펜싱·실발송 승인이 아니다. 반복 6회 정책은 구현하지 않았다.
+Issue62 보안 검사, 배포 서명, 실제 FCM, native 권한·카메라, 서버 배포와 D05 운영 사유 승인이 남는다. 기능은 기본 OFF다. 앱 플래그는 서버 지오펜싱·실발송 승인이 아니다. 반복 6회 정책은 구현하지 않았다.
 
 PR 병합, 서버 배포, 실발송 활성화, Play·Drive 게시, 운영 DB 변경, iOS 작업은 수행하지 않았다.
