@@ -71,6 +71,7 @@ function createHarness() {
       return action.onPress;
     },
     get dialog() { return dialog; },
+    dismissDialog() { dialog = null; },
   };
 }
 
@@ -113,9 +114,13 @@ describe('persistent delivery execution controller callbacks', () => {
     let controller = harness.render(initial);
     harness.hooks.DeliveryExecutionActions({ controller, variant: 'delivery' });
     controller.confirmDeliveryCompletion();
-    const accept = harness.press('완료');
-    accept();
-    accept();
+    controller = harness.render(initial);
+    assert.equal(controller.executionState.proof?.destinationId, initial.summary!.destinationId);
+    const submitted = controller.submitDeliveryCompletion(
+      '2026-09-10T05:42:00.000Z',
+      { uri: 'file:///proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'camera' },
+    );
+    void controller.submitDeliveryCompletion('2026-09-10T05:43:00.000Z', null);
     assert.equal(stopCalls, 1);
 
     const refreshed = options({
@@ -129,15 +134,12 @@ describe('persistent delivery execution controller callbacks', () => {
     assert.equal(controller.isLocked, true);
     assert.equal(controller.isCompletionDisabled, true);
     pending.resolve(true);
+    await submitted;
     await flush();
     controller = harness.render(refreshed);
     assert.equal(controller.executionState.proof?.deliveryStopId, initial.summary!.deliveryStopId);
-    await controller.uploadProof({ uri: 'file:///proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'camera' });
     assert.deepEqual(uploadedStops, [initial.summary!.deliveryStopId]);
 
-    controller.closeProofDelivery();
-    await flush();
-    controller = harness.render(refreshed);
     assert.equal(harness.dialog?.title, '배차 완료 실패');
     assert.ok(controller.dialog);
     assert.ok(controller.executionState.proof);
@@ -149,6 +151,62 @@ describe('persistent delivery execution controller callbacks', () => {
     assert.equal(foreignRouteCalls, 0);
     assert.equal(controller.executionState.proof, null);
     assert.equal(controller.isLocked, false);
+  });
+
+  it('retains the saved completion time while retrying a failed proof upload', async () => {
+    const harness = createHarness();
+    const savedTimes: string[] = [];
+    let uploads = 0;
+    const props = options({
+      onCompleteDelivery: async (_destinationId, _stopIds, occurredAt) => {
+        savedTimes.push(occurredAt);
+        return false;
+      },
+      onUploadProof: async () => {
+        uploads += 1;
+        if (uploads === 1) throw new Error('offline during proof upload');
+      },
+    });
+    const photo = {
+      uri: 'file:///proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'camera' as const,
+    };
+    let controller = harness.render(props);
+    controller.confirmDeliveryCompletion();
+    controller = harness.render(props);
+    await controller.submitDeliveryCompletion('2026-09-10T05:42:00.000Z', photo);
+    controller = harness.render(props);
+    assert.equal(controller.executionState.proof?.completedAt, '2026-09-10T05:42:00.000Z');
+    assert.equal(harness.dialog?.title, '증빙 업로드 실패');
+    harness.dismissDialog();
+    await controller.submitDeliveryCompletion('2026-09-10T06:00:00.000Z', photo);
+    controller = harness.render(props);
+    assert.deepEqual(savedTimes, ['2026-09-10T05:42:00.000Z']);
+    assert.equal(uploads, 2);
+    assert.equal(controller.executionState.phase, 'idle');
+  });
+
+  it('keeps completion time editable when the completion request itself fails', async () => {
+    const harness = createHarness();
+    const attemptedTimes: string[] = [];
+    const props = options({
+      onCompleteDelivery: async (_destinationId, _stopIds, occurredAt) => {
+        attemptedTimes.push(occurredAt);
+        if (attemptedTimes.length === 1) throw new Error('completion not saved');
+        return false;
+      },
+    });
+    let controller = harness.render(props);
+    controller.confirmDeliveryCompletion();
+    controller = harness.render(props);
+    await controller.submitDeliveryCompletion('2026-09-10T05:42:00.000Z', null);
+    controller = harness.render(props);
+    assert.equal(controller.executionState.proof?.completedAt, null);
+    assert.equal(controller.executionState.phase, 'proof');
+    harness.dismissDialog();
+    await controller.submitDeliveryCompletion('2026-09-10T06:00:00.000Z', null);
+    controller = harness.render(props);
+    assert.deepEqual(attemptedTimes, ['2026-09-10T05:42:00.000Z', '2026-09-10T06:00:00.000Z']);
+    assert.equal(controller.executionState.phase, 'idle');
   });
 
   it('allows only one start request while another tab presentation is pending', async () => {
@@ -170,6 +228,42 @@ describe('persistent delivery execution controller callbacks', () => {
     pending.resolve();
     await flush();
     controller = harness.render(props);
+    assert.equal(controller.isLocked, false);
+  });
+
+  it('protects synchronously before opening completion and keeps the approved stop immutable during photo retry', async () => {
+    const harness = createHarness();
+    const upload = deferred<void>();
+    const transitions: string[] = [];
+    const stopCalls: { destinationId: string; stops: string[]; occurredAt: string }[] = [];
+    const uploadedStops: string[] = [];
+    const props = options({
+      onWorkStarted: () => { transitions.push('protected'); },
+      onCompleteDelivery: async (destinationId, stops, occurredAt) => {
+        transitions.push('completed'); stopCalls.push({ destinationId, stops, occurredAt }); return false;
+      },
+      onUploadProof: async (stopId) => { uploadedStops.push(stopId); await upload.promise; },
+    });
+    const photo = { uri: 'file:///retained-proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'library' as const };
+    let controller = harness.render(props);
+    controller.confirmDeliveryCompletion();
+    assert.deepEqual(transitions, ['protected']);
+    assert.equal(stopCalls.length, 0);
+    controller = harness.render(props);
+    assert.equal(controller.isLocked, true);
+    const submitted = controller.submitDeliveryCompletion('2026-10-07T06:42:00.000Z', photo);
+    await flush();
+    controller = harness.render(props);
+    assert.equal(controller.executionState.phase, 'uploading-proof');
+    assert.equal(controller.executionState.proof?.completedAt, '2026-10-07T06:42:00.000Z');
+    assert.equal(controller.isLocked, true);
+    await controller.submitDeliveryCompletion('2026-10-07T07:00:00.000Z', photo);
+    assert.equal(stopCalls.length, 1);
+    assert.deepEqual(uploadedStops, [props.summary!.deliveryStopId]);
+    assert.deepEqual(stopCalls, [{ destinationId: props.summary!.destinationId, stops: props.summary!.deliveryStopIds, occurredAt: '2026-10-07T06:42:00.000Z' }]);
+    upload.resolve(); await submitted;
+    controller = harness.render(props);
+    assert.equal(controller.executionState.phase, 'idle');
     assert.equal(controller.isLocked, false);
   });
 });

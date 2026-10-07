@@ -47,6 +47,8 @@ type AuthEntryScreenProps = {
   onAuthenticated?(session: DriverAuthSession): Promise<void> | void;
 };
 
+type AuthMode = 'login' | 'register' | 'password-reset-help';
+
 export function AuthEntryScreen({
   onAuthenticated,
 }: AuthEntryScreenProps) {
@@ -54,7 +56,7 @@ export function AuthEntryScreen({
     useState<LoginFormValues>(EMPTY_LOGIN_FORM);
   const [registrationForm, setRegistrationForm] =
     useState<RegistrationFormValues>(EMPTY_REGISTRATION_FORM);
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<AuthMode>('login');
   const [loginErrors, setLoginErrors] = useState<LoginFormErrors>({});
   const [registrationErrors, setRegistrationErrors] =
     useState<RegistrationFormErrors>({});
@@ -133,6 +135,7 @@ export function AuthEntryScreen({
   }
 
   const isRegistration = mode === 'register';
+  const isPasswordResetHelp = mode === 'password-reset-help';
 
   return (
     <>
@@ -156,16 +159,40 @@ export function AuthEntryScreen({
       <View style={styles.formCard}>
           <View style={styles.formHeading}>
             <Text style={styles.formTitle}>
-              {isRegistration ? '배송원 계정 만들기' : '배송원 로그인'}
+              {isPasswordResetHelp
+                ? '비밀번호 재설정'
+                : isRegistration
+                  ? '배송원 계정 만들기'
+                  : '배송원 로그인'}
             </Text>
             <Text style={styles.formDescription}>
-              {isRegistration
-                ? '이름과 휴대전화 번호가 등록된 배송원 정보와 일치하면 자동으로 연결됩니다.'
-                : '가입한 아이디 또는 이메일과 비밀번호를 입력해 주세요.'}
+              {isPasswordResetHelp
+                ? '관리자가 발급한 일회용 링크로 새 비밀번호를 설정할 수 있습니다.'
+                : isRegistration
+                  ? '이름과 휴대전화 번호가 등록된 배송원 정보와 일치하면 자동으로 연결됩니다.'
+                  : '가입한 아이디 또는 이메일과 비밀번호를 입력해 주세요.'}
             </Text>
           </View>
 
-          {isRegistration ? (
+          {isPasswordResetHelp ? (
+            <View style={styles.passwordResetHelp}>
+              <Text style={styles.passwordResetStep}>
+                1. DSV 관리자에게 비밀번호 초기화를 요청해 주세요.
+              </Text>
+              <Text style={styles.passwordResetStep}>
+                2. 관리자가 발급한 일회용 HTTPS 링크는 30분 동안 사용할 수
+                있습니다.
+              </Text>
+              <Text style={styles.passwordResetStep}>
+                3. 전달받은 링크를 열어 새 비밀번호를 설정해 주세요.
+              </Text>
+              <Text style={styles.passwordResetNotice}>
+                이름이나 휴대전화 번호만으로 비밀번호를 초기화할 수 없습니다.
+                링크가 만료되었거나 이미 사용되었다면 관리자에게 다시 발급을
+                요청해 주세요.
+              </Text>
+            </View>
+          ) : isRegistration ? (
             <>
               <LabeledInput
                 autoComplete="name"
@@ -303,6 +330,24 @@ export function AuthEntryScreen({
                 textContentType="password"
                 value={loginForm.password}
               />
+              <Pressable
+                accessibilityRole="button"
+                disabled={isSubmitting}
+                onPress={() => {
+                  setMode('password-reset-help');
+                  setAuthSession(null);
+                  setLoginErrors({});
+                  setMessage(null);
+                }}
+                style={({ pressed }) => [
+                  styles.passwordResetButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.passwordResetButtonText}>
+                  비밀번호 찾기
+                </Text>
+              </Pressable>
             </>
           )}
 
@@ -318,23 +363,26 @@ export function AuthEntryScreen({
             </Text>
           ) : null}
 
-          <PrimaryButton
-            disabled={isSubmitting}
-            label={
-              isSubmitting ? '처리 중' : isRegistration ? '회원가입' : '로그인'
-            }
-            onPress={
-              isRegistration
-                ? handleRegistrationSubmit
-                : handleLoginSubmit
-            }
-          />
-          {isRegistration ? (
+          {isPasswordResetHelp ? null : (
+            <PrimaryButton
+              disabled={isSubmitting}
+              label={
+                isSubmitting ? '처리 중' : isRegistration ? '회원가입' : '로그인'
+              }
+              onPress={
+                isRegistration
+                  ? handleRegistrationSubmit
+                  : handleLoginSubmit
+              }
+            />
+          )}
+          {isRegistration || isPasswordResetHelp ? (
             <Pressable
               accessibilityRole="button"
               disabled={isSubmitting}
               onPress={() => {
                 setMode('login');
+                setAuthSession(null);
                 setMessage(null);
                 setRegistrationErrors({});
               }}
@@ -587,6 +635,34 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 20,
+  },
+  passwordResetButton: {
+    alignItems: 'flex-end',
+    alignSelf: 'flex-end',
+    justifyContent: 'center',
+    minHeight: 32,
+  },
+  passwordResetButtonText: {
+    color: '#0b57d0',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  passwordResetHelp: {
+    gap: 12,
+  },
+  passwordResetNotice: {
+    backgroundColor: '#f2f4f7',
+    borderRadius: 12,
+    color: '#475467',
+    fontSize: 13,
+    lineHeight: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  passwordResetStep: {
+    color: '#344054',
+    fontSize: 14,
+    lineHeight: 22,
   },
   legalLinks: {
     alignItems: 'center',

@@ -327,16 +327,21 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
 
   useEffect(() => {
     if (authSession === null) return undefined;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void recoverAuthentication().catch(() => undefined);
+    });
+    return () => subscription.remove();
+  }, [authSession, recoverAuthentication]);
+
+  useEffect(() => {
+    if (authSession === null) return undefined;
     const refreshAt = Date.parse(authSession.expiresAt) - 60_000;
     const delay = Math.max(0, Math.min(refreshAt - Date.now(), 2_147_000_000));
     let timeout: ReturnType<typeof setTimeout>;
     let active = true;
     const generation = authGeneration.current;
     const refreshSession = () => {
-      void refreshDriverAccountSession({
-        refreshToken: authSession.refreshToken,
-      })
-        .then((session) => { if (active) return acceptAuthSession(session, generation); })
+      void recoverAuthentication()
         .catch((error: unknown) => {
           if (!active || generation !== authGeneration.current) return;
           if (resolveDriverAuthRecoveryAction(error) === 'discard') {
@@ -348,7 +353,7 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     };
     timeout = setTimeout(refreshSession, delay);
     return () => { active = false; clearTimeout(timeout); };
-  }, [acceptAuthSession, authSession, discardAuthSession]);
+  }, [authSession, discardAuthSession, recoverAuthentication]);
 
   useEffect(() => {
     if (authSession === null || clickLease.current !== null) return;
@@ -557,6 +562,33 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
     notificationNotice === undefined && !isInboxOpen;
   useLayoutEffect(() => { workspaceVisibleRef.current = isWorkspaceVisible; }, [isWorkspaceVisible]);
 
+  const protectedNotificationOverlay = (
+    notificationHold !== undefined ? (
+      <SafeAreaView accessibilityRole="alert" edges={['bottom', 'left', 'right']} style={styles.notificationHold}>
+        {notificationHold.continueWorking ? (
+          <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: false })}>
+            <Text>보류된 알림</Text>
+          </Pressable>
+        ) : (
+          <>
+            <Text>알림 이동을 보류했습니다. 현재 입력과 화면을 유지합니다.</Text>
+            <Text>{notificationHold.moveRequested
+              ? '현재 작업을 저장하거나 종료하면 알림 목적지를 다시 확인하고 이동합니다.'
+              : '알림으로 이동하려면 현재 작업을 저장하거나 종료해 주세요.'}</Text>
+            <View style={styles.notificationHoldActions}>
+              <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: true, moveRequested: false })} style={styles.notificationHoldButton}>
+                <Text style={styles.notificationHoldButtonText}>현재 작업 계속</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, moveRequested: true })} style={[styles.notificationHoldButton, styles.notificationHoldMoveButton]}>
+                <Text style={[styles.notificationHoldButtonText, styles.notificationHoldMoveButtonText]}>알림으로 이동</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </SafeAreaView>
+    ) : null
+  );
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <KeyboardProvider>
@@ -642,35 +674,12 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
                   onNotificationDestinationRejected={rejectNotificationDestination}
                   onNotificationDestinationDeferred={deferNotificationDestination}
                   onWorkProtectionChange={reportWorkProtection}
+                  protectedNotificationOverlay={protectedNotificationOverlay}
                   onAuthenticationRequired={recoverCommandAuthentication}
                   onLogout={logout}
                   refreshRequestKey={notificationRefreshKey}
                 />
               </View>
-              {notificationHold !== undefined ? (
-                <SafeAreaView accessibilityRole="alert" edges={['bottom', 'left', 'right']} style={styles.notificationHold}>
-                  {notificationHold.continueWorking ? (
-                    <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: false })}>
-                      <Text>보류된 알림</Text>
-                    </Pressable>
-                  ) : (
-                    <>
-                      <Text>알림 이동을 보류했습니다. 현재 입력과 화면을 유지합니다.</Text>
-                      <Text>{notificationHold.moveRequested
-                        ? '현재 작업을 저장하거나 종료하면 알림 목적지를 다시 확인하고 이동합니다.'
-                        : '알림으로 이동하려면 현재 작업을 저장하거나 종료해 주세요.'}</Text>
-                      <View style={styles.notificationHoldActions}>
-                        <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, continueWorking: true, moveRequested: false })} style={styles.notificationHoldButton}>
-                          <Text style={styles.notificationHoldButtonText}>현재 작업 계속</Text>
-                        </Pressable>
-                        <Pressable accessibilityRole="button" onPress={() => setNotificationHold({ ...notificationHold, moveRequested: true })} style={[styles.notificationHoldButton, styles.notificationHoldMoveButton]}>
-                          <Text style={[styles.notificationHoldButtonText, styles.notificationHoldMoveButtonText]}>알림으로 이동</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  )}
-                </SafeAreaView>
-              ) : null}
               {notificationNotice !== undefined ? (
                 <DriverNotificationNotice message={notificationNotice.message} onClose={() => { void dismissNotification(); }} onRetry={notificationNotice.retryable ? retryNotification : undefined} />
               ) : isInboxOpen ? (
@@ -692,15 +701,10 @@ const styles = StyleSheet.create({
   hiddenWorkspace: { display: 'none' },
   notificationHold: {
     backgroundColor: '#fff4db',
-    bottom: 0,
     gap: 8,
-    left: 0,
     paddingBottom: 16,
     paddingHorizontal: 16,
     paddingTop: 16,
-    position: 'absolute',
-    right: 0,
-    zIndex: 10,
   },
   notificationHoldActions: {
     flexDirection: 'row',

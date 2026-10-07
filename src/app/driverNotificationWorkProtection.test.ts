@@ -9,6 +9,7 @@ import type { DriverNotificationClick } from '../domain/notifications/driverPush
 import { appRootHarness } from './driverNotificationAppRoot.test';
 import { createDeliveryDraftHarness } from './driverNotificationDrafts.test';
 import { workspaceHarness } from './driverWorkspaceReads.test';
+import { createProofModalHarness } from './deliveryProofModal.test';
 
 type ScreenProps = Parameters<typeof import('../ui/driver/DeliveryScreen')['DeliveryScreen']>[0];
 type RootHarnessOptions = NonNullable<Parameters<typeof appRootHarness>[0]>;
@@ -66,6 +67,8 @@ async function connectedWorkspace(options: {
   loadRoute?: (routePlanId: string) => Promise<DriverDeliveryRoute>;
   appStorage?: RootHarnessOptions['storage'];
   acknowledge?: RootHarnessOptions['acknowledge'];
+  refresh?: RootHarnessOptions['refresh'];
+  onStopCompletion?(body: { occurredAt: string; deliveryStopIds: string[] }): void;
 } = {}) {
   const reads = { choices: 0, routes: [] as string[], contexts: 0 };
   const businessPosts: RequestInit[] = [];
@@ -76,6 +79,7 @@ async function connectedWorkspace(options: {
       const body = JSON.parse(String(init?.body));
       assert.equal(body.routePlanId, routeAId);
       assert.deepEqual(body.deliveryStopIds, [stopAId]);
+      options.onStopCompletion?.(body);
       return new Response(JSON.stringify({ data: { eventId: 'synthetic-STOP_DELIVERED' }, error: null }));
     }
     throw new Error('A notification read must not make a business request');
@@ -83,7 +87,7 @@ async function connectedWorkspace(options: {
   const executionLock = { current: false };
   let deliveryDraft: ReturnType<typeof createDeliveryDraftHarness> | undefined;
   const app = appRootHarness({ resolver: options.resolver ?? (async () => destination),
-    storage: options.appStorage, acknowledge: options.acknowledge });
+    storage: options.appStorage, acknowledge: options.acknowledge, refresh: options.refresh });
   const workspace = workspaceHarness({ loadedRoute: routeA, executionLock,
     realExecution: options.realExecution, proofApi: options.proofApi, routeApi: {
     loadDriverDeliveryRouteChoices: async () => {
@@ -164,10 +168,7 @@ describe('Connected notification navigation preserves active work', () => {
       assert.ok(h.app.hasText('알림으로 이동'));
       const hold = h.app.alert();
       const holdStyle = hold?.style as { bottom?: number; left?: number; paddingBottom?: number; position?: string; right?: number };
-      assert.equal(holdStyle.position, 'absolute');
-      assert.equal(holdStyle.bottom, 0);
-      assert.equal(holdStyle.left, 0);
-      assert.equal(holdStyle.right, 0);
+      assert.equal(holdStyle.position, undefined, 'The shared banner must use the native overlay host placement');
       assert.equal(holdStyle.paddingBottom, 16);
       assert.equal((hold?.edges as string[]).includes('bottom'), true);
       const continueStyle = h.app.pressable('현재 작업 계속')?.style as { minHeight?: number };
@@ -225,7 +226,7 @@ describe('Connected notification navigation preserves active work', () => {
     });
   }
 
-  it('keeps the real delivery proof and pending photo upload until the user closes proof before moving', async () => {
+  it('keeps the real delivery proof and pending photo upload until completion succeeds before moving', async () => {
     const upload = deferred<void>();
     const uploads: DriverProofPhotoUpload[] = [];
     const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, proofApi: {
@@ -236,12 +237,12 @@ describe('Connected notification navigation preserves active work', () => {
     try {
       assert.equal(h.workspace.controller?.executionState.phase, 'idle');
       h.workspace.controller!.confirmDeliveryCompletion();
-      h.workspace.pressDialog('완료'); await h.settle();
+      await h.settle();
       assert.equal(h.workspace.controller?.executionState.phase, 'proof');
       assert.equal(h.workspace.controller?.executionState.proof?.deliveryStopId, stopAId);
       assert.equal(h.workspace.controller?.isLocked, true);
-      assert.equal(h.businessPosts.length, 1);
-      const uploading = h.workspace.controller!.uploadProof({
+      assert.equal(h.businessPosts.length, 0);
+      const uploading = h.workspace.controller!.submitDeliveryCompletion('2026-10-07T06:42:00.000Z', {
         fileName: 'synthetic-proof-A.jpg', mimeType: 'image/jpeg', source: 'camera', uri: 'synthetic://proof-A.jpg',
       });
       await h.settle();
@@ -251,7 +252,7 @@ describe('Connected notification navigation preserves active work', () => {
       const reads = h.snapshotReads();
       h.app.click(click); await h.settle();
       h.app.pressText('알림으로 이동'); await h.settle();
-      assert.equal(h.workspace.controller?.executionState.phase, 'proof');
+      assert.equal(h.workspace.controller?.executionState.phase, 'uploading-proof');
       assert.equal(h.workspace.controller?.executionState.proof?.deliveryStopId, stopAId);
       assert.equal(h.workspace.controller?.isLocked, true);
       assert.equal(h.app.workspace()?.notificationDestination, undefined);
@@ -260,15 +261,136 @@ describe('Connected notification navigation preserves active work', () => {
       assert.equal(h.app.acknowledgements.length, 0);
       assert.equal(h.businessPosts.length, 1);
       upload.resolve(); await uploading; await h.settle();
-      assert.equal(h.workspace.controller?.executionState.phase, 'proof');
-      assert.equal(h.app.resolutions.length, 0);
-      h.workspace.controller!.closeProofDelivery(); h.workspace.render(); await h.settle();
       assert.equal(h.workspace.controller?.executionState.phase, 'idle');
       assert.equal(h.screen().nextDeliveryStopId, stopBId);
       assert.equal(h.app.resolutions.length, 1);
       assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
       assert.equal(h.businessPosts.length, 1);
     } finally { upload.resolve(); h.dispose(); }
+  });
+
+  it('retains completion input and the native camera preview through notification taps and a failed upload retry', async () => {
+    const permission = deferred<{ granted: boolean }>();
+    const camera = deferred<{ canceled: boolean; assets: { uri: string; fileName: string; mimeType: string }[] }>();
+    const retryUpload = deferred<void>();
+    const uploads: DriverProofPhotoUpload[] = [];
+    let pendingSubmit: Promise<void> | undefined;
+    const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, proofApi: {
+      uploadDriverProofPhoto: async (_token: string, photo: DriverProofPhotoUpload) => {
+        uploads.push(photo);
+        if (uploads.length === 1) throw new Error('Synthetic isolated upload failure');
+        await retryUpload.promise;
+      },
+    } });
+    const renderProof = createProofModalHarness({
+      requestCameraPermissionsAsync: () => permission.promise,
+      launchCameraAsync: () => camera.promise,
+    });
+    type Element = { type: unknown; props: Record<string, unknown> };
+    function nodes(node: unknown): Element[] {
+      if (Array.isArray(node)) return node.flatMap(nodes);
+      if (node === null || typeof node !== 'object' || !('props' in node)) return [];
+      const element = node as Element;
+      return [element, ...nodes(element.props.children)];
+    }
+    function proofTree() {
+      const overlay = h.workspace.find((element) => typeof element.type === 'function' && element.type.name === 'DeliveryExecutionOverlay');
+      assert.ok(overlay, 'Workspace must render the production completion overlay');
+      const modal = (overlay.type as (props: unknown) => Element)(overlay.props);
+      assert.equal(modal.type, 'DeliveryProofModal');
+      const props = modal.props as Parameters<typeof import('../ui/driver/DeliveryProofModal')['DeliveryProofModal']>[0];
+      return renderProof({ ...props, onConfirm: (...args) => {
+        pendingSubmit = props.onConfirm(...args); return pendingSubmit;
+      } });
+    }
+    function previewUri(tree: unknown) {
+      return (nodes(tree).find(({ type }) => type === 'Image')?.props.source as { uri?: string } | undefined)?.uri;
+    }
+    function pressConfirm(tree: unknown) {
+      const button = nodes(tree).find(({ type, props }) => type === 'Pressable'
+        && nodes(props.children).some((child) => child.props.children === '완료 확정'));
+      assert.ok(button); (button.props.onPress as () => void)();
+    }
+    try {
+      h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+      let tree = proofTree();
+      (nodes(tree).find(({ type }) => type === 'TextInput')!.props.onChangeText as (value: string) => void)('1542');
+      h.app.click(click); await h.settle(); tree = proofTree();
+      assert.equal(tree.type, 'Modal');
+      assert.ok(nodes(tree).some((element) => element.props.accessibilityRole === 'alert'));
+      assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
+      assert.equal(h.app.resolutions.length, 0);
+      h.app.pressText('현재 작업 계속'); await h.settle(); tree = proofTree();
+      (nodes(tree).find(({ props }) => props.label === '사진 촬영')!.props.onPress as () => void)();
+      await h.settle(); h.app.click(click); await h.settle();
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(nodes(proofTree()).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
+      permission.resolve({ granted: true }); await h.settle();
+      h.app.foreground(); h.app.click(click); await h.settle();
+      camera.resolve({ canceled: false, assets: [{ uri: 'file:///connected-camera-proof.jpg', fileName: 'isolated-camera.jpg', mimeType: 'image/jpeg' }] });
+      await h.settle(); tree = proofTree();
+      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+      h.app.pressText('보류된 알림'); await h.settle();
+      h.app.pressText('알림으로 이동'); await h.settle();
+      assert.equal(h.app.resolutions.length, 0);
+      pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
+      const acceptedAt = h.workspace.controller!.executionState.proof!.completedAt;
+      assert.ok(acceptedAt);
+      assert.equal(h.businessPosts.length, 1);
+      assert.equal(h.workspace.controller!.executionState.phase, 'proof');
+      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+      assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
+      const errorDialog = h.workspace.controller!.dialog as unknown as Element;
+      (errorDialog.props.onDismiss as () => void)(); await h.settle();
+      pressConfirm(proofTree()); await h.settle();
+      assert.equal(h.workspace.controller!.executionState.phase, 'uploading-proof');
+      h.app.click(click); await h.settle(); tree = proofTree();
+      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+      assert.equal(h.workspace.controller!.executionState.proof!.completedAt, acceptedAt);
+      assert.equal(h.businessPosts.length, 1);
+      assert.equal(h.app.resolutions.length, 0);
+      retryUpload.resolve(); await pendingSubmit; await h.settle();
+      assert.equal(h.workspace.controller!.executionState.phase, 'idle');
+      assert.equal(h.screen().nextDeliveryStopId, stopBId);
+      assert.equal(h.app.resolutions.length, 1);
+      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+      assert.equal(h.businessPosts.length, 1);
+      assert.equal(uploads.length, 2);
+      assert.deepEqual(uploads.map(({ deliveryStopId, routePlanId, uri }) => ({ deliveryStopId, routePlanId, uri })), [
+        { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
+        { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
+      ]);
+      assert.equal(JSON.parse(String(h.businessPosts[0]!.body)).occurredAt, acceptedAt);
+    } finally { permission.resolve({ granted: true }); camera.resolve({ canceled: true, assets: [] }); retryUpload.resolve(); h.dispose(); }
+  });
+
+  it('retires only the locally completed N06 target and loads the remaining server stop after proof succeeds', async () => {
+    let delivered = false;
+    const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true,
+      resolver: async () => ({ notificationId, destination: {
+        type: 'EXECUTION', executionContextId: contextAId, routePlanId: routeAId, targetStopId: stopAId,
+      } }),
+      onStopCompletion: () => { delivered = true; },
+      loadRoute: async (routePlanId) => routePlanId === routeBId ? routeB : delivered ? {
+        ...routeA, nextDeliveryStopId: stopASecondId,
+        orders: routeA.orders.map((order) => order.id === stopAId ? { ...order, status: 'DELIVERED' } : order),
+      } : routeA,
+      proofApi: { uploadDriverProofPhoto: async () => undefined },
+    });
+    try {
+      h.app.click(click); await h.settle();
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+      h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+      await h.workspace.controller!.submitDeliveryCompletion('2026-10-07T06:42:00.000Z', {
+        fileName: 'targeted-proof.jpg', mimeType: 'image/jpeg', source: 'library', uri: 'file:///targeted-proof.jpg',
+      });
+      await h.settle();
+      assert.equal(h.workspace.controller!.executionState.phase, 'idle');
+      assert.equal(h.screen().nextDeliveryStopId, stopASecondId);
+      assert.equal(h.screen().orders.find(({ id }) => id === stopAId)!.status, 'DELIVERED');
+      assert.equal(h.businessPosts.length, 1);
+    } finally { h.dispose(); }
   });
 
   for (const status of [403, 409, 410]) {
@@ -354,8 +476,8 @@ describe('Connected notification navigation preserves active work', () => {
     const h = await connectedWorkspace({ realExecution: true });
     try {
       h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
-      assert.ok(h.workspace.controller?.dialog);
-      assert.equal(h.workspace.controller?.executionState.phase, 'idle');
+      assert.equal(h.workspace.controller?.executionState.proof?.deliveryStopId, stopAId);
+      assert.equal(h.workspace.controller?.executionState.phase, 'proof');
       assert.equal(h.workspace.controller?.isLocked, true);
       const reads = h.snapshotReads();
       h.app.click(click); await h.settle();
@@ -364,7 +486,7 @@ describe('Connected notification navigation preserves active work', () => {
       assert.equal(h.screen().nextDeliveryStopId, stopAId);
       assert.deepEqual(h.snapshotReads(), reads);
       assert.equal(h.app.acknowledgements.length, 0);
-      h.workspace.pressDialog('취소'); await h.settle();
+      h.workspace.controller!.closeProofDelivery(); await h.settle();
       assert.equal(h.workspace.controller?.dialog, null);
       assert.equal(h.workspace.controller?.isLocked, false);
       assert.equal(h.app.resolutions.length, 0);

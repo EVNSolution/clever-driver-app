@@ -11,6 +11,7 @@ type ExpoConfig = {
     slug: string;
     version: string;
     ios: {
+      buildNumber: string;
       bundleIdentifier: string;
       infoPlist: { ITSAppUsesNonExemptEncryption: boolean };
     };
@@ -23,6 +24,7 @@ type ExpoConfig = {
       package: string;
       versionCode: number;
     };
+    plugins: unknown[];
   };
 };
 
@@ -34,8 +36,9 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   assert.equal(appConfig.expo.name, 'CLEVER Driver');
   assert.equal(appConfig.expo.owner, 'evandsolution');
   assert.equal(appConfig.expo.slug, 'clever-driver-app');
-  assert.equal(appConfig.expo.version, '0.1.14');
-  assert.equal(appConfig.expo.android.versionCode, 23);
+  assert.equal(appConfig.expo.version, '0.1.15');
+  assert.equal(appConfig.expo.android.versionCode, 26);
+  assert.equal(appConfig.expo.ios.buildNumber, '15');
   assert.equal(
     appConfig.expo.ios.bundleIdentifier,
     'com.evnsolution.clever.driver',
@@ -65,6 +68,9 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     backgroundColor: '#0B57D0',
     foregroundImage: './assets/branding/driver-app-icon-foreground.png',
   });
+  assert.ok(
+    appConfig.expo.plugins.includes('./plugins/with-android-release-optimization'),
+  );
 
   const icon = readFileSync(
     new URL('../../assets/branding/driver-app-icon.png', import.meta.url),

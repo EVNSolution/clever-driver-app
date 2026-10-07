@@ -33,6 +33,7 @@ describe('DSV driver events API client', () => {
       'route-1',
       'destination-1',
       ['stop-1', 'stop-2'],
+      '2026-09-10T05:42:00.000Z',
     );
 
     assert.equal(request?.input, 'https://dsv.example.test/driver/destinations/complete');
@@ -44,6 +45,7 @@ describe('DSV driver events API client', () => {
     const body = JSON.parse(request?.init?.body as string) as Record<string, unknown>;
     assert.equal(body.destinationId, 'destination-1');
     assert.deepEqual(body.deliveryStopIds, ['stop-1', 'stop-2']);
+    assert.equal(body.occurredAt, '2026-09-10T05:42:00.000Z');
     assert.equal('eventType' in body, false);
   });
 

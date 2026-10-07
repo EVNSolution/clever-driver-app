@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { registerDriverOperationalCapability } from '../../../api/dsvDriverOperational';
 import { registerDriverPushTokenWithCapability, revokeDriverPushToken } from '../../../api/dsvDriverPushToken';
 import { DRIVER_OPERATIONAL_ENABLED } from '../../../config/driverOperational';
+import { isIsolatedDriverVerification } from '../../../config/driverIsolatedVerification';
 import { createDriverNotificationRecovery } from '../../../domain/notifications/driverNotificationRecovery';
 import {
   classifyDriverNotificationClick,
@@ -16,7 +17,6 @@ import {
 } from '../../../domain/notifications/driverPushNotification';
 
 const DRIVER_ANDROID_APP_ID = 'com.evnsolution.clever.driver';
-const DRIVER_INTEGRATION_ANDROID_APP_ID = 'com.evnsolution.clever.driver.integration';
 const ROUTE_UPDATES_CHANNEL_ID = 'route-updates';
 const STORED_PUSH_TOKEN_KEY = 'driver.push.device-token';
 let pushSession: { accessToken: string; generation: number } | null = null;
@@ -202,14 +202,12 @@ function supportsNotificationResponses(): boolean {
   return isSupportedAndroid() || isIsolatedNotificationVerification();
 }
 function isIsolatedNotificationVerification(): boolean {
-  if (Platform.OS !== 'android' || Application.applicationId !== DRIVER_INTEGRATION_ANDROID_APP_ID
-    || !DRIVER_OPERATIONAL_ENABLED || process.env.EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION !== 'true') return false;
-  try {
-    const apiBaseUrl = new URL(process.env.EXPO_PUBLIC_DSV_API_BASE_URL ?? '');
-    return apiBaseUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(apiBaseUrl.hostname);
-  } catch {
-    return false;
-  }
+  return Platform.OS === 'android' && isIsolatedDriverVerification({
+    applicationId: Application.applicationId,
+    enabled: process.env.EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION,
+    operational: DRIVER_OPERATIONAL_ENABLED ? 'true' : undefined,
+    apiBaseUrl: process.env.EXPO_PUBLIC_DSV_API_BASE_URL,
+  });
 }
 async function ensureAndroidNotificationChannel(): Promise<void> {
   await Notifications.setNotificationChannelAsync(ROUTE_UPDATES_CHANNEL_ID, {

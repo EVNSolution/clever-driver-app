@@ -95,6 +95,7 @@ type DriverWorkspaceProps = {
   onWorkProtectionChange?(isProtected: boolean): void;
   onAuthenticationRequired?(): void;
   deliveryExceptionReasons?: readonly DriverDeliveryExceptionReason[];
+  protectedNotificationOverlay?: ReactNode;
 };
 
 export function DriverWorkspace({
@@ -110,6 +111,7 @@ export function DriverWorkspace({
   onNotificationDestinationDeferred,
   onWorkProtectionChange,
   deliveryExceptionReasons = [],
+  protectedNotificationOverlay,
 }: DriverWorkspaceProps) {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
@@ -651,6 +653,7 @@ export function DriverWorkspace({
   async function completeDelivery(
     destinationId: string,
     deliveryStopIds: string[],
+    occurredAt: string,
   ): Promise<boolean> {
     if (route === null) throw new Error('현재 배차를 확인해 주세요.');
     const completingRoute = route;
@@ -661,7 +664,14 @@ export function DriverWorkspace({
       route.routeId,
       destinationId,
       deliveryStopIds,
+      occurredAt,
     );
+    const completedTarget = notificationTargetRef.current;
+    if (mountedRef.current && completedTarget?.routePlanId === completingRoute.routePlanId
+      && deliveryStopIds.includes(completedTarget.targetStopId)) {
+      notificationTargetRef.current = null;
+      setNotificationTarget(null);
+    }
     if (!completesRoute && mountedRef.current && routeRef.current?.routePlanId === completingRoute.routePlanId &&
       routeRef.current.routeVersionId === completingRoute.routeVersionId) {
       setLoadAttempt((attempt) => attempt + 1);
@@ -1067,7 +1077,9 @@ export function DriverWorkspace({
               <DeliveryScreen
                 deliveryDate={route.deliveryDate}
                 destinationNotesById={route.destinationNotesById}
+                etaStatus={route.etaStatus}
                 executionController={deliveryExecution}
+                executionStatus={route.executionStatus}
                 historySummary={route.historySummary}
                 isEditing={isSequenceEditing}
                 isReadOnly={isRouteReadOnly}
@@ -1084,6 +1096,7 @@ export function DriverWorkspace({
                 onSaveDestinationNotes={saveDestinationNotes}
                 onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}
+                pickupCompletedAt={route.pickupCompletedAt}
                 refreshing={isRefreshingRoute}
                 serverRouteGeometry={route.serverRouteGeometry}
                 timezone={route.timezone}
@@ -1107,7 +1120,7 @@ export function DriverWorkspace({
         )}
       </View>
 
-      <DeliveryExecutionOverlay controller={deliveryExecution} />
+      <DeliveryExecutionOverlay controller={deliveryExecution} protectedNotificationOverlay={protectedNotificationOverlay} />
 
       {isSettingsOpen ? (
         <DriverSettingsModal

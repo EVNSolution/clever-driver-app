@@ -7,6 +7,7 @@ import ts from 'typescript';
 import * as plan from '../domain/delivery/deliveryPlan';
 import * as notes from '../domain/delivery/destinationNotesPreview';
 import * as sortable from '../domain/delivery/sortableOrder';
+import * as finalEta from '../domain/delivery/finalDeliveryEta';
 import type { DriverOperationalInboxItem } from '../api/dsvDriverOperational';
 
 type ProtectionProps = { onWorkProtectionChange?(isProtected: boolean): void };
@@ -61,6 +62,7 @@ function componentHarness<P extends object>(fileName: string, exportName: string
     '../../domain/delivery/deliveryPlan': plan,
     '../../domain/delivery/destinationNotesPreview': notes,
     '../../domain/delivery/sortableOrder': sortable,
+    '../../domain/delivery/finalDeliveryEta': finalEta,
     './AppDialog': { useAppDialog: () => ({ dialog: null, showDialog: (value: unknown) => { dialog = value; } }) },
     './DeliveryExecutionActions': { DeliveryExecutionActions: 'DeliveryExecutionActions' },
     './DriverRefreshControl': { DriverRefreshControl: 'DriverRefreshControl' },
@@ -102,6 +104,7 @@ function componentHarness<P extends object>(fileName: string, exportName: string
 export function createDeliveryDraftHarness(initial: Partial<DeliveryProps> = {}) {
   const props: DeliveryProps = {
     deliveryDate: '2026-10-07', destinationNotesById: {}, executionController: {} as DeliveryProps['executionController'],
+    etaStatus: 'READY', executionStatus: 'IN_PROGRESS', pickupCompletedAt: null,
     isEditing: false, isReadOnly: false, isSequenceEditingSupported: true, lastUpdatedAt: null, nextDeliveryStopId: null,
     onAcknowledgeTimeConstraint: async () => undefined, onEditingChange: () => undefined, onOpenDeliverySpace: () => undefined,
     onReadDriverMessage: async () => undefined, onRefresh: () => undefined, onSequenceSavingChange: () => undefined,

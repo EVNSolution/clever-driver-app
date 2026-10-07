@@ -79,7 +79,7 @@ export function appRootHarness(options: {
   let onClick: ((notification: payloads.DriverNotificationClick) => void) | undefined;
   let onReceipt: ((notification: payloads.DriverPushNotification) => void) | undefined;
   let onBack: (() => boolean) | undefined;
-  let onActive: ((state: string) => void) | undefined;
+  const appStateListeners = new Set<(state: string) => void>();
   let authenticate: ((session: DriverAuthSession) => Promise<void>) | undefined;
   const same = (previous: unknown[] | undefined, next: unknown[]) => previous?.length === next.length && previous.every((value, i) => Object.is(value, next[i]));
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
@@ -111,7 +111,7 @@ export function appRootHarness(options: {
     'react-native': {
       Platform: { OS: 'android' }, StyleSheet: { create: (styles: unknown) => styles },
       AppState: { currentState: 'active', addEventListener: (_name: string, callback: (state: string) => void) => {
-        onActive = callback; return { remove: () => { onActive = undefined; } };
+        appStateListeners.add(callback); return { remove: () => { appStateListeners.delete(callback); } };
       } },
       BackHandler: { addEventListener: (_name: string, callback: () => boolean) => { onBack = callback; return { remove: () => { if (onBack === callback) onBack = undefined; } }; } },
       Alert: { alert: () => undefined }, Linking: { openURL: async () => undefined, openSettings: async () => undefined },
@@ -178,6 +178,7 @@ export function appRootHarness(options: {
     if (Array.isArray(value)) value.forEach((child) => nodes(child, result));
     else if (value !== null && typeof value === 'object' && 'props' in value) {
       const element = value as Element; result.push(element); nodes(element.props.children, result);
+      if (element.type === 'DriverWorkspace') nodes(element.props.protectedNotificationOverlay, result);
     }
     return result;
   }
@@ -205,7 +206,7 @@ export function appRootHarness(options: {
     },
     pressable: (text: string) => nodes(tree).find((element) => element.type === 'Pressable' && nodes(element.props.children).some((child) => child.type === 'Text' && child.props.children === text))?.props,
     receive(notification = click as payloads.DriverPushNotification) { assert.ok(onReceipt); onReceipt(notification); },
-    foreground() { assert.ok(onActive); onActive('active'); },
+    foreground() { assert.ok(appStateListeners.size > 0); [...appStateListeners].forEach((listener) => listener('active')); },
     fireAuthRefresh() {
       const entry = [...timeouts.entries()].find(([, timer]) => timer.delay === 2_147_000_000);
       assert.ok(entry); timeouts.delete(entry[0]); entry[1].run();
@@ -334,6 +335,40 @@ it('rechecks notification permission on foreground and removes the denial prompt
   permission = { status: 'registered' };
   h.foreground(); h.render(); await h.settle();
   assert.equal(h.hasText('알림 권한이 꺼져 있습니다. 설정 열기'), false);
+  h.unmount();
+});
+
+it('shares one authentication refresh when camera return overlaps the scheduled refresh', async () => {
+  const refreshed = deferred<DriverAuthSession>();
+  const h = appRootHarness({ refresh: async () => refreshed.promise });
+  h.render(); await h.settle(); await h.login();
+  h.workspace()!.onWorkProtectionChange!(true);
+  h.foreground(); h.fireAuthRefresh(); h.foreground(); await h.settle();
+  assert.equal(h.refreshRequests, 1);
+  h.click(); await h.settle();
+  assert.equal(h.workspace()?.notificationDestination, undefined);
+  assert.equal(h.resolutions.length, 0);
+  const session = { ...auth(), accessToken: 'camera-return-renewed-access' };
+  refreshed.resolve(session); await h.settle();
+  assert.equal(h.workspace()?.authSession.accessToken, session.accessToken);
+  assert.equal(h.workspace()?.authSession.account.id, 'account-A');
+  assert.equal(h.resolutions.length, 0);
+  assert.equal(h.acknowledgements.length, 0);
+  h.unmount();
+});
+
+it('fences a late camera-return refresh after logout and another account login', async () => {
+  const oldRefresh = deferred<DriverAuthSession>();
+  const h = appRootHarness({ refresh: async () => oldRefresh.promise });
+  h.render(); await h.settle(); await h.login();
+  h.foreground(); await h.settle();
+  assert.equal(h.refreshRequests, 1);
+  await h.logout(); await h.login('account-B');
+  oldRefresh.resolve(auth()); await h.settle();
+  assert.equal(h.workspace()?.authSession.account.id, 'account-B');
+  assert.deepEqual(h.savedSessions.map((session) => session.account.id), ['account-A', 'account-B']);
+  assert.equal(h.workspace()?.notificationDestination, undefined);
+  assert.equal(h.acknowledgements.length, 0);
   h.unmount();
 });
 

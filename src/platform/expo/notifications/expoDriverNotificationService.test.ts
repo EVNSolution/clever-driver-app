@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as isolatedVerification from '../../../config/driverIsolatedVerification';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
@@ -59,6 +60,7 @@ function nativeServiceHarness(options: {
       clearLastNotificationResponseAsync: async () => { clearedResponses += 1; },
       SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval' },
     },
+    '../../../config/driverIsolatedVerification': isolatedVerification,
     '../../../api/dsvDriverOperational': {
       registerDriverOperationalCapability: async (accessToken: string, input: { tokenId: string; installationId: string }) => { capabilities.push({ accessToken, ...input }); },
     },

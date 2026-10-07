@@ -3,14 +3,14 @@
     "name": "CLEVER Driver",
     "owner": "evandsolution",
     "slug": "clever-driver-app",
-    "version": "0.1.14",
+    "version": "0.1.15",
     "icon": "./assets/branding/driver-app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.evnsolution.clever.driver",
-      "buildNumber": "1",
+      "buildNumber": "15",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "배송 지도에서 현재 위치를 표시하기 위해 위치 권한을 사용합니다."
@@ -19,7 +19,7 @@
     "android": {
       "package": "com.evnsolution.clever.driver",
       "predictiveBackGestureEnabled": true,
-      "versionCode": 23,
+      "versionCode": 26,
       "googleServicesFile": "./.private/google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/driver-app-icon-foreground.png",
@@ -57,7 +57,8 @@
           "photosPermission": "배송 완료 증빙 사진을 선택하기 위해 사진 앨범을 사용합니다."
         }
       ],
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "./plugins/with-android-release-optimization"
     ]
   }
 }
