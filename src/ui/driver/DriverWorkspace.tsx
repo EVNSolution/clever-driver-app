@@ -653,7 +653,7 @@ export function DriverWorkspace({
   async function completeDelivery(
     destinationId: string,
     deliveryStopIds: string[],
-    occurredAt: string,
+    identity: DriverLifecycleCommandIdentity,
   ): Promise<boolean> {
     if (route === null) throw new Error('현재 배차를 확인해 주세요.');
     const completingRoute = route;
@@ -664,7 +664,7 @@ export function DriverWorkspace({
       route.routeId,
       destinationId,
       deliveryStopIds,
-      occurredAt,
+      identity,
     );
     const completedTarget = notificationTargetRef.current;
     if (mountedRef.current && completedTarget?.routePlanId === completingRoute.routePlanId

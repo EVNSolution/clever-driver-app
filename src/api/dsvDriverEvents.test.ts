@@ -33,7 +33,7 @@ describe('DSV driver events API client', () => {
       'route-1',
       'destination-1',
       ['stop-1', 'stop-2'],
-      '2026-09-10T05:42:00.000Z',
+      { clientEventId: 'destination-1:delivered:stable', occurredAt: '2026-09-10T05:42:00.000Z' },
     );
 
     assert.equal(request?.input, 'https://dsv.example.test/driver/destinations/complete');
@@ -80,6 +80,21 @@ describe('DSV driver events API client', () => {
     }
     const pickupBody = JSON.parse(requests[1]?.init?.body as string) as Record<string, unknown>;
     assert.match(pickupBody.clientEventId as string, /^route-1:pickup:/u);
+  });
+
+  it('reuses destination completion identity and time when an accepted response is lost', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    const bodies: unknown[] = [];
+    globalThis.fetch = async (_input, init) => {
+      bodies.push(JSON.parse(init?.body as string));
+      if (bodies.length === 1) throw new Error('accepted response lost');
+      return new Response(JSON.stringify({ data: { eventIds: ['event-1'] }, error: null }));
+    };
+    const identity = { clientEventId: 'destination-1:delivered:stable', occurredAt: '2026-10-07T08:00:00.000Z' };
+    await assert.rejects(completeDriverDeliveryDestination('route-token', 'route-1', 'destination-1', ['stop-1'], identity), /accepted response lost/u);
+    await completeDriverDeliveryDestination('route-token', 'route-1', 'destination-1', ['stop-1'], identity);
+    assert.deepEqual(bodies[1], bodies[0]);
+    assert.deepEqual(bodies[1], { ...identity, routePlanId: 'route-1', destinationId: 'destination-1', deliveryStopIds: ['stop-1'] });
   });
 
   it('records route completion after the last destination is delivered', async () => {

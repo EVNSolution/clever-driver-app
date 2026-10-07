@@ -75,7 +75,8 @@ describe('Authenticated notification destination boundaries', () => {
     assert.match(platform, /ROUTE_UPDATES_CHANNEL_ID = 'route-updates'/u);
     assert.doesNotMatch(platform, /getExpoPushTokenAsync/u);
     assert.match(platform, /scheduleIsolatedDriverInboxNotification/u);
-    assert.match(platform, /DRIVER_INTEGRATION_ANDROID_APP_ID/u);
+    assert.match(platform, /isIsolatedDriverVerification/u);
+    assert.match(platform, /applicationId: Application\.applicationId/u);
     assert.match(platform, /EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION/u);
     assert.match(platform, /EXPO_PUBLIC_DSV_API_BASE_URL/u);
     const registration = platform.slice(platform.indexOf('export async function registerExpoDriverPushNotifications'), platform.indexOf('export function revokeExpoDriverPushNotifications'));

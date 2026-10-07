@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import type { DriverLifecycleCommandIdentity } from '../api/dsvDriverEvents';
 
 import * as executionState from '../domain/delivery/deliveryExecutionState';
 import { buildCurrentDeliverySummary, PREVIEW_DELIVERY_ORDERS } from '../domain/delivery/deliveryPlan';
@@ -18,6 +19,7 @@ function createHarness() {
   let dialog: Dialog | null = null;
   const refs: { current: unknown }[] = [];
   let refIndex = 0;
+  let uuidCounter = 0;
   const module = { exports: {} };
   const jsx = (type: unknown, props: unknown) => ({ type, props });
   const dependencies: Record<string, unknown> = {
@@ -33,6 +35,7 @@ function createHarness() {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': { StyleSheet: { create: (styles: unknown) => styles } },
+    'expo-modules-core': { uuid: { v4: () => `11111111-1111-4111-8111-${String(++uuidCounter).padStart(12, '0')}` } },
     '../../domain/delivery/deliveryExecutionState': executionState,
     '../../platform/destinationMap': { openDestinationMap: async () => undefined },
     './AppDialog': { useAppDialog: () => ({
@@ -118,7 +121,7 @@ describe('persistent delivery execution controller callbacks', () => {
     assert.equal(controller.executionState.proof?.destinationId, initial.summary!.destinationId);
     const submitted = controller.submitDeliveryCompletion(
       '2026-09-10T05:42:00.000Z',
-      { uri: 'file:///proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'camera' },
+      { uri: 'file:///proof.jpg', fileName: 'proof.jpg', idempotencyKey: 'proof-media-v1:11111111111141118111000000000001', mimeType: 'image/jpeg', source: 'camera' },
     );
     void controller.submitDeliveryCompletion('2026-09-10T05:43:00.000Z', null);
     assert.equal(stopCalls, 1);
@@ -156,19 +159,21 @@ describe('persistent delivery execution controller callbacks', () => {
   it('retains the saved completion time while retrying a failed proof upload', async () => {
     const harness = createHarness();
     const savedTimes: string[] = [];
+    const uploadedKeys: string[] = [];
     let uploads = 0;
     const props = options({
-      onCompleteDelivery: async (_destinationId, _stopIds, occurredAt) => {
-        savedTimes.push(occurredAt);
+      onCompleteDelivery: async (_destinationId, _stopIds, identity) => {
+        savedTimes.push(identity.occurredAt);
         return false;
       },
-      onUploadProof: async () => {
+      onUploadProof: async (_stopId, photo) => {
         uploads += 1;
+        uploadedKeys.push(photo.idempotencyKey);
         if (uploads === 1) throw new Error('offline during proof upload');
       },
     });
     const photo = {
-      uri: 'file:///proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'camera' as const,
+      uri: 'file:///proof.jpg', fileName: 'proof.jpg', idempotencyKey: 'proof-media-v1:11111111111141118111000000000002', mimeType: 'image/jpeg', source: 'camera' as const,
     };
     let controller = harness.render(props);
     controller.confirmDeliveryCompletion();
@@ -182,30 +187,50 @@ describe('persistent delivery execution controller callbacks', () => {
     controller = harness.render(props);
     assert.deepEqual(savedTimes, ['2026-09-10T05:42:00.000Z']);
     assert.equal(uploads, 2);
+    assert.deepEqual(uploadedKeys, [photo.idempotencyKey, photo.idempotencyKey]);
     assert.equal(controller.executionState.phase, 'idle');
   });
 
-  it('keeps completion time editable when the completion request itself fails', async () => {
+  it('retains the submitted identity through close and reopen attempts after completion commits but its response is lost', async () => {
     const harness = createHarness();
-    const attemptedTimes: string[] = [];
+    const attempts: DriverLifecycleCommandIdentity[] = [];
+    const committed = new Map<string, string>();
     const props = options({
-      onCompleteDelivery: async (_destinationId, _stopIds, occurredAt) => {
-        attemptedTimes.push(occurredAt);
-        if (attemptedTimes.length === 1) throw new Error('completion not saved');
+      onCompleteDelivery: async (_destinationId, _stopIds, identity) => {
+        attempts.push({ ...identity });
+        if (!committed.has(identity.clientEventId)) {
+          committed.set(identity.clientEventId, identity.occurredAt);
+          throw new Error('Committed completion response was lost');
+        }
+        assert.equal(identity.occurredAt, committed.get(identity.clientEventId));
         return false;
       },
     });
     let controller = harness.render(props);
     controller.confirmDeliveryCompletion();
     controller = harness.render(props);
-    await controller.submitDeliveryCompletion('2026-09-10T05:42:00.000Z', null);
+    const submitBeforeRender = controller.submitDeliveryCompletion;
+    const closeBeforeRender = controller.closeProofDelivery;
+    const reopenBeforeRender = controller.confirmDeliveryCompletion;
+    const submitted = submitBeforeRender('2026-09-10T05:42:00.000Z', null);
+    closeBeforeRender(); reopenBeforeRender();
+    await submitted;
     controller = harness.render(props);
     assert.equal(controller.executionState.proof?.completedAt, null);
     assert.equal(controller.executionState.phase, 'proof');
+    assert.deepEqual({ ...controller.executionState.proof?.completionIdentity }, attempts[0]);
+    assert.equal(committed.size, 1);
+    controller.closeProofDelivery(); controller.confirmDeliveryCompletion();
+    controller = harness.render(props);
+    assert.equal(controller.executionState.phase, 'proof');
+    assert.deepEqual({ ...controller.executionState.proof?.completionIdentity }, attempts[0]);
     harness.dismissDialog();
     await controller.submitDeliveryCompletion('2026-09-10T06:00:00.000Z', null);
     controller = harness.render(props);
-    assert.deepEqual(attemptedTimes, ['2026-09-10T05:42:00.000Z', '2026-09-10T06:00:00.000Z']);
+    assert.equal(attempts.length, 2);
+    assert.deepEqual(attempts[1], attempts[0]);
+    assert.equal(committed.size, 1);
+    assert.equal(attempts[1]?.occurredAt, '2026-09-10T05:42:00.000Z');
     assert.equal(controller.executionState.phase, 'idle');
   });
 
@@ -239,12 +264,12 @@ describe('persistent delivery execution controller callbacks', () => {
     const uploadedStops: string[] = [];
     const props = options({
       onWorkStarted: () => { transitions.push('protected'); },
-      onCompleteDelivery: async (destinationId, stops, occurredAt) => {
-        transitions.push('completed'); stopCalls.push({ destinationId, stops, occurredAt }); return false;
+      onCompleteDelivery: async (destinationId, stops, identity) => {
+        transitions.push('completed'); stopCalls.push({ destinationId, stops, occurredAt: identity.occurredAt }); return false;
       },
       onUploadProof: async (stopId) => { uploadedStops.push(stopId); await upload.promise; },
     });
-    const photo = { uri: 'file:///retained-proof.jpg', fileName: 'proof.jpg', mimeType: 'image/jpeg', source: 'library' as const };
+    const photo = { uri: 'file:///retained-proof.jpg', fileName: 'proof.jpg', idempotencyKey: 'proof-media-v1:11111111111141118111000000000003', mimeType: 'image/jpeg', source: 'library' as const };
     let controller = harness.render(props);
     controller.confirmDeliveryCompletion();
     assert.deepEqual(transitions, ['protected']);

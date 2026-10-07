@@ -1,4 +1,5 @@
 import { useReducer, useRef, type ReactNode } from 'react';
+import { uuid } from 'expo-modules-core';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,6 +9,7 @@ import {
 } from 'react-native';
 
 import type { DriverProofPhotoUpload } from '../../api/dsvDriverProofMedia';
+import type { DriverLifecycleCommandIdentity } from '../../api/dsvDriverEvents';
 import type { CurrentDeliverySummary } from '../../domain/delivery/deliveryPlan';
 import {
   INITIAL_DELIVERY_EXECUTION_STATE,
@@ -24,7 +26,7 @@ type UseDeliveryExecutionOptions = {
   onCompleteDelivery(
     destinationId: string,
     deliveryStopIds: string[],
-    occurredAt: string,
+    identity: DriverLifecycleCommandIdentity,
   ): Promise<boolean>;
   onCompleteRoute(): Promise<void>;
   onStartDelivery(): Promise<void>;
@@ -58,7 +60,7 @@ export function useDeliveryExecution({
     onCompleteDelivery(
       destinationId: string,
       deliveryStopIds: string[],
-      occurredAt: string,
+      identity: DriverLifecycleCommandIdentity,
     ): Promise<boolean>;
     onCompleteRoute(): Promise<void>;
     onUploadProof(
@@ -66,6 +68,7 @@ export function useDeliveryExecution({
       photo: Omit<DriverProofPhotoUpload, 'deliveryStopId' | 'routePlanId'>,
     ): Promise<void>;
   } | null>(null);
+  const completionTransactionRef = useRef<{ identity: DriverLifecycleCommandIdentity; approved: boolean } | null>(null);
   const canStart = !isReadOnly && etaStatus === 'PRE_PICKUP' && orderCount > 0;
   const isCompletionDisabled =
     isReadOnly || etaStatus === 'PRE_PICKUP' || summary === null ||
@@ -87,7 +90,7 @@ export function useDeliveryExecution({
   }
 
   function confirmDeliveryCompletion() {
-    if (summary === null || isCompletionDisabled) return;
+    if (summary === null || isCompletionDisabled || completionTransactionRef.current !== null) return;
 
     onWorkStarted?.();
     transactionCallbacksRef.current = {
@@ -124,6 +127,7 @@ export function useDeliveryExecution({
     try {
       await completeRoute();
       transactionCallbacksRef.current = null;
+      completionTransactionRef.current = null;
       dispatch({ type: 'ROUTE_COMPLETED' });
     } catch (error) {
       dispatch({ type: 'ROUTE_COMPLETION_FAILED' });
@@ -148,6 +152,7 @@ export function useDeliveryExecution({
   }
 
   function closeProofDelivery() {
+    if (actionRef.current !== null || (completionTransactionRef.current !== null && !completionTransactionRef.current.approved)) return;
     if (executionState.phase === 'completing-route') return;
     if (executionState.proof?.completesRoute === true) {
       void completeFinalRoute();
@@ -155,6 +160,7 @@ export function useDeliveryExecution({
     }
 
     transactionCallbacksRef.current = null;
+    completionTransactionRef.current = null;
     dispatch({ type: 'PROOF_CLOSED' });
   }
 
@@ -206,15 +212,22 @@ export function useDeliveryExecution({
     if (proof === null || callbacks === null || actionRef.current !== null) return;
 
     if (proof.completesRoute === null) {
+      const identity = completionTransactionRef.current?.identity ?? proof.completionIdentity ?? {
+        clientEventId: `${proof.destinationId}:delivered:${uuid.v4()}`,
+        occurredAt,
+      };
+      completionTransactionRef.current = { identity, approved: false };
+      proof = { ...proof, completionIdentity: identity };
       actionRef.current = 'stop';
-      dispatch({ type: 'STOP_COMPLETION_STARTED' });
+      dispatch({ type: 'STOP_COMPLETION_STARTED', completionIdentity: identity });
       try {
         const completesRoute = await callbacks.onCompleteDelivery(
           proof.destinationId,
           proof.deliveryStopIds,
-          occurredAt,
+          identity,
         );
-        proof = { ...proof, completesRoute, completedAt: occurredAt };
+        completionTransactionRef.current.approved = true;
+        proof = { ...proof, completesRoute, completedAt: identity.occurredAt };
         dispatch({ proof, type: 'STOP_COMPLETED' });
       } catch (error) {
         dispatch({ type: 'STOP_COMPLETION_FAILED' });
@@ -257,6 +270,7 @@ export function useDeliveryExecution({
       await completeFinalRoute(proof);
     } else {
       transactionCallbacksRef.current = null;
+      completionTransactionRef.current = null;
       dispatch({ type: 'PROOF_CLOSED' });
     }
   }
@@ -399,6 +413,7 @@ export function DeliveryExecutionOverlay({
     <DeliveryProofModal
       destinationName={proof.destinationName}
       savedCompletionOccurredAt={proof.completedAt}
+      submittedCompletionOccurredAt={proof.completionIdentity?.occurredAt}
       executionDialog={controller.dialog}
       protectedNotificationOverlay={protectedNotificationOverlay}
       executionPending={[

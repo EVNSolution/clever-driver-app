@@ -1,6 +1,7 @@
 export type DeliveryExecutionProof = {
   completesRoute: boolean | null;
   completedAt: string | null;
+  completionIdentity?: { clientEventId: string; occurredAt: string };
   deliveryStopIds: string[];
   deliveryStopId: string;
   destinationId: string;
@@ -25,7 +26,8 @@ type DeliveryExecutionEvent =
   | { proof: DeliveryExecutionProof; type: 'COMPLETION_OPENED' }
   | { type: 'PROOF_UPLOAD_FAILED' | 'PROOF_UPLOAD_STARTED' }
   | { proof: DeliveryExecutionProof; type: 'PROOF_UPLOADED' }
-  | { type: 'START_STARTED' | 'STOP_COMPLETION_FAILED' | 'STOP_COMPLETION_STARTED' }
+  | { type: 'START_STARTED' | 'STOP_COMPLETION_FAILED' }
+  | { type: 'STOP_COMPLETION_STARTED'; completionIdentity: { clientEventId: string; occurredAt: string } }
   | { proof: DeliveryExecutionProof; type: 'STOP_COMPLETED' }
   | { type: 'PROOF_CLOSED' };
 
@@ -51,7 +53,7 @@ export function reduceDeliveryExecutionState(
       return { phase: 'proof', proof: event.proof };
     case 'STOP_COMPLETION_STARTED':
       if (state.phase !== 'proof' || state.proof?.completesRoute !== null) return state;
-      return { phase: 'completing-stop', proof: state.proof };
+      return { phase: 'completing-stop', proof: { ...state.proof, completionIdentity: event.completionIdentity } };
     case 'STOP_COMPLETION_FAILED':
       if (state.phase !== 'completing-stop') return state;
       return { phase: 'proof', proof: state.proof };

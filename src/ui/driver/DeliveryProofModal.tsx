@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { uuid } from 'expo-modules-core';
 import { type ReactNode, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ type SelectedProofPhoto = Omit<
 type DeliveryProofModalProps = {
   destinationName: string;
   savedCompletionOccurredAt: string | null;
+  submittedCompletionOccurredAt?: string;
   executionDialog?: ReactNode;
   protectedNotificationOverlay?: ReactNode;
   executionPending?: boolean;
@@ -43,6 +45,7 @@ type DeliveryProofModalProps = {
 export function DeliveryProofModal({
   destinationName,
   savedCompletionOccurredAt,
+  submittedCompletionOccurredAt,
   executionDialog,
   protectedNotificationOverlay,
   executionPending = false,
@@ -56,10 +59,12 @@ export function DeliveryProofModal({
     () => formatDeliveryCompletionTime(openedAt),
   );
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedProofPhoto | null>(null);
-  const canEditCompletionTime = !executionPending && savedCompletionOccurredAt === null;
-  const displayedCompletionTime = savedCompletionOccurredAt === null
+  const lockedCompletionOccurredAt = savedCompletionOccurredAt ?? submittedCompletionOccurredAt ?? null;
+  const canClose = !executionPending && !(submittedCompletionOccurredAt !== undefined && savedCompletionOccurredAt === null);
+  const canEditCompletionTime = !executionPending && lockedCompletionOccurredAt === null;
+  const displayedCompletionTime = lockedCompletionOccurredAt === null
     ? completionTime
-    : formatDeliveryCompletionTime(new Date(savedCompletionOccurredAt));
+    : formatDeliveryCompletionTime(new Date(lockedCompletionOccurredAt));
 
   async function selectPhoto(source: DriverProofPhotoSource) {
     try {
@@ -110,6 +115,7 @@ export function DeliveryProofModal({
       }
 
       setSelectedPhoto({
+        idempotencyKey: `proof-media-v1:${uuid.v4().replace(/-/gu, '')}`,
         fileName: asset.fileName ?? `delivery-proof-${Date.now()}.jpg`,
         mimeType: asset.mimeType ?? 'image/jpeg',
         source,
@@ -133,7 +139,7 @@ export function DeliveryProofModal({
 
   async function confirmCompletion() {
     if (executionPending) return;
-    const occurredAt = savedCompletionOccurredAt
+    const occurredAt = lockedCompletionOccurredAt
       ?? resolveDeliveryCompletionOccurredAt(completionTime, openedAt);
     if (occurredAt === null) {
       showDialog({
@@ -150,14 +156,14 @@ export function DeliveryProofModal({
   return (
     <Modal
       animationType="slide"
-      onRequestClose={executionPending ? undefined : onClose}
+      onRequestClose={() => { if (canClose) onClose(); }}
       transparent
       visible
     >
       <View style={styles.backdrop}>
         <Pressable
           accessibilityLabel="배송 증빙 닫기"
-          disabled={executionPending}
+          disabled={!canClose}
           onPress={onClose}
           style={StyleSheet.absoluteFill}
         />
@@ -198,9 +204,11 @@ export function DeliveryProofModal({
               value={displayedCompletionTime}
             />
             <Text style={styles.timeHint}>
-              {savedCompletionOccurredAt === null
+              {lockedCompletionOccurredAt === null
                 ? '24시간 형식 · 시:분'
-                : '완료 시간이 저장되었습니다.'}
+                : savedCompletionOccurredAt === null
+                  ? '요청한 완료 시간을 유지합니다.'
+                  : '완료 시간이 저장되었습니다.'}
             </Text>
           </View>
 
@@ -243,6 +251,7 @@ export function DeliveryProofModal({
               <View style={styles.completionActions}>
                 <Pressable
                   accessibilityRole="button"
+                  disabled={!canClose}
                   onPress={onClose}
                   style={({ pressed }) => [
                     styles.closeButton,

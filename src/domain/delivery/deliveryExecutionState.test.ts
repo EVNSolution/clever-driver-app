@@ -7,6 +7,11 @@ import {
   reduceDeliveryExecutionState,
 } from './deliveryExecutionState';
 
+const completionIdentity = {
+  clientEventId: 'completion-state-identity',
+  occurredAt: '2026-09-10T05:42:00.000Z',
+};
+
 const finalProof = {
   completesRoute: true,
   completedAt: '2026-09-10T05:42:00.000Z',
@@ -26,7 +31,7 @@ describe('delivery execution state', () => {
     );
     const completingState = reduceDeliveryExecutionState(
       proofState,
-      { type: 'STOP_COMPLETION_STARTED' },
+      { type: 'STOP_COMPLETION_STARTED', completionIdentity },
     );
     const completedState = reduceDeliveryExecutionState(
       completingState,
@@ -34,7 +39,11 @@ describe('delivery execution state', () => {
     );
 
     assert.deepEqual(proofState, { phase: 'proof', proof: pendingProof });
-    assert.deepEqual(completingState, { phase: 'completing-stop', proof: pendingProof });
+    assert.deepEqual(completingState, { phase: 'completing-stop', proof: { ...pendingProof, completionIdentity } });
+    assert.deepEqual(
+      reduceDeliveryExecutionState(completingState, { type: 'STOP_COMPLETION_FAILED' }).proof?.completionIdentity,
+      completionIdentity,
+    );
     assert.deepEqual(completedState, { phase: 'proof', proof: finalProof });
     assert.equal(isDeliveryExecutionLocked(proofState), true);
     assert.equal(
@@ -42,7 +51,7 @@ describe('delivery execution state', () => {
       proofState,
     );
     assert.deepEqual(
-      reduceDeliveryExecutionState(proofState, { type: 'STOP_COMPLETION_STARTED' }),
+      reduceDeliveryExecutionState(proofState, { type: 'STOP_COMPLETION_STARTED', completionIdentity }),
       completingState,
     );
     assert.equal(

@@ -13,6 +13,7 @@ type Modal = typeof import('../ui/driver/DeliveryProofModal').DeliveryProofModal
 export function createProofModalHarness(imagePicker: Record<string, unknown> = {}) {
   const cells: unknown[] = [];
   let index = 0;
+  let uuidCounter = 0;
   const module = { exports: {} };
   const jsx = (type: unknown, props: Record<string, unknown>): Element => ({ type, props });
   const dependencies: Record<string, unknown> = {
@@ -31,6 +32,7 @@ export function createProofModalHarness(imagePicker: Record<string, unknown> = {
       ['StyleSheet', { create: (styles: unknown) => styles }],
     ]),
     'expo-image-picker': imagePicker,
+    'expo-modules-core': { uuid: { v4: () => `22222222-2222-4222-8222-${String(++uuidCounter).padStart(12, '0')}` } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '../../domain/delivery/deliveryCompletionTime': completionTime,
     './AppDialog': { useAppDialog: () => ({ dialog: null, showDialog: () => undefined }) },
@@ -109,6 +111,7 @@ it('retains the time and selected photo while notification actions render inside
   const camera = deferred<{ canceled: boolean; assets: { uri: string; fileName: string; mimeType: string }[] }>();
   const requests: Parameters<Parameters<Modal>[0]['onConfirm']>[] = [];
   let cameraCalls = 0;
+  let closeCalls = 0;
   const render = createProofModalHarness({
     requestCameraPermissionsAsync: () => permission.promise,
     launchCameraAsync: () => { cameraCalls += 1; return camera.promise; },
@@ -117,7 +120,7 @@ it('retains the time and selected photo while notification actions render inside
   const movedOverlay = { type: 'SyntheticHold', props: { children: '알림으로 이동' } };
   const props: Parameters<Modal>[0] = {
     destinationName: '정확한 N06 배송지', savedCompletionOccurredAt: null,
-    onClose: () => undefined,
+    onClose: () => { closeCalls += 1; },
     onConfirm: async (...request) => { requests.push(request); },
     protectedNotificationOverlay: firstOverlay as unknown as ReactNode,
   };
@@ -144,6 +147,22 @@ it('retains the time and selected photo while notification actions render inside
   const preview = elements(tree).find(({ type }) => type === 'Image')!;
   assert.deepEqual(JSON.parse(JSON.stringify(preview.props.source)), { uri: 'file:///isolated-proof.jpg' });
   const acceptedAt = new Date(2026, 9, 7, 15, 42).toISOString();
+  const unknownProps = { ...props, submittedCompletionOccurredAt: acceptedAt };
+  tree = render(unknownProps);
+  assert.equal(elements(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
+  assert.ok(elements(tree).some(({ props: item }) => item.children === '요청한 완료 시간을 유지합니다.'));
+  assert.ok(!elements(tree).some(({ props: item }) => item.children === '완료 시간이 저장되었습니다.'));
+  const cancel = elements(tree).find(({ type, props: item }) => type === 'Pressable'
+    && elements(item.children).some(({ props: child }) => child.children === '취소'))!;
+  assert.equal(cancel.props.disabled, true);
+  (tree.props.onRequestClose as () => void)();
+  assert.equal(closeCalls, 0);
+  const retry = elements(tree).find(({ type, props: item }) => type === 'Pressable'
+    && elements(item.children).some(({ props: child }) => child.children === '완료 확정'))!;
+  (retry.props.onPress as () => void)(); await flush();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]![0], acceptedAt);
+  assert.match(requests[0]![1]!.idempotencyKey, /^proof-media-v1:[a-f0-9]{32}$/u);
   tree = render({ ...props, savedCompletionOccurredAt: acceptedAt, executionPending: true });
   assert.ok(elements(tree).includes(firstOverlay));
   assert.deepEqual(JSON.parse(JSON.stringify(elements(tree).find(({ type }) => type === 'Image')!.props.source)), { uri: 'file:///isolated-proof.jpg' });
@@ -151,9 +170,10 @@ it('retains the time and selected photo while notification actions render inside
   const confirm = elements(tree).find(({ type, props: item }) => type === 'Pressable'
     && elements(item.children).some(({ props: child }) => child.children === '완료 확정'))!;
   (confirm.props.onPress as () => void)(); await flush();
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0]![0], acceptedAt);
-  assert.equal(requests[0]![1]?.uri, 'file:///isolated-proof.jpg');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1]![0], acceptedAt);
+  assert.equal(requests[1]![1]?.uri, 'file:///isolated-proof.jpg');
+  assert.equal(requests[1]![1]!.idempotencyKey, requests[0]![1]!.idempotencyKey);
   assert.equal(elements(render({ ...props, savedCompletionOccurredAt: acceptedAt })).find(({ type }) => type === 'TextInput')!.props.editable, false);
 });
 

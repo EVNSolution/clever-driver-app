@@ -64,6 +64,7 @@ async function connectedWorkspace(options: {
   realExecution?: boolean;
   proofApi?: Record<string, unknown>;
   syntheticStopCompletion?: boolean;
+  loseStopCompletionResponse?: boolean;
   loadRoute?: (routePlanId: string) => Promise<DriverDeliveryRoute>;
   appStorage?: RootHarnessOptions['storage'];
   acknowledge?: RootHarnessOptions['acknowledge'];
@@ -72,6 +73,8 @@ async function connectedWorkspace(options: {
 } = {}) {
   const reads = { choices: 0, routes: [] as string[], contexts: 0 };
   const businessPosts: RequestInit[] = [];
+  const committedCompletions = new Map<string, { occurredAt: string }>();
+  let lostCompletionResponse = false;
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     if (init?.method === 'POST') businessPosts.push(init);
@@ -79,7 +82,15 @@ async function connectedWorkspace(options: {
       const body = JSON.parse(String(init?.body));
       assert.equal(body.routePlanId, routeAId);
       assert.deepEqual(body.deliveryStopIds, [stopAId]);
-      options.onStopCompletion?.(body);
+      const committed = committedCompletions.get(body.clientEventId);
+      if (committed === undefined) {
+        committedCompletions.set(body.clientEventId, { occurredAt: body.occurredAt });
+        options.onStopCompletion?.(body);
+      } else assert.equal(body.occurredAt, committed.occurredAt);
+      if (options.loseStopCompletionResponse && !lostCompletionResponse) {
+        lostCompletionResponse = true;
+        throw new Error('Synthetic completion committed before its HTTP response was lost');
+      }
       return new Response(JSON.stringify({ data: { eventId: 'synthetic-STOP_DELIVERED' }, error: null }));
     }
     throw new Error('A notification read must not make a business request');
@@ -108,7 +119,7 @@ async function connectedWorkspace(options: {
     loadDriverExecutionContexts: async () => { reads.contexts += 1; return contexts; },
   } });
   const harness = {
-    app, workspace, executionLock, reads, businessPosts,
+    app, workspace, executionLock, reads, businessPosts, committedCompletions,
     async settle() {
       for (let index = 0; index < 5; index += 1) {
         await app.settle();
@@ -243,7 +254,7 @@ describe('Connected notification navigation preserves active work', () => {
       assert.equal(h.workspace.controller?.isLocked, true);
       assert.equal(h.businessPosts.length, 0);
       const uploading = h.workspace.controller!.submitDeliveryCompletion('2026-10-07T06:42:00.000Z', {
-        fileName: 'synthetic-proof-A.jpg', mimeType: 'image/jpeg', source: 'camera', uri: 'synthetic://proof-A.jpg',
+        fileName: 'synthetic-proof-A.jpg', idempotencyKey: 'proof-media-v1:33333333333343338333000000000001', mimeType: 'image/jpeg', source: 'camera', uri: 'synthetic://proof-A.jpg',
       });
       await h.settle();
       assert.equal(uploads.length, 1);
@@ -269,13 +280,13 @@ describe('Connected notification navigation preserves active work', () => {
     } finally { upload.resolve(); h.dispose(); }
   });
 
-  it('retains completion input and the native camera preview through notification taps and a failed upload retry', async () => {
+  it('retains completion identity and the camera photo key through response loss, notification taps and a failed upload retry', async () => {
     const permission = deferred<{ granted: boolean }>();
     const camera = deferred<{ canceled: boolean; assets: { uri: string; fileName: string; mimeType: string }[] }>();
     const retryUpload = deferred<void>();
     const uploads: DriverProofPhotoUpload[] = [];
     let pendingSubmit: Promise<void> | undefined;
-    const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, proofApi: {
+    const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, loseStopCompletionResponse: true, proofApi: {
       uploadDriverProofPhoto: async (_token: string, photo: DriverProofPhotoUpload) => {
         uploads.push(photo);
         if (uploads.length === 1) throw new Error('Synthetic isolated upload failure');
@@ -334,9 +345,30 @@ describe('Connected notification navigation preserves active work', () => {
       h.app.pressText('알림으로 이동'); await h.settle();
       assert.equal(h.app.resolutions.length, 0);
       pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
+      const submittedIdentity = h.workspace.controller!.executionState.proof!.completionIdentity;
+      assert.ok(submittedIdentity);
+      assert.equal(h.workspace.controller!.executionState.proof!.completedAt, null);
+      assert.equal(h.committedCompletions.size, 1);
+      assert.equal(h.businessPosts.length, 1);
+      assert.equal(uploads.length, 0);
+      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+      assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
+      const cancel = nodes(tree).find(({ type, props }) => type === 'Pressable'
+        && nodes(props.children).some((child) => child.props.children === '취소'));
+      assert.equal(cancel?.props.disabled, true);
+      (tree.props.onRequestClose as () => void)();
+      h.workspace.controller!.closeProofDelivery();
+      h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+      assert.deepEqual(h.workspace.controller!.executionState.proof!.completionIdentity, submittedIdentity);
+      assert.equal(h.app.resolutions.length, 0);
+      const unknownDialog = h.workspace.controller!.dialog as unknown as Element;
+      (unknownDialog.props.onDismiss as () => void)(); await h.settle();
+      pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
       const acceptedAt = h.workspace.controller!.executionState.proof!.completedAt;
       assert.ok(acceptedAt);
-      assert.equal(h.businessPosts.length, 1);
+      assert.equal(acceptedAt, submittedIdentity.occurredAt);
+      assert.equal(h.businessPosts.length, 2);
+      assert.equal(h.committedCompletions.size, 1);
       assert.equal(h.workspace.controller!.executionState.phase, 'proof');
       assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
       assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
@@ -347,20 +379,23 @@ describe('Connected notification navigation preserves active work', () => {
       h.app.click(click); await h.settle(); tree = proofTree();
       assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
       assert.equal(h.workspace.controller!.executionState.proof!.completedAt, acceptedAt);
-      assert.equal(h.businessPosts.length, 1);
+      assert.equal(h.businessPosts.length, 2);
       assert.equal(h.app.resolutions.length, 0);
       retryUpload.resolve(); await pendingSubmit; await h.settle();
       assert.equal(h.workspace.controller!.executionState.phase, 'idle');
       assert.equal(h.screen().nextDeliveryStopId, stopBId);
       assert.equal(h.app.resolutions.length, 1);
       assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
-      assert.equal(h.businessPosts.length, 1);
+      assert.equal(h.businessPosts.length, 2);
       assert.equal(uploads.length, 2);
+      assert.match(uploads[0]!.idempotencyKey, /^proof-media-v1:[a-f0-9]{32}$/u);
+      assert.equal(uploads[1]!.idempotencyKey, uploads[0]!.idempotencyKey);
       assert.deepEqual(uploads.map(({ deliveryStopId, routePlanId, uri }) => ({ deliveryStopId, routePlanId, uri })), [
         { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
         { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
       ]);
       assert.equal(JSON.parse(String(h.businessPosts[0]!.body)).occurredAt, acceptedAt);
+      assert.deepEqual(JSON.parse(String(h.businessPosts[1]!.body)), JSON.parse(String(h.businessPosts[0]!.body)));
     } finally { permission.resolve({ granted: true }); camera.resolve({ canceled: true, assets: [] }); retryUpload.resolve(); h.dispose(); }
   });
 
@@ -383,7 +418,7 @@ describe('Connected notification navigation preserves active work', () => {
       assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
       h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
       await h.workspace.controller!.submitDeliveryCompletion('2026-10-07T06:42:00.000Z', {
-        fileName: 'targeted-proof.jpg', mimeType: 'image/jpeg', source: 'library', uri: 'file:///targeted-proof.jpg',
+        fileName: 'targeted-proof.jpg', idempotencyKey: 'proof-media-v1:33333333333343338333000000000002', mimeType: 'image/jpeg', source: 'library', uri: 'file:///targeted-proof.jpg',
       });
       await h.settle();
       assert.equal(h.workspace.controller!.executionState.phase, 'idle');
