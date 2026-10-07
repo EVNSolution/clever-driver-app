@@ -97,6 +97,21 @@ describe('DSV driver events API client', () => {
     assert.match(body.clientEventId as string, /^route-1:completed:/u);
   });
 
+  it('replays the explicit completion identity unchanged after response loss', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    const bodies: unknown[] = [];
+    globalThis.fetch = async (_input, init) => {
+      bodies.push(JSON.parse(init?.body as string));
+      if (bodies.length === 1) throw new Error('response lost');
+      return new Response(JSON.stringify({ data: { eventId: 'event-1' }, error: null }));
+    };
+    const identity = { clientEventId: 'route-1:completed:stable-command', occurredAt: '2026-10-07T01:00:00.000Z' };
+    await assert.rejects(completeDriverDeliveryRoute('route-token', 'route-1', identity), /response lost/u);
+    await completeDriverDeliveryRoute('route-token', 'route-1', identity);
+    assert.deepEqual(bodies[0], bodies[1]);
+    assert.deepEqual(bodies[1], { ...identity, eventType: 'ROUTE_COMPLETED', routePlanId: 'route-1' });
+  });
+
   it('acknowledges a stop time change through the existing event endpoint', async () => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
     let request: { input: string; init?: RequestInit } | undefined;

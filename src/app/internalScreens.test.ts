@@ -90,7 +90,7 @@ describe('authenticated driver screens', () => {
     assert.equal(workspace.match(/disabled=\{isSequenceSaving\}/gu)?.length, 4);
     assert.match(
       workspace,
-      /useEffect\(\(\) => \{\s+if \(isSequenceSaving\) return undefined;/u,
+      /useEffect\(\(\) => \{\s+\/\/[^\n]+\n\s+if \(isWorkProtected\) return undefined;/u,
     );
     assert.match(workspace, /sequenceSaveReloadBaselineRef/u);
     assert.match(
@@ -159,7 +159,8 @@ describe('authenticated driver screens', () => {
     assert.match(routeClient, /executionStatus: DriverRouteExecutionStatus/u);
     assert.match(source, /completeDriverDeliveryRoute/u);
     assert.match(source, /completesDeliveryRoute/u);
-    assert.match(source, /reconcileCompletedRoutes/u);
+    assert.doesNotMatch(source, /reconcileCompletedRoutes/u);
+    assert.match(source, /accessibilityLabel="배차 완료 복구"/u);
     assert.match(source, /executionStatus: 'COMPLETED'/u);
     assert.match(source, /setRouteGroup\('terminal'\)/u);
     assert.match(
@@ -398,7 +399,7 @@ describe('authenticated driver screens', () => {
     assert.match(source, /groupOrderCount:[\s\S]*lineHeight: 16/u);
     assert.match(source, /boxCount:[\s\S]*lineHeight: 16/u);
     assert.match(source, /key=\{`\$\{group\.key\}:\$\{progressState\}`\}/u);
-    assert.match(workspace, /nextDeliveryStopId=\{route\.nextDeliveryStopId\}/u);
+    assert.match(workspace, /nextDeliveryStopId=\{activeDeliveryStopId\}/u);
     assert.match(source, /destinationGroupEmphasis:[\s\S]*paddingHorizontal: 9/u);
     assert.match(source, /completedPrimaryText:[\s\S]*color: '#475467'/u);
     assert.match(source, /paddingBottom: 88/u);
@@ -454,7 +455,7 @@ describe('authenticated driver screens', () => {
     assert.match(workspace, /route\.routeVersionId/u);
     assert.match(workspace, /serverRouteGeometry: null/u);
     assert.match(workspace, /setLoadAttempt\(\(attempt\) => attempt \+ 1\)/u);
-    assert.match(workspace, /if \(!completesRoute\) \{\s+setLoadAttempt/u);
+    assert.match(workspace, /if \(!completesRoute && mountedRef\.current[\s\S]*?setLoadAttempt/u);
     assert.doesNotMatch(workspace, /onOrdersChange=\{setOrders\}/u);
   });
 
@@ -835,7 +836,7 @@ describe('authenticated driver screens', () => {
     );
 
     assert.match(workspace, /accessToken=\{authSession\.accessToken\}/u);
-    assert.match(workspace, /onAccountDeletionRequested=\{onLogout\}/u);
+    assert.match(workspace, /onAccountDeletionRequested=\{handleLogout\}/u);
     assert.match(settings, /requestDriverAccountDeletion/u);
     assert.match(settings, /계정 삭제 요청/u);
     assert.match(settings, /ACCOUNT_DELETION_ACTIVE_ROUTE/u);

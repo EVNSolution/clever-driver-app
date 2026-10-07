@@ -11,11 +11,17 @@ type RouteLifecycleEventType =
   | 'ROUTE_STARTED'
   | 'TIME_CONSTRAINT_ACKNOWLEDGED';
 
+export type DriverLifecycleCommandIdentity = {
+  clientEventId: string;
+  occurredAt: string;
+};
+
 async function recordRouteLifecycleEvent(
   accessToken: string,
   routePlanId: string,
   eventType: RouteLifecycleEventType,
   deliveryStopId?: string,
+  identity?: DriverLifecycleCommandIdentity,
 ): Promise<void> {
   const eventName = eventType === 'ROUTE_STARTED'
     ? 'started'
@@ -26,10 +32,10 @@ async function recordRouteLifecycleEvent(
         : `time:${deliveryStopId}`;
   const response = await fetch(resolveDsvApiUrl('/driver/events'), {
     body: JSON.stringify({
-      clientEventId: `${routePlanId}:${eventName}:${Date.now()}`,
+      clientEventId: identity?.clientEventId ?? `${routePlanId}:${eventName}:${Date.now()}`,
       ...(deliveryStopId === undefined ? {} : { deliveryStopId }),
       eventType,
-      occurredAt: new Date().toISOString(),
+      occurredAt: identity?.occurredAt ?? new Date().toISOString(),
       routePlanId,
     }),
     headers: {
@@ -94,8 +100,9 @@ export async function startDriverDeliveryRoute(
 export async function completeDriverDeliveryRoute(
   accessToken: string,
   routePlanId: string,
+  identity?: DriverLifecycleCommandIdentity,
 ): Promise<void> {
-  await recordRouteLifecycleEvent(accessToken, routePlanId, 'ROUTE_COMPLETED');
+  await recordRouteLifecycleEvent(accessToken, routePlanId, 'ROUTE_COMPLETED', undefined, identity);
 }
 
 export async function completeDriverDeliveryDestination(

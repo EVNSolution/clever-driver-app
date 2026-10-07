@@ -77,3 +77,15 @@ access token과 계정 정보는 화면 메모리에만 두고, 30일 refresh to
 1. 승인된 사용자 기능에 직접 필요하다.
 2. Expo 56과의 버전 정합성이 확인된다.
 3. 표준 라이브러리나 현재 의존성으로 해결할 수 없다.
+
+## Android 운영 알림과 소형 명령
+
+기존 Expo Notifications의 직접 FCM 토큰과 `route-updates` 채널을 재사용한다.
+토큰 등록의 서버 tokenId와 동일한 deviceId로 schema-v1 capability를 등록한다.
+인증 resolver가 현재 목적지를 결정한다. 클릭 복구에는 알림 ID와 계정 바인딩만 저장한다.
+
+AsyncStorage는 소형 시작·보고 명령의 ID, 발생 시각과 신·구 fence를 저장한다.
+재시도는 현재 계정과 서버 context를 다시 확인한다. 서버 승인 전에는 성공으로 표시하지 않는다.
+access token과 목적지 상세는 영구 저장하지 않는다. 사진 오프라인 큐는 포함하지 않는다.
+위치 판정과 5분 반복 알림 예약은 서버 책임이다. 새 네이티브 위치 기능이나 로컬 알림 타이머를 추가하지 않는다.
+새 API 사용 조건은 [운영 알림 문서](driver-operational-notifications.md)를 따른다.

@@ -74,6 +74,7 @@ type DeliveryScreenProps = {
   onReadDriverMessage(messageId: string): Promise<void>;
   onRefresh(): void;
   onSequenceSavingChange(isSaving: boolean): void;
+  onWorkProtectionChange?(isProtected: boolean): void;
   onSaveDestinationNotes(
     destinationId: string,
     previous: DestinationNotes,
@@ -102,6 +103,7 @@ export function DeliveryScreen({
   onReadDriverMessage,
   onRefresh,
   onSequenceSavingChange,
+  onWorkProtectionChange,
   onSaveDestinationNotes,
   onSaveDeliveryOrder,
   orders,
@@ -128,6 +130,13 @@ export function DeliveryScreen({
     : destinationGroups.find(
       (group) => group.destinationId === selectedDestinationId,
     ) ?? null;
+  const isWorkProtected = selectedDestinationGroup !== null || isOrderActionPending;
+
+  useEffect(() => {
+    onWorkProtectionChange?.(isWorkProtected);
+  }, [isWorkProtected, onWorkProtectionChange]);
+
+  useEffect(() => () => onWorkProtectionChange?.(false), [onWorkProtectionChange]);
 
   function startEditing() {
     if (!isSequenceEditingSupported) return;
@@ -203,6 +212,7 @@ export function DeliveryScreen({
   }
 
   async function runOrderAction(action: () => Promise<void>) {
+    onWorkProtectionChange?.(true);
     setIsOrderActionPending(true);
     try {
       await action();
@@ -373,6 +383,7 @@ export function DeliveryScreen({
               key={`${group.key}:${progressState}`}
               onCurrentLayout={revealCurrentDestination}
               onOpenDeliveryInformation={() => {
+                onWorkProtectionChange?.(true);
                 setSelectedDestinationId(group.destinationId);
               }}
               progressState={progressState}
