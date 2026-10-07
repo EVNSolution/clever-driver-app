@@ -114,14 +114,14 @@ test('keeps the Android integration candidate isolated from the business install
       android: {
         googleServicesFile?: string;
         package: string;
-        usesCleartextTraffic?: boolean;
       };
       name: string;
+      plugins: unknown[];
     };
     assert.equal(productionConfig.name, 'CLEVER Driver');
     assert.equal(productionConfig.android.package, 'com.evnsolution.clever.driver');
     assert.equal(productionConfig.android.googleServicesFile, './.private/google-services.json');
-    assert.equal(productionConfig.android.usesCleartextTraffic, undefined);
+    assert.equal(productionConfig.plugins.length, 5);
 
     process.env.CLEVER_DRIVER_ISOLATED_ANDROID = 'true';
     delete require.cache[configPath];
@@ -129,9 +129,9 @@ test('keeps the Android integration candidate isolated from the business install
       android: {
         googleServicesFile?: string;
         package: string;
-        usesCleartextTraffic?: boolean;
       };
       name: string;
+      plugins: unknown[];
     };
 
     assert.equal(isolatedConfig.name, 'CLEVER Driver Integration');
@@ -139,8 +139,9 @@ test('keeps the Android integration candidate isolated from the business install
       isolatedConfig.android.package,
       'com.evnsolution.clever.driver.integration',
     );
-    assert.equal(isolatedConfig.android.usesCleartextTraffic, true);
     assert.equal(isolatedConfig.android.googleServicesFile, undefined);
+    assert.equal(isolatedConfig.plugins.length, 6);
+    assert.equal(typeof isolatedConfig.plugins.at(-1), 'function');
   } finally {
     if (previous === undefined) delete process.env.CLEVER_DRIVER_ISOLATED_ANDROID;
     else process.env.CLEVER_DRIVER_ISOLATED_ANDROID = previous;
