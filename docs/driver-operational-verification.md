@@ -105,6 +105,10 @@ legacy Driver HTTP 검증 범위는 로그인, execution context, 알림함, 시
 - private `google-services.json`을 제공하지 않은 export에서는 config 경고가 남는다. 실제 Firebase 및 서명 native 후보 증거가 아니다.
 - 격리 후보는 `com.evnsolution.clever.driver.integration`과 `CLEVER Driver Integration`을 사용한다. 로컬 HTTP는 이 후보에서만 허용한다. Firebase `googleServicesFile`은 격리 후보에서 제거한다.
 - `build:android:integration:apk`는 기본 API를 `http://127.0.0.1:4908`로 고정하고 운영 알림 후보를 켠다. Gradle worker와 CMake 병렬도는 각각 1로 제한한다. JVM heap 2GiB와 Metaspace 1GiB는 전체 빌드 메모리 상한이 아니다.
+- native 빌드 script는 mode 전환 또는 관리된 격리 tree의 Firebase 잔존 때만 clean prebuild를 사용한다. marker 없는 release tree와 동일 mode는 nonclean 생성 후 검증한다. app config plugin은 일반 생성에서 `usesCleartextTraffic`을 제거한다.
+- `test:android:generation-isolation`은 임시 저장소와 synthetic Firebase fixture만 사용한다. 실제 isolated→일반 prebuild 순서에서 package, Firebase 파일과 cleartext 매니페스트를 검사한다. 업무용 Firebase 파일은 읽거나 수정하지 않는다.
+- 실제 생성 증거와 SHA256 목록은 `/tmp/dsv-driver-android-generation-isolation/result.json`에 보존한다. production Firebase 파일은 synthetic fixture 사본이다.
+- 업무용 release helper는 격리 flag, 운영 flag와 API override를 제거한다. custom API 주소는 격리 검증 빌드에서만 허용한다.
 - Galaxy SM-N981N 장치 `R3CN80SCYPL`에 suffix 후보만 설치했다. 설치 전후 업무용 `com.evnsolution.clever.driver`는 `0.1.15 (26)`이다.
 - 설치본의 base.apk SHA256은 `0ed81f68648c523ea11ad4e8537126877b0f530879e7328b6c0c45fa5773189d`이다. 기기 앱·자료를 교체하거나 삭제하지 않았다.
 - 이번 dev 후보의 `app.json`은 기존 `0.1.14 (23)`을 유지한다. PR61 또는 기기 설치본을 dev에 이미 있는 릴리스로 취급하지 않는다.

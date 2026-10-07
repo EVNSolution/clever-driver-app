@@ -2,20 +2,18 @@ const appConfig = require('./app.json').expo;
 const { withAndroidManifest } = require('expo/config-plugins');
 const isolatedAndroid = process.env.CLEVER_DRIVER_ISOLATED_ANDROID === 'true';
 
-const withIsolatedAndroidCleartext = (config) =>
+const withAndroidCleartextPolicy = (config) =>
   withAndroidManifest(config, (pluginConfig) => {
-    pluginConfig.modResults.manifest.application[0].$[
-      'android:usesCleartextTraffic'
-    ] = 'true';
+    const application = pluginConfig.modResults.manifest.application[0].$;
+    if (isolatedAndroid) application['android:usesCleartextTraffic'] = 'true';
+    else delete application['android:usesCleartextTraffic'];
     return pluginConfig;
   });
 
 module.exports = {
   ...appConfig,
   name: isolatedAndroid ? 'CLEVER Driver Integration' : appConfig.name,
-  plugins: isolatedAndroid
-    ? [...appConfig.plugins, withIsolatedAndroidCleartext]
-    : appConfig.plugins,
+  plugins: [...appConfig.plugins, withAndroidCleartextPolicy],
   android: {
     ...appConfig.android,
     package: isolatedAndroid
