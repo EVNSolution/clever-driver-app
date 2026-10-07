@@ -11,10 +11,12 @@ import {
   classifyDriverNotificationClick,
   parseDriverPushNotification,
   type DriverNotificationClick,
+  type DriverOperationalPushKind,
   type DriverPushNotification,
 } from '../../../domain/notifications/driverPushNotification';
 
 const DRIVER_ANDROID_APP_ID = 'com.evnsolution.clever.driver';
+const DRIVER_INTEGRATION_ANDROID_APP_ID = 'com.evnsolution.clever.driver.integration';
 const ROUTE_UPDATES_CHANNEL_ID = 'route-updates';
 const STORED_PUSH_TOKEN_KEY = 'driver.push.device-token';
 let pushSession: { accessToken: string; generation: number } | null = null;
@@ -36,7 +38,7 @@ export function configureExpoDriverPushNotifications(): void {
       shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true,
     }),
   });
-  if (isSupportedAndroid()) void ensureAndroidNotificationChannel().catch(() => undefined);
+  if (supportsNotificationResponses()) void ensureAndroidNotificationChannel().catch(() => undefined);
 }
 
 export async function registerExpoDriverPushNotifications(accessToken: string): Promise<DriverPushRegistrationState> {
@@ -74,7 +76,7 @@ export function revokeExpoDriverPushNotifications(accessToken: string): Promise<
 
 /** Subscribed before authentication. Receipt is separate from a user's notification click. */
 export function subscribeToExpoDriverNotificationClicks(onClick: (notification: DriverNotificationClick) => void): () => void {
-  if (!isSupportedAndroid()) return () => undefined;
+  if (!supportsNotificationResponses()) return () => undefined;
   let active = true;
   const emit = (event: Notifications.NotificationResponse) => {
     if (!active) return;
@@ -91,7 +93,43 @@ export function subscribeToExpoDriverNotificationClicks(onClick: (notification: 
 }
 
 export async function clearExpoDriverNotificationResponse(): Promise<void> {
-  if (isSupportedAndroid()) await Notifications.clearLastNotificationResponseAsync();
+  if (supportsNotificationResponses()) await Notifications.clearLastNotificationResponseAsync();
+}
+
+export function canScheduleIsolatedDriverInboxNotification(): boolean {
+  return isIsolatedNotificationVerification();
+}
+
+export async function scheduleIsolatedDriverInboxNotification(notification: {
+  expiresAt: string;
+  id: string;
+  kind: DriverOperationalPushKind;
+  summary: { body: string; title: string };
+}): Promise<void> {
+  if (!isIsolatedNotificationVerification()) throw new Error('ISOLATED_NOTIFICATION_UNAVAILABLE');
+  await ensureAndroidNotificationChannel();
+  let permissions = await Notifications.getPermissionsAsync();
+  if (!permissions.granted && permissions.canAskAgain) permissions = await Notifications.requestPermissionsAsync();
+  if (!permissions.granted) throw new Error('NOTIFICATION_PERMISSION_DENIED');
+  await Notifications.scheduleNotificationAsync({
+    identifier: notification.id,
+    content: {
+      body: notification.summary.body,
+      data: {
+        expiresAt: notification.expiresAt,
+        kind: notification.kind,
+        notificationId: notification.id,
+        schemaVersion: '1',
+      },
+      title: notification.summary.title,
+    },
+    trigger: {
+      channelId: ROUTE_UPDATES_CHANNEL_ID,
+      repeats: false,
+      seconds: 10,
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+    },
+  });
 }
 
 /** Receipts refresh the inbox only. They never resolve a destination or acknowledge OPENED. */
@@ -159,6 +197,19 @@ function isCurrentSession(session: NonNullable<typeof pushSession>): boolean {
 }
 function isSupportedAndroid(): boolean {
   return Platform.OS === 'android' && Application.applicationId === DRIVER_ANDROID_APP_ID;
+}
+function supportsNotificationResponses(): boolean {
+  return isSupportedAndroid() || isIsolatedNotificationVerification();
+}
+function isIsolatedNotificationVerification(): boolean {
+  if (Platform.OS !== 'android' || Application.applicationId !== DRIVER_INTEGRATION_ANDROID_APP_ID
+    || !DRIVER_OPERATIONAL_ENABLED || process.env.EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION !== 'true') return false;
+  try {
+    const apiBaseUrl = new URL(process.env.EXPO_PUBLIC_DSV_API_BASE_URL ?? '');
+    return apiBaseUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(apiBaseUrl.hostname);
+  } catch {
+    return false;
+  }
 }
 async function ensureAndroidNotificationChannel(): Promise<void> {
   await Notifications.setNotificationChannelAsync(ROUTE_UPDATES_CHANNEL_ID, {

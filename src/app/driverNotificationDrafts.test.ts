@@ -190,9 +190,10 @@ function inboxItem(id: string, title: string): DriverOperationalInboxItem {
     createdAt: '2026-10-07T01:00:00.000Z', expiresAt: '2026-10-07T04:00:00.000Z', summary: { title, body: '합성 알림' } };
 }
 type InboxProps = Parameters<typeof import('../ui/driver/DriverOperationalInbox')['DriverOperationalInbox']>[0];
-function createInboxHarness(load: (token: string, cursor?: string) => Promise<{ items: DriverOperationalInboxItem[]; nextCursor: string | null }>) {
+function createInboxHarness(load: (token: string, cursor?: string) => Promise<{ items: DriverOperationalInboxItem[]; nextCursor: string | null }>, isolated = false) {
   const acknowledgements: string[] = [];
   const opened: string[] = [];
+  const scheduled: DriverOperationalInboxItem[] = [];
   let businessPosts = 0;
   const forbiddenBusinessPost = async () => { businessPosts += 1; throw new Error('Inbox must not issue business commands'); };
   const h = componentHarness<InboxProps>('DriverOperationalInbox.tsx', 'DriverOperationalInbox', {
@@ -205,15 +206,38 @@ function createInboxHarness(load: (token: string, cursor?: string) => Promise<{ 
       },
       startDriverExecution: forbiddenBusinessPost, reportDriverDeliveryException: forbiddenBusinessPost,
     },
+    '../../platform/expo/notifications/expoDriverNotificationService': {
+      canScheduleIsolatedDriverInboxNotification: () => isolated,
+      scheduleIsolatedDriverInboxNotification: async (item: DriverOperationalInboxItem) => { scheduled.push(item); },
+    },
     '../../api/dsvDriverEvents': {
       startDriverDeliveryRoute: forbiddenBusinessPost, completeDriverDeliveryRoute: forbiddenBusinessPost,
       completeDriverDeliveryDestination: forbiddenBusinessPost,
     },
   });
-  return { ...h, acknowledgements, opened, get businessPosts() { return businessPosts; } };
+  return { ...h, acknowledgements, opened, scheduled, get businessPosts() { return businessPosts; } };
 }
 
 describe('Production inbox receipt refresh after pagination', () => {
+  it('shows the guarded isolated scheduler only and forwards the exact server inbox item', async () => {
+    const item = inboxItem('31200000-0000-4000-8000-000000000006', '정확한 N06');
+    item.kind = 'N06';
+    const production = createInboxHarness(async () => ({ items: [item], nextCursor: null }));
+    production.render(); await production.settle();
+    assert.equal(production.find((element) => element.props.label === '10초 뒤 합성 알림'), undefined);
+    production.unmount();
+
+    const isolated = createInboxHarness(async () => ({ items: [item], nextCursor: null }), true);
+    isolated.render(); await isolated.settle();
+    await invoke(isolated.find((element) => element.props.label === '10초 뒤 합성 알림'), 'onPress');
+    isolated.render(); await isolated.settle();
+    assert.deepEqual(isolated.scheduled, [item]);
+    assert.ok(isolated.find((element) => element.type === 'Text'
+      && element.props.children === '10초 뒤 합성 Android 알림이 표시됩니다. 알림창에서 눌러 주세요.'));
+    assert.equal(isolated.businessPosts, 0);
+    isolated.unmount();
+  });
+
   it('requests and replaces the first page on a new receipt key without business commands or OPENED acknowledgement', async () => {
     const cursors: (string | undefined)[] = [];
     const first = inboxItem('first', '기존 첫 페이지'); const older = inboxItem('older', '이전 페이지');

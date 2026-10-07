@@ -73,7 +73,15 @@ describe('Authenticated notification destination boundaries', () => {
     assert.match(platform, /operationalEnabled: DRIVER_OPERATIONAL_ENABLED/u);
     assert.match(platform, /deviceId: Application\.getAndroidId\(\)/u);
     assert.match(platform, /ROUTE_UPDATES_CHANNEL_ID = 'route-updates'/u);
-    assert.doesNotMatch(platform, /getExpoPushTokenAsync|scheduleNotificationAsync/u);
+    assert.doesNotMatch(platform, /getExpoPushTokenAsync/u);
+    assert.match(platform, /scheduleIsolatedDriverInboxNotification/u);
+    assert.match(platform, /DRIVER_INTEGRATION_ANDROID_APP_ID/u);
+    assert.match(platform, /EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION/u);
+    assert.match(platform, /EXPO_PUBLIC_DSV_API_BASE_URL/u);
+    const registration = platform.slice(platform.indexOf('export async function registerExpoDriverPushNotifications'), platform.indexOf('export function revokeExpoDriverPushNotifications'));
+    const receipts = platform.slice(platform.indexOf('export function subscribeToExpoDriverPushNotifications'), platform.indexOf('function registerToken'));
+    assert.doesNotMatch(registration, /scheduleNotificationAsync/u);
+    assert.doesNotMatch(receipts, /scheduleNotificationAsync|supportsNotificationResponses/u);
   });
 
   it('holds the click until authenticated destination acceptance and clears logout state', () => {

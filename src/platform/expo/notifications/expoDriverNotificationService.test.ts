@@ -18,12 +18,21 @@ function deferred<T>() {
 }
 
 // Executes the production Expo adapter with native listeners and storage replaced by synthetic interfaces.
-function nativeServiceHarness() {
+function nativeServiceHarness(options: {
+  apiBaseUrl?: string;
+  applicationId?: string;
+  isolated?: boolean;
+  operational?: boolean;
+} = {}) {
   const stored = new Map<string, string>();
   const receipts = new Set<(event: unknown) => void>();
+  const responses = new Set<(event: unknown) => void>();
   const tokenListeners = new Set<(token: { data: string }) => void>();
   const capabilities: { accessToken: string; tokenId: string; installationId: string }[] = [];
+  const scheduled: unknown[] = [];
   let token = 'fcm-A';
+  let clearedResponses = 0;
+  let deviceTokenRequests = 0;
   const storage = {
     getItem: async (key: string) => stored.get(key) ?? null,
     setItem: async (key: string, value: string) => { stored.set(key, value); },
@@ -32,7 +41,7 @@ function nativeServiceHarness() {
   const dependencies: Record<string, unknown> = {
     '@react-native-async-storage/async-storage': { __esModule: true, default: storage },
     'expo-application': {
-      applicationId: 'com.evnsolution.clever.driver', nativeApplicationVersion: '0.1.3', getAndroidId: () => 'installation-A',
+      applicationId: options.applicationId ?? 'com.evnsolution.clever.driver', nativeApplicationVersion: '0.1.3', getAndroidId: () => 'installation-A',
     },
     'react-native': { Platform: { OS: 'android' } },
     'expo-notifications': {
@@ -40,24 +49,33 @@ function nativeServiceHarness() {
       setNotificationChannelAsync: async () => undefined,
       getPermissionsAsync: async () => ({ granted: true, canAskAgain: true }),
       requestPermissionsAsync: async () => ({ granted: true, canAskAgain: true }),
-      getDevicePushTokenAsync: async () => ({ data: token }),
+      getDevicePushTokenAsync: async () => { deviceTokenRequests += 1; return { data: token }; },
       addNotificationReceivedListener: (callback: (event: unknown) => void) => { receipts.add(callback); return { remove: () => receipts.delete(callback) }; },
+      addNotificationResponseReceivedListener: (callback: (event: unknown) => void) => { responses.add(callback); return { remove: () => responses.delete(callback) }; },
       addPushTokenListener: (callback: (next: { data: string }) => void) => { tokenListeners.add(callback); return { remove: () => tokenListeners.delete(callback) }; },
+      getLastNotificationResponseAsync: async () => null,
+      scheduleNotificationAsync: async (request: unknown) => { scheduled.push(request); return 'scheduled-id'; },
       setNotificationHandler: () => undefined,
-      clearLastNotificationResponseAsync: async () => undefined,
+      clearLastNotificationResponseAsync: async () => { clearedResponses += 1; },
+      SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval' },
     },
     '../../../api/dsvDriverOperational': {
       registerDriverOperationalCapability: async (accessToken: string, input: { tokenId: string; installationId: string }) => { capabilities.push({ accessToken, ...input }); },
     },
     '../../../api/dsvDriverPushToken': { registerDriverPushTokenWithCapability, revokeDriverPushToken },
-    '../../../config/driverOperational': { DRIVER_OPERATIONAL_ENABLED: true },
+    '../../../config/driverOperational': { DRIVER_OPERATIONAL_ENABLED: options.operational ?? true },
     '../../../domain/notifications/driverPushNotification': notifications,
     '../../../domain/notifications/driverNotificationRecovery': { createDriverNotificationRecovery },
   };
   const source = readFileSync(new URL('./expoDriverNotificationService.ts', import.meta.url), 'utf8');
   const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
   const module = { exports: {} };
-  runInNewContext(outputText, { module, exports: module.exports, Date, Intl, Promise,
+  const environment = {
+    EXPO_PUBLIC_DSV_API_BASE_URL: options.apiBaseUrl,
+    EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION: options.isolated ? 'true' : undefined,
+  };
+  runInNewContext(outputText, { module, exports: module.exports, Date, Intl, Promise, URL,
+    process: { env: environment },
     require: (name: string) => { assert.ok(name in dependencies, `Unexpected dependency ${name}`); return dependencies[name]; } });
   return {
     service: module.exports as Service,
@@ -65,7 +83,11 @@ function nativeServiceHarness() {
     renewedToken: (value: string) => { token = value; tokenListeners.forEach((callback) => callback({ data: value })); },
     storedToken: () => stored.get('driver.push.device-token'),
     receipt: () => receipts.forEach((callback) => callback({ request: { identifier: 'provider-id', content: { data: { type: 'driver_route_changed', routePlanId: 'route-A' } } } })),
+    response: (request: unknown) => responses.forEach((callback) => callback({ notification: { request } })),
     capabilities,
+    scheduled,
+    get clearedResponses() { return clearedResponses; },
+    get deviceTokenRequests() { return deviceTokenRequests; },
   };
 }
 
@@ -142,5 +164,63 @@ describe('Production Expo push ownership and revocation ordering', () => {
     assert.equal(deletes, 0);
     assert.equal(h.storedToken(), 'fcm-A');
     stopRenewed();
+  });
+});
+
+describe('Isolated local notification response boundary', () => {
+  it('schedules an exact inbox identity and feeds its tap to the production classifier without enabling FCM', async () => {
+    const h = nativeServiceHarness({
+      apiBaseUrl: 'http://127.0.0.1:4908',
+      applicationId: 'com.evnsolution.clever.driver.integration',
+      isolated: true,
+    });
+    const clicks: notifications.DriverNotificationClick[] = [];
+    const stopClicks = h.service.subscribeToExpoDriverNotificationClicks((click) => { clicks.push(click); });
+    let receipts = 0;
+    const stopReceipts = h.service.subscribeToExpoDriverPushNotifications('access-A', () => { receipts += 1; });
+    const item = {
+      expiresAt: '2099-10-07T04:00:00.000Z',
+      id: '31200000-0000-4000-8000-000000000006',
+      kind: 'N06' as const,
+      summary: { body: '정확한 배송지를 확인하세요.', title: '배송지 변경' },
+    };
+    assert.equal(h.service.canScheduleIsolatedDriverInboxNotification(), true);
+    assert.equal((await h.service.registerExpoDriverPushNotifications('access-A')).status, 'unsupported-device');
+    await h.service.scheduleIsolatedDriverInboxNotification(item);
+    assert.equal(h.deviceTokenRequests, 0);
+    assert.equal(h.scheduled.length, 1);
+    const request = h.scheduled[0] as { content: { data: unknown }; identifier: string; trigger: unknown };
+    assert.equal(request.identifier, item.id);
+    assert.deepEqual(JSON.parse(JSON.stringify(request.content.data)), {
+      expiresAt: item.expiresAt, kind: 'N06', notificationId: item.id, schemaVersion: '1',
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(request.trigger)), { channelId: 'route-updates', repeats: false, seconds: 10, type: 'timeInterval' });
+    h.response({ identifier: request.identifier, content: request.content });
+    assert.equal(clicks.length, 1);
+    assert.equal(clicks[0]?.kind, 'N06');
+    assert.equal(clicks[0]?.notificationId, item.id);
+    h.receipt();
+    assert.equal(receipts, 0);
+    await h.service.clearExpoDriverNotificationResponse();
+    assert.equal(h.clearedResponses, 1);
+    stopClicks(); stopReceipts();
+  });
+
+  it('rejects the isolated scheduler unless package, flags, operational mode, and loopback API all match', async () => {
+    for (const options of [
+      { applicationId: 'com.evnsolution.clever.driver.integration', isolated: true, apiBaseUrl: 'https://example.test' },
+      { applicationId: 'com.evnsolution.clever.driver.integration', isolated: false, apiBaseUrl: 'http://127.0.0.1:4908' },
+      { applicationId: 'com.evnsolution.clever.driver.integration', isolated: true, operational: false, apiBaseUrl: 'http://127.0.0.1:4908' },
+      { applicationId: 'com.example.other', isolated: true, apiBaseUrl: 'http://127.0.0.1:4908' },
+    ]) {
+      const h = nativeServiceHarness(options);
+      assert.equal(h.service.canScheduleIsolatedDriverInboxNotification(), false);
+      await assert.rejects(h.service.scheduleIsolatedDriverInboxNotification({
+        expiresAt: '2099-10-07T04:00:00.000Z', id: '31200000-0000-4000-8000-000000000006',
+        kind: 'N06', summary: { body: 'body', title: 'title' },
+      }), /ISOLATED_NOTIFICATION_UNAVAILABLE/u);
+      await h.service.clearExpoDriverNotificationResponse();
+      assert.equal(h.clearedResponses, 0);
+    }
   });
 });
