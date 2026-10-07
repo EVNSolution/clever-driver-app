@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -184,71 +185,60 @@ export function DeliveryProofModal({
             {destinationName}의 완료 시간과 증빙을 확인해 주세요.
           </Text>
 
-          <View style={styles.timeSection}>
-            <View style={styles.timeHeading}>
-              <Text style={styles.sectionLabel}>완료 시간</Text>
-              <Pressable
-                accessibilityRole="button"
-                disabled={!canEditCompletionTime}
-                onPress={() => setCompletionTime(formatDeliveryCompletionTime(new Date()))}
-              >
-                <Text style={styles.nowButtonText}>현재 시간</Text>
-              </Pressable>
+          <ScrollView
+            contentContainerStyle={styles.scrollBodyContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+            style={styles.scrollBody}
+          >
+            <View style={styles.timeSection}>
+              <View style={styles.timeHeading}>
+                <Text style={styles.sectionLabel}>완료 시간</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!canEditCompletionTime}
+                  onPress={() => setCompletionTime(formatDeliveryCompletionTime(new Date()))}
+                >
+                  <Text style={styles.nowButtonText}>현재 시간</Text>
+                </Pressable>
+              </View>
+              <TextInput
+                accessibilityLabel="배송 완료 시간"
+                editable={canEditCompletionTime}
+                keyboardType="number-pad"
+                maxLength={5}
+                onChangeText={updateCompletionTime}
+                placeholder={formatDeliveryCompletionTime(openedAt)}
+                selectTextOnFocus
+                style={styles.timeInput}
+                value={displayedCompletionTime}
+              />
+              <Text style={styles.timeHint}>
+                {lockedCompletionOccurredAt === null
+                  ? '24시간 형식 · 시:분'
+                  : savedCompletionOccurredAt === null
+                    ? '요청한 완료 시간을 유지합니다.'
+                    : '완료 시간이 저장되었습니다.'}
+              </Text>
             </View>
-            <TextInput
-              accessibilityLabel="배송 완료 시간"
-              editable={canEditCompletionTime}
-              keyboardType="number-pad"
-              maxLength={5}
-              onChangeText={updateCompletionTime}
-              placeholder={formatDeliveryCompletionTime(openedAt)}
-              selectTextOnFocus
-              style={styles.timeInput}
-              value={displayedCompletionTime}
-            />
-            <Text style={styles.timeHint}>
-              {lockedCompletionOccurredAt === null
-                ? '24시간 형식 · 시:분'
-                : savedCompletionOccurredAt === null
-                  ? '요청한 완료 시간을 유지합니다.'
-                  : '완료 시간이 저장되었습니다.'}
-            </Text>
-          </View>
 
-          <Text style={styles.sectionLabel}>배송 증빙 사진 · 선택</Text>
+            <Text style={styles.sectionLabel}>배송 증빙 사진 · 선택</Text>
 
-          {selectedPhoto === null ? (
-            <View style={styles.emptyPreview}>
-              <Text style={styles.emptyPreviewIcon}>▧</Text>
-              <Text style={styles.emptyPreviewText}>등록된 사진이 없습니다</Text>
-            </View>
-          ) : (
-            <Image
-              accessibilityLabel="선택한 배송 증빙 사진"
-              resizeMode="cover"
-              source={{ uri: selectedPhoto.uri }}
-              style={styles.preview}
-            />
-          )}
+            {selectedPhoto === null ? (
+              <View style={styles.emptyPreview}>
+                <Text style={styles.emptyPreviewIcon}>▧</Text>
+                <Text style={styles.emptyPreviewText}>등록된 사진이 없습니다</Text>
+              </View>
+            ) : (
+              <Image
+                accessibilityLabel="선택한 배송 증빙 사진"
+                resizeMode="cover"
+                source={{ uri: selectedPhoto.uri }}
+                style={styles.preview}
+              />
+            )}
 
-          {executionPending ? (
-            <View accessibilityLiveRegion="polite" style={styles.executionPending}>
-              <ActivityIndicator color="#0b57d0" size="small" />
-              <Text style={styles.executionPendingText}>배송 완료 처리 중</Text>
-            </View>
-          ) : requiresAssignmentRefresh ? (
-            <>
-              <Text style={styles.timeHint}>현재 배정을 확인한 뒤 증빙을 등록해 주세요.</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={onClose}
-                style={styles.uploadButton}
-              >
-                <Text style={styles.uploadButtonText}>닫고 배정 확인</Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
+            {!executionPending && !requiresAssignmentRefresh ? (
               <View style={styles.sourceActions}>
                 <ProofSourceButton
                   icon="●"
@@ -261,7 +251,27 @@ export function DeliveryProofModal({
                   onPress={() => void selectPhoto('library')}
                 />
               </View>
+            ) : null}
+          </ScrollView>
 
+          <View style={styles.footer}>
+            {executionPending ? (
+              <View accessibilityLiveRegion="polite" style={styles.executionPending}>
+                <ActivityIndicator color="#0b57d0" size="small" />
+                <Text style={styles.executionPendingText}>배송 완료 처리 중</Text>
+              </View>
+            ) : requiresAssignmentRefresh ? (
+              <>
+                <Text style={styles.assignmentRefreshHint}>현재 배정을 확인한 뒤 증빙을 등록해 주세요.</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onClose}
+                  style={[styles.uploadButton, styles.assignmentRefreshButton]}
+                >
+                  <Text style={styles.uploadButtonText}>닫고 배정 확인</Text>
+                </Pressable>
+              </>
+            ) : (
               <View style={styles.completionActions}>
                 <Pressable
                   accessibilityRole="button"
@@ -285,8 +295,8 @@ export function DeliveryProofModal({
                   <Text style={styles.uploadButtonText}>완료 확정</Text>
                 </Pressable>
               </View>
-            </>
-          )}
+            )}
+          </View>
         </View>
       </View>
       {executionDialog}
@@ -329,6 +339,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    maxHeight: '92%',
     paddingBottom: 24,
     paddingHorizontal: 20,
     paddingTop: 10,
@@ -352,6 +363,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 19,
     marginTop: 6,
+  },
+  scrollBody: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  scrollBodyContent: {
+    paddingBottom: 4,
   },
   timeSection: {
     backgroundColor: '#f8fafc',
@@ -432,6 +450,21 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 14,
   },
+  footer: {
+    backgroundColor: '#ffffff',
+    paddingTop: 14,
+  },
+  assignmentRefreshHint: {
+    color: '#667085',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  assignmentRefreshButton: {
+    alignSelf: 'stretch',
+    flex: 0,
+  },
   sourceButton: {
     alignItems: 'center',
     backgroundColor: '#eff6ff',
@@ -486,13 +519,11 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: 'center',
     minHeight: 52,
-    marginTop: 14,
   },
   completionActions: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 10,
-    marginTop: 14,
   },
   executionPendingText: {
     color: '#0b57d0',

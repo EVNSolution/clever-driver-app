@@ -26,7 +26,7 @@ export function createProofModalHarness(imagePicker: Record<string, unknown> = {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': Object.fromEntries([
-      ...['ActivityIndicator', 'Image', 'Modal', 'Pressable', 'Text', 'TextInput', 'View']
+      ...['ActivityIndicator', 'Image', 'Modal', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View']
         .map((name) => [name, name]),
       ['Platform', { OS: 'android' }],
       ['StyleSheet', { create: (styles: unknown) => styles }],
@@ -273,6 +273,11 @@ it('keeps the original input and preview after receipt recovery and offers only 
   const close = elements(tree).find(({ type, props: item }) => type === 'Pressable'
     && elements(item.children).some(({ props: child }) => child.children === '닫고 배정 확인'));
   assert.ok(close);
+  const scrollBody = elements(tree).find(({ type }) => type === 'ScrollView');
+  assert.ok(scrollBody);
+  assert.ok(!elements(scrollBody).includes(close), 'Recovered close action must stay outside the scrollable body');
+  const sheet = elements(tree).find(({ props: item }) => item.accessibilityViewIsModal === true)!;
+  assert.equal((sheet.props.style as Record<string, unknown>[])[0]?.maxHeight, '92%');
   (close.props.onPress as () => void)();
   (tree.props.onRequestClose as () => void)();
   assert.equal(closeCalls, 2);
