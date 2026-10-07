@@ -96,7 +96,7 @@ loopback fixture의 실제 PostgreSQL, Prisma repository, JWT 로그인과 legac
 이 검사는 합성 Prisma repository 검사를 실제 DB 검사로 계산하지 않는다. 실제 서버 fixture와 production Driver API client 코드를 연결한 별도 HTTP 검사다.
 legacy Driver HTTP 검증 범위는 로그인, execution context, 알림함, 시작 명령과 미배송 보고다. 기기의 전체 배송 UI 흐름과 legacy API 전체를 검증한 결과가 아니다.
 
-## Android 산출물과 기기 경계
+## 초기 격리 Android 산출물과 기기 경계
 
 - 저장소 Android build runbook과 build-hygiene의 run 절차를 읽었다.
 - Metro worker 1, command-scoped Node old-space 상한 3072MiB를 사용한다. 전체 프로세스 메모리 상한이라는 의미는 아니다.
@@ -135,3 +135,63 @@ legacy Driver HTTP 검증 범위는 로그인, execution context, 알림함, 시
 Issue62 보안 검사, 배포 서명, 실제 FCM, native 권한·카메라, 서버 배포와 D05 운영 사유 승인이 남는다. 기능은 기본 OFF다. 앱 플래그는 서버 지오펜싱·실발송 승인이 아니다. 반복 6회 정책은 구현하지 않았다.
 
 PR 병합, 서버 배포, 실발송 활성화, Play·Drive 게시, 운영 DB 변경, iOS 작업은 수행하지 않았다.
+
+## Android 실기기 업무 흐름 보완 — 2026-10-07
+
+이 절은 앞선 로그인·홈 한정 기록을 보완한다. 실제 기기는 Samsung SM-N981N, Android 13/API 33이다. 실제 PostgreSQL 17과 loopback Fastify/Prisma API를 사용했다. 배차와 GPS 자료는 합성이다. 서버 provider는 `FakeOperationalPushProvider`이며 실제 발송은 없다.
+
+### 생성 격리와 결함 수정
+
+- `7c11922a`는 native 생성 mode와 실제 생성 결과 검사를 추가한다. 격리→일반 생성은 manifest, applicationId와 synthetic Firebase 파일을 검사한다. JS config 객체 검사로 대체하지 않는다.
+- 일반 생성에서 `usesCleartextTraffic`을 제거한다. release helper는 네 개의 격리·운영·API 환경 변수를 제거한다. mode 전환은 guarded clean을 사용하며 같은 mode는 build cache를 보존한다.
+- `ae3229ec`는 격리 package, 명시적 검증 flag와 loopback HTTP 조건에서만 합성 Android 알림을 예약한다. 실제 Android 알림창의 탭은 기존 클릭 복구와 서버 resolver를 실행한다. 일반 package의 FCM 등록 조건을 바꾸지 않는다.
+- `47825ad9`는 같은 격리 조건에서만 보고 사유 `UNDELIVERABLE`을 주입한다. 표시명은 `합성 검증 사유`다. 일반 앱의 사유 목록은 계속 비어 있다. D05 운영 사유 승인이 아니다.
+- 실기기에서 보호 알림 동작이 navigation 영역 아래로 밀린 결함을 발견했다. `1075507d`는 별도 bottom/left/right SafeArea overlay와 높이 44 이상의 가로 버튼으로 수정한다.
+- 수정 APK에서 `현재 작업 계속`, `보류된 알림`, `알림으로 이동`을 직접 눌렀다. 보고 사유와 `protected-after-fix` 입력을 유지했다. 명시적 이동에서 fresh resolver와 표시 후 OPENED를 확인했다.
+- 합성 서버 자료의 누락도 수정했다. 두 번째 주문의 DSV metadata와 변경 후 metadata를 보존했다. 재배정 Driver에는 canonical account/authSubject 연결을 사용했다. 클라이언트 parser와 서버 권한 조건은 완화하지 않았다.
+
+### 실제 화면·HTTP·DB 연결
+
+지역 증거는 `/tmp/dsv-android-flow-20261007`에 보존한다. `device-actions.jsonl`은 실제 입력과 탭의 UTC 시각이다. `native-http.jsonl`은 기기의 실제 요청을 전달한 loopback proxy 기록이다. 로그인 비밀번호와 token은 기록하지 않는다.
+
+| 실제 화면 조작 | HTTP·DB 결과 | 화면 증거 |
+|---|---|---|
+| 로그인 → 10월 7일 → 합성 배차 선택 | JWT 로그인 200. 실제 legacy route lookup, routes와 assigned-route 조회. 두 배송지와 주문 metadata 표시. | `04-authenticated-home`, `05-delivery-date-options`, `07-dispatch-data-corrected` |
+| 등록 N01·변경 N02·창고 도착 N04 확인 | 실제 publication/context sync와 geofence worker의 notification intent. 도착 안내 한 건. 변경 후 박스 수 갱신. | `08-registration-inbox`, `10-change-notice`, `11-change-applied`, `12-warehouse-arrival-warning` |
+| 창고 출발 경고와 반복 확인 | 시험 시각 기준 출발+300초에 첫 N05. 직전 tick 0, due tick 1. 다음 due는 +300초이며 ordinal 2다. 실제 5분 벽시계 대기를 주장하지 않는다. | `12-warehouse-first-warning.db.json`, `13-five-minute-repeat` |
+| 배송 시작 확인 팝업에서 승인 | 새 start POST 201. commandId `5934c901-b486-4ad6-b18a-6c1a80d0496c`. startedAt 기록, reminderDueAt=null. 이후 실제 worker +1시간 tick 0, N05 수 2→2. | `14-start-confirmation`, `16-start-result`, `post-start-tick.json` |
+| genuine N06을 합성 Android 알림으로 표시한 뒤 알림창에서 탭 | resolve 200 → 정확한 target stop → OPENED 200. 다음 순번 배송지와 다른 두 번째 배송지다. | `22-n06-notification-tray`, `23-n06-exact-destination`, `23-n06-opened.db.json` |
+| 보고 입력 중 다른 Android 알림 탭 | 보고 사유와 설명 유지. 목적지 이동 보류. 수정 후 두 동작 버튼 표시·탭도 재검증. | `26-report-input-before-notification`, `28-report-protected-after-tap`, `51`~`55` 화면 |
+| 오프라인 보고 제출 → suffix 앱 종료·재실행 → 연결 복구 | 저장한 commandId와 fence·사유·설명을 복구했다. 첫 201 응답을 proxy에서 유실시켰다. 앱이 같은 ID로 재전송한 200은 duplicate=true였다. | `29-report-offline-submission`, `30-offline-persisted-command`, `31-offline-process-restart`, `32-after-response-loss.db.json` |
+| 실제 관제 브라우저에서 N07 열기 → 읽음 → 보고 확인 → 처리 완료 | 읽기에서 업무 POST 0. ACKNOWLEDGED→RESOLVED. reload 후 유지. 보고·N07·보고 receipt 각각 한 건. 주문 currentRouteVersion과 배송지 PENDING을 유지했다. | `web-03-native-report-open`, `web-04-native-report-acknowledged`, `web-05-native-report-resolved`, `web-report-after.db.json` |
+| 인증 만료 후 새로운 N02 알림창 탭 | resolve 401→refresh 200→같은 알림 resolve 200. 현재 계정의 최신 배차 표시. | `39-expired-token-notification-tap`, `40-expired-token-destination-recovered` |
+| 다른 사업장 계정으로 로그인한 뒤 이전 계정 N02 탭 | resolve 404와 안전 안내. 이전 계정의 배송지나 업무 명령을 열지 않았다. | `45-foreign-account-confirmed`, `46-old-account-target-rejected` |
+| 재배정 후 이전 N02 탭과 N03 열기 | stale resolve 404. N03은 해제 사실만 표시한다. 새 배송원에게 N01을 표시하고 canonical 연결 수정 후 현재 두 배송지를 실제 화면에 표시했다. | `59-reassigned-old-target-rejected`, `61-reassignment-fact-only`, `63-new-recipient-registration`, `67-new-recipient-route-reloaded` |
+| 취소 후 이전 N02 탭과 N03 열기 | stale resolve 404. N03은 해제 사실만 표시한다. 새 업무 POST와 잘못된 배송지 이동이 없다. | `71-cancelled-target-rejected`, `73-cancellation-fact-only` |
+
+N06 notification은 `4c2ffc18-758a-4bbc-b651-36c679ca998a`다. target stop은 `5674b01d-2890-401a-b348-67f52b167968`이며 next stop `fe47ee5c-814e-47da-b76b-ec8594fcbb4c`와 다르다.
+
+기기에서 저장한 보고 commandId는 `c6dde483-e51d-4f45-b3f7-9074f37e09f2`다. 설명 `synthetic-device-offline-20261007`과 N06 target을 DB에서 확인했다. 보고 ID는 `dcf298a2-64ec-4097-b789-bbd2b6b4e1de`, N07은 `0fce16a9-977d-44ff-98f8-d73c96edbe82`다. `final-db-evidence.json`의 직접 SQL 결과는 report=1, N07=1, report receipt=1, target stop=PENDING, STOP_FAILED=0이다. 마지막 route=CANCELLED는 이후 명시한 합성 취소 시험의 결과다. 보고 처리 직후에는 IN_PROGRESS를 유지했다.
+
+### APK와 재검사
+
+| 항목 | 결과 |
+|---|---|
+| 최종 실행 소스 | `1075507dedc3838356a372fc9bce9756157a1fe4`. 후속 문서 commit은 실행 소스를 바꾸지 않는다. |
+| 최종 APK | `/tmp/dsv-android-flow-20261007/driver-integration-final.apk`, 45,582,315 bytes. SHA256 `2c78ef20bc8522dd46d8c57965ca664727f397aaa5f8557709c2334dd98d09d7`. 설치본 base.apk hash도 일치했다. |
+| Package·version·ABI | `com.evnsolution.clever.driver.integration`, `0.1.14 (23)`, arm64-v8a, minSdk24/targetSdk36. |
+| 서명 | Android Debug certificate. SHA256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. 업무용 배포 서명을 사용하지 않았다. |
+| 주요 업무 흐름 APK | `47825ad9` 실행 소스, SHA256 `f3fde88e12a6e4cc5898459a9f11177e60876838bfd58bff03c4ddbfc692fc80`. 원본은 `driver-integration-main-flow.apk`로 보존했다. 최종 APK에서 보호 동작·재배정·취소 흐름을 다시 확인했다. |
+| 수정 후 workspace 검사 | TypeScript 및 325/325 tests PASS, 실패·skip 0. targeted 보호 회귀 52/52 PASS. |
+| 수정 후 lint·native build | PASS. 최종 native incremental build 43.2초, 615 tasks 중 22 executed/593 up-to-date. |
+| 독립 검토 | APPROVE. safe-area 보완 후 미해결 소스 결함 0. 실제 PNG와 탭 증거를 별도로 확인했다. |
+| Audit | 기존 `npm audit --audit-level=moderate`를 유지한다. 2026-10-07 재검사 exit1/high20/critical0. Issue62 차단을 해제하지 않았다. |
+| 업무용 설치 보존 | 기존 package `0.1.15 (26)`의 APK split 네 개 hash, firstInstallTime와 lastUpdateTime이 모두 일치했다. 업무용 앱의 실행·설치·삭제·데이터 초기화와 서명 작업은 없었다. 앱 데이터의 별도 덤프 비교를 주장하지 않는다. |
+
+native 알림 권한은 suffix package에만 허용했다. API 연결 차단은 소유한 `adb reverse tcp:4908` 매핑만 제거했다. Wi-Fi와 다른 앱의 네트워크를 변경하지 않았다. 완료 후 합성 계정에서 로그아웃하고 suffix 앱을 종료했다. 해당 reverse 매핑도 제거했다.
+
+### 유지하는 미완료와 차단
+
+실제 FCM 수신, background/terminated FCM delivery, 실차 GPS, 운영 Firebase·배포 서명, camera/POD의 실제 기기 검증은 남는다. 합성 local notification은 실제 Android 클릭 증거이며 FCM 수신 증거가 아니다. 미전송 초안의 process 종료 후 복구를 검증했다고 주장하지 않는다. process 종료 검증은 이미 저장한 보고 명령과 그 입력 내용의 복구다.
+
+Issue62 audit와 D01/D02/D04/D05/D07 운영 정책은 계속 차단이다. 반복 최대 6회는 승인하지 않았다. 일반 앱은 기본 OFF다. 운영 DB, AWS, 실발송, 병합·배포와 P7은 수행하지 않았다. 이 결과는 격리된 실기기 업무 흐름 완료이며 운영 활성화 완료가 아니다.
