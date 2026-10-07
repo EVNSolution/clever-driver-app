@@ -251,8 +251,21 @@ export function useDeliveryExecution({
           identity,
         );
         completionTransactionRef.current.approved = true;
-        proof = { ...proof, completesRoute, completedAt: identity.occurredAt };
+        proof = {
+          ...proof,
+          completesRoute: transaction.hadUnknownOutcome ? false : completesRoute,
+          completedAt: identity.occurredAt,
+          ...(transaction.hadUnknownOutcome ? { requiresAssignmentRefresh: true } : {}),
+        };
         dispatch({ proof, type: 'STOP_COMPLETED' });
+        if (transaction.hadUnknownOutcome) {
+          showDialog({
+            message: '배송 완료 결과를 확인했습니다. 현재 배정을 확인한 뒤 증빙을 등록해 주세요.',
+            title: '배송 완료 결과 확인',
+            tone: 'info',
+          });
+          return;
+        }
       } catch (error) {
         const rejected = error instanceof DriverDeliveryCompletionApiError && error.outcome === 'rejected';
         if (rejected && !transaction.hadUnknownOutcome) {

@@ -169,7 +169,7 @@ export async function completeDriverDeliveryDestination(
   const envelope = await readCompletionEnvelope(response);
   if (!response.ok) throw completionResponseError(response, envelope);
   const data = envelope.data;
-  if (!isObject(data) || data.completedStopCount !== deliveryStopIds.length
+  if (envelope.error != null || !isObject(data) || data.completedStopCount !== deliveryStopIds.length
     || !Array.isArray(data.eventIds) || data.eventIds.length !== deliveryStopIds.length
     || new Set(data.eventIds).size !== deliveryStopIds.length
     || data.eventIds.some((id) => typeof id !== 'string' || id.length === 0)) {
@@ -202,7 +202,7 @@ export async function lookupDriverDeliveryCompletionResult(
   const envelope = await readCompletionEnvelope(response);
   if (!response.ok) throw completionResponseError(response, envelope);
   const data = envelope.data;
-  if (!isObject(data) || data.status !== 'APPLIED') return false;
+  if (envelope.error != null || !isObject(data) || data.status !== 'APPLIED') return false;
   return data.clientEventId === identity.clientEventId && data.occurredAt === identity.occurredAt
     && data.routePlanId === routePlanId && data.destinationId === destinationId
     && data.completedStopCount === deliveryStopIds.length

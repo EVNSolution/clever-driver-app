@@ -283,124 +283,160 @@ describe('Connected notification navigation preserves active work', () => {
     } finally { upload.resolve(); h.dispose(); }
   });
 
-  it('retains completion identity and the camera photo key through response loss, notification taps and a failed upload retry', async () => {
-    const permission = deferred<{ granted: boolean }>();
-    const camera = deferred<{ canceled: boolean; assets: { uri: string; fileName: string; mimeType: string }[] }>();
-    const retryUpload = deferred<void>();
-    const uploads: DriverProofPhotoUpload[] = [];
-    let pendingSubmit: Promise<void> | undefined;
-    const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, loseStopCompletionResponse: true, proofApi: {
-      uploadDriverProofPhoto: async (_token: string, photo: DriverProofPhotoUpload) => {
-        uploads.push(photo);
-        if (uploads.length === 1) throw new Error('Synthetic isolated upload failure');
-        await retryUpload.promise;
-      },
-    } });
-    const renderProof = createProofModalHarness({
-      requestCameraPermissionsAsync: () => permission.promise,
-      launchCameraAsync: () => camera.promise,
-    });
-    type Element = { type: unknown; props: Record<string, unknown> };
-    function nodes(node: unknown): Element[] {
-      if (Array.isArray(node)) return node.flatMap(nodes);
-      if (node === null || typeof node !== 'object' || !('props' in node)) return [];
-      const element = node as Element;
-      return [element, ...nodes(element.props.children)];
-    }
-    function proofTree() {
-      const overlay = h.workspace.find((element) => typeof element.type === 'function' && element.type.name === 'DeliveryExecutionOverlay');
-      assert.ok(overlay, 'Workspace must render the production completion overlay');
-      const modal = (overlay.type as (props: unknown) => Element)(overlay.props);
-      assert.equal(modal.type, 'DeliveryProofModal');
-      const props = modal.props as Parameters<typeof import('../ui/driver/DeliveryProofModal')['DeliveryProofModal']>[0];
-      return renderProof({ ...props, onConfirm: (...args) => {
-        pendingSubmit = props.onConfirm(...args); return pendingSubmit;
+  for (const responseLost of [false, true]) {
+    it(responseLost
+      ? 'retains the camera photo and time after unknown completion then duplicate 200 and refreshes assignment only on close'
+      : 'retains the approved time and camera photo key through notification taps and a failed photo-only retry after normal 202', async () => {
+      const permission = deferred<{ granted: boolean }>();
+      const camera = deferred<{ canceled: boolean; assets: { uri: string; fileName: string; mimeType: string }[] }>();
+      const retryUpload = deferred<void>();
+      const uploads: DriverProofPhotoUpload[] = [];
+      const confirmedPhotos: Omit<DriverProofPhotoUpload, 'routePlanId' | 'deliveryStopId'>[] = [];
+      let pendingSubmit: Promise<void> | undefined;
+      const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, loseStopCompletionResponse: responseLost, proofApi: {
+        uploadDriverProofPhoto: async (_token: string, photo: DriverProofPhotoUpload) => {
+          uploads.push(photo);
+          if (uploads.length === 1) throw new Error('Synthetic isolated upload failure');
+          await retryUpload.promise;
+        },
       } });
-    }
-    function previewUri(tree: unknown) {
-      return (nodes(tree).find(({ type }) => type === 'Image')?.props.source as { uri?: string } | undefined)?.uri;
-    }
-    function pressConfirm(tree: unknown) {
-      const button = nodes(tree).find(({ type, props }) => type === 'Pressable'
-        && nodes(props.children).some((child) => child.props.children === '완료 확정'));
-      assert.ok(button); (button.props.onPress as () => void)();
-    }
-    try {
-      h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
-      let tree = proofTree();
-      (nodes(tree).find(({ type }) => type === 'TextInput')!.props.onChangeText as (value: string) => void)('1542');
-      h.app.click(click); await h.settle(); tree = proofTree();
-      assert.equal(tree.type, 'Modal');
-      assert.ok(nodes(tree).some((element) => element.props.accessibilityRole === 'alert'));
-      assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
-      assert.equal(h.app.resolutions.length, 0);
-      h.app.pressText('현재 작업 계속'); await h.settle(); tree = proofTree();
-      (nodes(tree).find(({ props }) => props.label === '사진 촬영')!.props.onPress as () => void)();
-      await h.settle(); h.app.click(click); await h.settle();
-      assert.equal(h.app.resolutions.length, 0);
-      assert.equal(nodes(proofTree()).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
-      permission.resolve({ granted: true }); await h.settle();
-      h.app.foreground(); h.app.click(click); await h.settle();
-      camera.resolve({ canceled: false, assets: [{ uri: 'file:///connected-camera-proof.jpg', fileName: 'isolated-camera.jpg', mimeType: 'image/jpeg' }] });
-      await h.settle(); tree = proofTree();
-      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
-      h.app.pressText('보류된 알림'); await h.settle();
-      h.app.pressText('알림으로 이동'); await h.settle();
-      assert.equal(h.app.resolutions.length, 0);
-      pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
-      const submittedIdentity = h.workspace.controller!.executionState.proof!.completionIdentity;
-      assert.ok(submittedIdentity);
-      assert.equal(h.workspace.controller!.executionState.proof!.completedAt, null);
-      assert.equal(h.committedCompletions.size, 1);
-      assert.equal(h.businessPosts.length, 1);
-      assert.equal(uploads.length, 0);
-      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
-      assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
-      const cancel = nodes(tree).find(({ type, props }) => type === 'Pressable'
-        && nodes(props.children).some((child) => child.props.children === '취소'));
-      assert.equal(cancel?.props.disabled, true);
-      (tree.props.onRequestClose as () => void)();
-      h.workspace.controller!.closeProofDelivery();
-      h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
-      assert.deepEqual(h.workspace.controller!.executionState.proof!.completionIdentity, submittedIdentity);
-      assert.equal(h.app.resolutions.length, 0);
-      const unknownDialog = h.workspace.controller!.dialog as unknown as Element;
-      (unknownDialog.props.onDismiss as () => void)(); await h.settle();
-      pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
-      const acceptedAt = h.workspace.controller!.executionState.proof!.completedAt;
-      assert.ok(acceptedAt);
-      assert.equal(acceptedAt, submittedIdentity.occurredAt);
-      assert.equal(h.businessPosts.length, 2);
-      assert.equal(h.committedCompletions.size, 1);
-      assert.equal(h.workspace.controller!.executionState.phase, 'proof');
-      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
-      assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
-      const errorDialog = h.workspace.controller!.dialog as unknown as Element;
-      (errorDialog.props.onDismiss as () => void)(); await h.settle();
-      pressConfirm(proofTree()); await h.settle();
-      assert.equal(h.workspace.controller!.executionState.phase, 'uploading-proof');
-      h.app.click(click); await h.settle(); tree = proofTree();
-      assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
-      assert.equal(h.workspace.controller!.executionState.proof!.completedAt, acceptedAt);
-      assert.equal(h.businessPosts.length, 2);
-      assert.equal(h.app.resolutions.length, 0);
-      retryUpload.resolve(); await pendingSubmit; await h.settle();
-      assert.equal(h.workspace.controller!.executionState.phase, 'idle');
-      assert.equal(h.screen().nextDeliveryStopId, stopBId);
-      assert.equal(h.app.resolutions.length, 1);
-      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
-      assert.equal(h.businessPosts.length, 2);
-      assert.equal(uploads.length, 2);
-      assert.match(uploads[0]!.idempotencyKey, /^proof-media-v1:[a-f0-9]{32}$/u);
-      assert.equal(uploads[1]!.idempotencyKey, uploads[0]!.idempotencyKey);
-      assert.deepEqual(uploads.map(({ deliveryStopId, routePlanId, uri }) => ({ deliveryStopId, routePlanId, uri })), [
-        { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
-        { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
-      ]);
-      assert.equal(JSON.parse(String(h.businessPosts[0]!.body)).occurredAt, acceptedAt);
-      assert.deepEqual(JSON.parse(String(h.businessPosts[1]!.body)), JSON.parse(String(h.businessPosts[0]!.body)));
-    } finally { permission.resolve({ granted: true }); camera.resolve({ canceled: true, assets: [] }); retryUpload.resolve(); h.dispose(); }
+      const renderProof = createProofModalHarness({
+        requestCameraPermissionsAsync: () => permission.promise,
+        launchCameraAsync: () => camera.promise,
+      });
+      type Element = { type: unknown; props: Record<string, unknown> };
+      function nodes(node: unknown): Element[] {
+        if (Array.isArray(node)) return node.flatMap(nodes);
+        if (node === null || typeof node !== 'object' || !('props' in node)) return [];
+        const element = node as Element;
+        return [element, ...nodes(element.props.children)];
+      }
+      function proofTree() {
+        const overlay = h.workspace.find((element) => typeof element.type === 'function' && element.type.name === 'DeliveryExecutionOverlay');
+        assert.ok(overlay, 'Workspace must render the production completion overlay');
+        const modal = (overlay.type as (props: unknown) => Element)(overlay.props);
+        assert.equal(modal.type, 'DeliveryProofModal');
+        const props = modal.props as Parameters<typeof import('../ui/driver/DeliveryProofModal')['DeliveryProofModal']>[0];
+        return renderProof({ ...props, onConfirm: (...args) => {
+          if (args[1] !== null) confirmedPhotos.push(args[1]);
+          pendingSubmit = props.onConfirm(...args); return pendingSubmit;
+        } });
+      }
+      function previewUri(tree: unknown) {
+        return (nodes(tree).find(({ type }) => type === 'Image')?.props.source as { uri?: string } | undefined)?.uri;
+      }
+      function pressConfirm(tree: unknown) {
+        const button = nodes(tree).find(({ type, props }) => type === 'Pressable'
+          && nodes(props.children).some((child) => child.props.children === '완료 확정'));
+        assert.ok(button); (button.props.onPress as () => void)();
+      }
+      try {
+        h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+        let tree = proofTree();
+        (nodes(tree).find(({ type }) => type === 'TextInput')!.props.onChangeText as (value: string) => void)('1542');
+        h.app.click(click); await h.settle(); tree = proofTree();
+        assert.equal(tree.type, 'Modal');
+        assert.ok(nodes(tree).some((element) => element.props.accessibilityRole === 'alert'));
+        assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
+        assert.equal(h.app.resolutions.length, 0);
+        h.app.pressText('현재 작업 계속'); await h.settle(); tree = proofTree();
+        (nodes(tree).find(({ props }) => props.label === '사진 촬영')!.props.onPress as () => void)();
+        await h.settle(); h.app.click(click); await h.settle();
+        assert.equal(h.app.resolutions.length, 0);
+        assert.equal(nodes(proofTree()).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
+        permission.resolve({ granted: true }); await h.settle();
+        h.app.foreground(); h.app.click(click); await h.settle();
+        camera.resolve({ canceled: false, assets: [{ uri: 'file:///connected-camera-proof.jpg', fileName: 'isolated-camera.jpg', mimeType: 'image/jpeg' }] });
+        await h.settle(); tree = proofTree();
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        h.app.pressText('보류된 알림'); await h.settle();
+        h.app.pressText('알림으로 이동'); await h.settle();
+        assert.equal(h.app.resolutions.length, 0);
+        pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
+        const submittedIdentity = h.workspace.controller!.executionState.proof!.completionIdentity;
+        assert.ok(submittedIdentity);
+        assert.equal(h.committedCompletions.size, 1);
+        assert.equal(h.businessPosts.length, 1);
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
+        const completionPostCount = responseLost ? 2 : 1;
+        if (responseLost) {
+          assert.equal(h.workspace.controller!.executionState.proof!.completedAt, null);
+          assert.equal(uploads.length, 0);
+          const cancel = nodes(tree).find(({ type, props }) => type === 'Pressable'
+            && nodes(props.children).some((child) => child.props.children === '취소'));
+          assert.equal(cancel?.props.disabled, true);
+          (tree.props.onRequestClose as () => void)();
+          h.workspace.controller!.closeProofDelivery();
+          h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+          assert.deepEqual(h.workspace.controller!.executionState.proof!.completionIdentity, submittedIdentity);
+          assert.equal(h.app.resolutions.length, 0);
+          const unknownDialog = h.workspace.controller!.dialog as unknown as Element;
+          (unknownDialog.props.onDismiss as () => void)(); await h.settle();
+          pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
+        }
+        const acceptedAt = h.workspace.controller!.executionState.proof!.completedAt;
+        assert.ok(acceptedAt);
+        assert.equal(acceptedAt, submittedIdentity.occurredAt);
+        assert.equal(h.businessPosts.length, completionPostCount);
+        assert.equal(h.committedCompletions.size, 1);
+        assert.equal(h.workspace.controller!.executionState.phase, 'proof');
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
+        const errorDialog = h.workspace.controller!.dialog as unknown as Element;
+        (errorDialog.props.onDismiss as () => void)(); await h.settle();
+        if (responseLost) {
+          tree = proofTree();
+          assert.equal(h.workspace.controller!.executionState.proof!.requiresAssignmentRefresh, true);
+          assert.equal(uploads.length, 0);
+          assert.equal(h.app.resolutions.length, 0);
+          assert.equal(confirmedPhotos.length, 2);
+          assert.equal(confirmedPhotos[1]!.idempotencyKey, confirmedPhotos[0]!.idempotencyKey);
+          assert.equal(confirmedPhotos[1]!.uri, confirmedPhotos[0]!.uri);
+          assert.ok(!nodes(tree).some(({ props }) => props.children === '완료 확정'));
+          assert.ok(!nodes(tree).some(({ props }) => ['사진 촬영', '앨범에서 선택'].includes(String(props.label))));
+          const readsBeforeClose = h.snapshotReads();
+          const close = nodes(tree).find(({ type, props }) => type === 'Pressable'
+            && nodes(props.children).some((child) => child.props.children === '닫고 배정 확인'));
+          assert.ok(close);
+          (close.props.onPress as () => void)();
+          await h.settle();
+          assert.equal(h.workspace.controller!.executionState.phase, 'idle');
+          assert.equal(h.screen().nextDeliveryStopId, stopBId);
+          assert.equal(h.app.resolutions.length, 1);
+          assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+          assert.ok(h.reads.routes.length > readsBeforeClose.routes.length, 'Safe close must return through current-assignment reads');
+          assert.equal(uploads.length, 0);
+          assert.equal(h.businessPosts.length, 2);
+          assert.equal(JSON.parse(String(h.businessPosts[0]!.body)).occurredAt, acceptedAt);
+          assert.deepEqual(JSON.parse(String(h.businessPosts[1]!.body)), JSON.parse(String(h.businessPosts[0]!.body)));
+          return;
+        }
+        assert.equal(uploads.length, 1);
+        pressConfirm(proofTree()); await h.settle();
+        assert.equal(h.workspace.controller!.executionState.phase, 'uploading-proof');
+        h.app.click(click); await h.settle(); tree = proofTree();
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        assert.equal(h.workspace.controller!.executionState.proof!.completedAt, acceptedAt);
+        assert.equal(h.businessPosts.length, completionPostCount);
+        assert.equal(h.app.resolutions.length, 0);
+        retryUpload.resolve(); await pendingSubmit; await h.settle();
+        assert.equal(h.workspace.controller!.executionState.phase, 'idle');
+        assert.equal(h.screen().nextDeliveryStopId, stopBId);
+        assert.equal(h.app.resolutions.length, 1);
+        assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+        assert.equal(h.businessPosts.length, completionPostCount);
+        assert.equal(uploads.length, 2);
+        assert.match(uploads[0]!.idempotencyKey, /^proof-media-v1:[a-f0-9]{32}$/u);
+        assert.equal(uploads[1]!.idempotencyKey, uploads[0]!.idempotencyKey);
+        assert.deepEqual(uploads.map(({ deliveryStopId, routePlanId, uri }) => ({ deliveryStopId, routePlanId, uri })), [
+          { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
+          { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
+        ]);
+        assert.equal(JSON.parse(String(h.businessPosts[0]!.body)).occurredAt, acceptedAt);
+      } finally { permission.resolve({ granted: true }); camera.resolve({ canceled: true, assets: [] }); retryUpload.resolve(); h.dispose(); }
   });
+  }
 
   it('retires only the locally completed N06 target and loads the remaining server stop after proof succeeds', async () => {
     let delivered = false;

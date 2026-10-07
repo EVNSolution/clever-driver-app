@@ -338,6 +338,73 @@ describe('persistent delivery execution controller callbacks', () => {
       else globalThis.fetch = previousFetch;
     }
   });
+
+  it('treats a duplicate HTTP 200 after an unknown attempt as result recovery and refreshes only on safe close', async () => {
+    const previousFetch = globalThis.fetch;
+    const requests: (DriverLifecycleCommandIdentity & { deliveryStopIds: string[] })[] = [];
+    const refreshedStops: string[][] = [];
+    let uploadCalls = 0;
+    let routeCalls = 0;
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as DriverLifecycleCommandIdentity & { deliveryStopIds: string[] };
+      requests.push(body);
+      if (requests.length === 1) throw new Error('The original completion committed before its response was lost');
+      return new Response(JSON.stringify({ data: {
+        completedStopCount: body.deliveryStopIds.length,
+        eventIds: body.deliveryStopIds.map((id) => `original-event:${id}`),
+      }, error: null }), { status: 200 });
+    };
+    const harness = createHarness();
+    const photo = { uri: 'file:///unknown-then-200-proof.jpg', fileName: 'original-photo.jpg', idempotencyKey: 'proof-media-v1:44444444444444448444000000000003', mimeType: 'image/jpeg', source: 'camera' as const };
+    const props = options({
+      onCompleteDelivery: async (destinationId, stopIds, identity) => {
+        await driverEvents.completeDriverDeliveryDestination('original-route-token', 'original-route', destinationId, stopIds, identity);
+        return true;
+      },
+      onResolveDeliveryCompletion: async () => { assert.fail('A valid duplicate response itself confirms the original result'); },
+      onUploadProof: async () => { uploadCalls += 1; },
+      onCompleteRoute: async () => { routeCalls += 1; },
+      onRefreshAssignment: (stopIds) => { refreshedStops.push([...stopIds]); },
+    });
+    try {
+      let controller = harness.render(props);
+      controller.confirmDeliveryCompletion(); controller = harness.render(props);
+      await controller.submitDeliveryCompletion('2026-10-07T08:40:00.000Z', photo);
+      harness.dismissDialog(); controller = harness.render(props);
+      controller.closeProofDelivery(); controller = harness.render(props);
+      assert.equal(controller.executionState.phase, 'proof');
+      assert.equal(controller.executionState.proof?.completedAt, null);
+      assert.equal(refreshedStops.length, 0);
+      await controller.submitDeliveryCompletion('2026-10-07T08:45:00.000Z', photo);
+      harness.dismissDialog(); controller = harness.render(props);
+      assert.equal(requests.length, 2);
+      assert.deepEqual(requests[1], requests[0]);
+      assert.equal(controller.executionState.phase, 'proof');
+      assert.equal(controller.executionState.proof?.completedAt, '2026-10-07T08:40:00.000Z');
+      assert.equal(controller.executionState.proof?.completesRoute, false);
+      assert.equal(controller.executionState.proof?.requiresAssignmentRefresh, true);
+      assert.equal(controller.isLocked, true);
+      assert.equal(uploadCalls, 0);
+      assert.equal(routeCalls, 0);
+      assert.equal(refreshedStops.length, 0);
+      await controller.submitDeliveryCompletion('2026-10-07T09:00:00.000Z', photo);
+      assert.equal(requests.length, 2);
+      assert.equal(uploadCalls, 0);
+      assert.equal(routeCalls, 0);
+      assert.equal(photo.uri, 'file:///unknown-then-200-proof.jpg');
+      assert.equal(photo.idempotencyKey, 'proof-media-v1:44444444444444448444000000000003');
+      const close = controller.closeProofDelivery;
+      close(); close(); controller = harness.render(props);
+      assert.equal(controller.executionState.phase, 'idle');
+      assert.equal(controller.isLocked, false);
+      assert.deepEqual(refreshedStops, [props.summary!.deliveryStopIds]);
+      assert.equal(uploadCalls, 0);
+      assert.equal(routeCalls, 0);
+    } finally {
+      if (previousFetch === undefined) delete (globalThis as { fetch?: unknown }).fetch;
+      else globalThis.fetch = previousFetch;
+    }
+  });
   it('keeps one pending completion across tab presentations and retries the original final route after summary disappears', async () => {
     const harness = createHarness();
     const pending = deferred<boolean>();
@@ -470,6 +537,10 @@ describe('persistent delivery execution controller callbacks', () => {
     assert.deepEqual(attempts[1], attempts[0]);
     assert.equal(committed.size, 1);
     assert.equal(attempts[1]?.occurredAt, '2026-09-10T05:42:00.000Z');
+    assert.equal(controller.executionState.proof?.completedAt, '2026-09-10T05:42:00.000Z');
+    assert.equal(controller.executionState.proof?.requiresAssignmentRefresh, true);
+    assert.equal(controller.executionState.phase, 'proof');
+    harness.dismissDialog(); controller.closeProofDelivery(); controller = harness.render(props);
     assert.equal(controller.executionState.phase, 'idle');
   });
 

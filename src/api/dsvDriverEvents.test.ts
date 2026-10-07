@@ -131,6 +131,7 @@ describe('DSV driver events API client', () => {
     { name: 'invalid event identifiers', status: 200, body: { data: { completedStopCount: 2, eventIds: ['event-1', null] }, error: null } },
     { name: 'duplicate stop event identifiers', status: 200, body: { data: { completedStopCount: 2, eventIds: ['event-1', 'event-1'] }, error: null } },
     { name: 'error envelope on a successful HTTP status', status: 200, body: { data: null, error: { code: 'FORBIDDEN', completionOutcome: 'NOT_APPLIED' } } },
+    { name: 'contradictory error with complete acceptance data', status: 200, body: { data: { completedStopCount: 2, eventIds: ['event-1', 'event-2'] }, error: { code: 'FORBIDDEN', completionOutcome: 'NOT_APPLIED' } } },
     { name: 'non-object envelope', status: 403, body: [] },
   ]) {
     it(`keeps ${failure.name} unknown instead of permitting a new completion identity`, async () => {
