@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests.mjs",
     "test:android:generation-isolation": "node scripts/verify-android-generation-isolation.mjs",
-    "check:workspace": "npm run typecheck && npm run test",
+    "check:workspace": "npm run check:security-patches && npm run typecheck && npm run test && npm run test:security",
     "build": "npm run build:android && npm run build:ios",
     "build:android": "expo export -p android --output-dir dist/android",
     "build:android:integration:apk": "export NODE_ENV=production CLEVER_DRIVER_ISOLATED_ANDROID=true EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION=true EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED=true EXPO_PUBLIC_DSV_API_BASE_URL=${EXPO_PUBLIC_DSV_API_BASE_URL:-http://127.0.0.1:4908} CMAKE_BUILD_PARALLEL_LEVEL=1 && node scripts/prebuild-android.mjs integration && cd android && ./gradlew assembleRelease --build-cache --max-workers=1 -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxMetaspaceSize=1g' -PreactNativeArchitectures=arm64-v8a",
@@ -21,7 +21,10 @@
     "build:ios": "expo export -p ios --output-dir dist/ios",
     "build:ios:preview": "npx eas-cli build --platform ios --profile preview",
     "build:ios:production": "npx eas-cli build --platform ios --profile production",
-    "release:android:drive": "bash scripts/publish-android-drive-release.sh"
+    "release:android:drive": "bash scripts/publish-android-drive-release.sh",
+    "postinstall": "node scripts/apply-dependency-security-patches.mjs",
+    "check:security-patches": "node scripts/apply-dependency-security-patches.mjs --check",
+    "test:security": "node --test scripts/security/*.test.mjs"
   },
   "dependencies": {
     "@maplibre/maplibre-react-native": "11.3.4",
