@@ -1,0 +1,110 @@
+{
+  "package": "node-forge",
+  "version": "1.4.0",
+  "patch": "node-forge-1.4.0.patch",
+  "patchSha256": "3c44ba7bf9320289d8ab599e24c7b10f4767f3a937bf55bb7736ac97b4414875",
+  "upstreamCommit": "ceba34402e329f0365134f23fe19898756527d65",
+  "upstreamPullRequest": "https://github.com/digitalbazaar/forge/pull/1152",
+  "upstreamStatus": "OPEN / unmerged as checked 2026-10-08",
+  "advisory": "CVE-2026-85393",
+  "rationale": "Reject extra unconsumed children in RSA PKCS#1 v1.5 DigestAlgorithm; preserve optional NULL acceptance and existing outer DigestInfo validation.",
+  "source": {
+    "registryTarball": "https://registry.npmjs.org/node-forge/-/node-forge-1.4.0.tgz",
+    "integrity": "sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==",
+    "tarballSha256": "bf9d7ca0d774235354697bd4b5e642af6505e7ce2066762c3b855138cf870820",
+    "upstreamArchive": "https://codeload.github.com/digitalbazaar/forge/tar.gz/ceba34402e329f0365134f23fe19898756527d65",
+    "upstreamArchiveSha256": "9825224607d9eefa205125d563301951291b5ab21f05c29da8fb3083864eb982"
+  },
+  "license": {
+    "expression": "(BSD-3-Clause OR GPL-2.0)",
+    "selected": "BSD-3-Clause",
+    "file": "node-forge-LICENSE",
+    "sha256": "f63ff0e4e239244aa79280da2dd4811a0469e5e201caf5cbc0d97c3a1dff8e82",
+    "note": "Full upstream dual-license notice retained unchanged; use the BSD-3-Clause option. Existing source copyright remains intact."
+  },
+  "files": [
+    {
+      "path": "lib/rsa.js",
+      "beforeSha256": "fd4740238145ec26470eb3f06a627c72039538ce1307dbdce40521f94dfd0a50",
+      "afterSha256": "acc22e5d36e27832c34e02dd3933aad7977d45b047eead5016520735efedc9c5"
+    }
+  ],
+  "scope": [
+    "Only lib/rsa.js differs across installed1.4.0 lib files and pinned upstream lib files.",
+    "Published dist bundles are not modified; package Node main remains lib/index.js.",
+    "Package name/version/lockfile registry integrity remain original so npm audit continues reporting the advisory."
+  ],
+  "limitations": [
+    "Upstream PR is unmerged; this is a locally reviewed patch, not an official fixed release.",
+    "This patch does not waive Issue62 or npm audit findings."
+  ],
+  "testFixtures": {
+    "source": "https://github.com/digitalbazaar/forge/blob/ceba34402e329f0365134f23fe19898756527d65/tests/unit/rsa.js",
+    "licenseFile": "node-forge-LICENSE",
+    "sourceTest": "should check nested DigestAlgorithm element count",
+    "scope": "public RSA modulus/signature/message; no private signing key copied",
+    "modulusSha256": "ce6c43eec7fec2b7110cc0d4cf61be025ea0026e1baf7bbb71c3b70c16ed1491",
+    "signatureSha256": "1e98dfff39bb416ec1baedd3ab1831e15131d428f008379e9aaa3a5f69201296"
+  },
+  "verification": {
+    "runtime": "Node.js20.19.4 / OpenSSL3.0.15+quic",
+    "publicForgeryBaseline": "unmodified registry1.4.0 accepts forged signature; native Node crypto rejects it",
+    "appSecurityTests": {
+      "total": 9,
+      "baselinePassed": 7,
+      "baselineExpectedFailures": 2,
+      "patchedPassed": 9
+    },
+    "upstreamNodeSuite": {
+      "sourceCommit": "ceba34402e329f0365134f23fe19898756527d65",
+      "runner": "Mocha5.2.0",
+      "testOnlyAdjustment": "Remove accidental describe.only in tests/unit/jsbn.js in external evidence copy; no assertion removed.",
+      "baseline": {
+        "suites": 38,
+        "tests": 833,
+        "passes": 828,
+        "pending": 4,
+        "failures": 1,
+        "start": "2026-10-08T10:04:17.537Z",
+        "end": "2026-10-08T10:04:21.617Z",
+        "duration": 4080
+      },
+      "patchedDefault": {
+        "suites": 38,
+        "tests": 833,
+        "passes": 829,
+        "pending": 4,
+        "failures": 0,
+        "start": "2026-10-08T10:06:18.185Z",
+        "end": "2026-10-08T10:06:22.172Z",
+        "duration": 3987
+      },
+      "patchedPureJavaScript": {
+        "suites": 38,
+        "tests": 833,
+        "passes": 829,
+        "pending": 4,
+        "failures": 0,
+        "start": "2026-10-08T10:54:38.864Z",
+        "end": "2026-10-08T10:54:45.843Z",
+        "duration": 6979
+      },
+      "pureJavaScriptInitialization": "Require public node-forge module first, then set options.usePureJavaScript=true. Upstream mode-switching tests retain their original behavior.",
+      "pending": "4 upstream deterministic RSA key generation comparisons skip under Node20; listed in evidence summaries."
+    },
+    "compatibility": [
+      "Expo0.0.6 certificate and key PEM conversion",
+      "Self-signed X509 validity and signature validation",
+      "SHA256 manifest signing and tamper rejection",
+      "CSR parsing, development certificate issuance, project metadata",
+      "ASN1 DER certificate roundtrip and truncated input rejection",
+      "AES256 encrypted PKCS12 key/certificate roundtrip and wrong-password rejection"
+    ],
+    "notTested": [
+      "Browser, browser-worker and legacy Flash runtimes",
+      "Prebuilt dist bundles (unchanged and not covered by runtime patch)",
+      "Real release signing credentials or hosted signing services",
+      "Security audit waiver or Issue62 closure"
+    ]
+  }
+}
