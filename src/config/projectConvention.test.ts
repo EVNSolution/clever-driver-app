@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
@@ -10,6 +11,7 @@ type ExpoConfig = {
     slug: string;
     version: string;
     ios: {
+      buildNumber: string;
       bundleIdentifier: string;
       infoPlist: { ITSAppUsesNonExemptEncryption: boolean };
     };
@@ -22,6 +24,7 @@ type ExpoConfig = {
       package: string;
       versionCode: number;
     };
+    plugins: unknown[];
   };
 };
 
@@ -33,8 +36,9 @@ test('keeps the CLEVER Driver app identity consistent', () => {
   assert.equal(appConfig.expo.name, 'CLEVER Driver');
   assert.equal(appConfig.expo.owner, 'evandsolution');
   assert.equal(appConfig.expo.slug, 'clever-driver-app');
-  assert.equal(appConfig.expo.version, '0.1.14');
-  assert.equal(appConfig.expo.android.versionCode, 23);
+  assert.equal(appConfig.expo.version, '0.2.0');
+  assert.equal(appConfig.expo.android.versionCode, 28);
+  assert.equal(appConfig.expo.ios.buildNumber, '15');
   assert.equal(
     appConfig.expo.ios.bundleIdentifier,
     'com.evnsolution.clever.driver',
@@ -64,6 +68,9 @@ test('keeps the CLEVER Driver app identity consistent', () => {
     backgroundColor: '#0B57D0',
     foregroundImage: './assets/branding/driver-app-icon-foreground.png',
   });
+  assert.ok(
+    appConfig.expo.plugins.includes('./plugins/with-android-release-optimization'),
+  );
 
   const icon = readFileSync(
     new URL('../../assets/branding/driver-app-icon.png', import.meta.url),
@@ -101,6 +108,69 @@ test('keeps signed iOS candidates on reviewed EAS profiles', () => {
   assert.equal(easConfig.submit.production.ios.ascAppId, '6806955523');
 });
 
+test('keeps the Android integration candidate isolated from the business install and Firebase', () => {
+  const packageJson = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { scripts: Record<string, string> };
+  const integrationBuild = packageJson.scripts['build:android:integration:apk'];
+  const productionBuild = packageJson.scripts['build:android:release:apk'];
+
+  assert.match(integrationBuild, /CLEVER_DRIVER_ISOLATED_ANDROID=true/u);
+  assert.match(integrationBuild, /EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION=true/u);
+  assert.match(integrationBuild, /node scripts\/prebuild-android\.mjs integration/u);
+  assert.match(
+    productionBuild,
+    /unset CLEVER_DRIVER_ISOLATED_ANDROID EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED EXPO_PUBLIC_DSV_API_BASE_URL/u,
+  );
+  assert.match(productionBuild, /node scripts\/prebuild-android\.mjs release/u);
+
+  const require = createRequire(import.meta.url);
+  const configPath = require.resolve('../../app.config.js');
+  const previous = process.env.CLEVER_DRIVER_ISOLATED_ANDROID;
+
+  try {
+    delete process.env.CLEVER_DRIVER_ISOLATED_ANDROID;
+    delete require.cache[configPath];
+    const productionConfig = require(configPath) as {
+      android: {
+        googleServicesFile?: string;
+        package: string;
+      };
+      name: string;
+      plugins: unknown[];
+    };
+    assert.equal(productionConfig.name, 'CLEVER Driver');
+    assert.equal(productionConfig.android.package, 'com.evnsolution.clever.driver');
+    assert.equal(productionConfig.android.googleServicesFile, './.private/google-services.json');
+    assert.equal(productionConfig.plugins.length, 7);
+    assert.equal(typeof productionConfig.plugins.at(-1), 'function');
+
+    process.env.CLEVER_DRIVER_ISOLATED_ANDROID = 'true';
+    delete require.cache[configPath];
+    const isolatedConfig = require(configPath) as {
+      android: {
+        googleServicesFile?: string;
+        package: string;
+      };
+      name: string;
+      plugins: unknown[];
+    };
+
+    assert.equal(isolatedConfig.name, 'CLEVER Driver Integration');
+    assert.equal(
+      isolatedConfig.android.package,
+      'com.evnsolution.clever.driver.integration',
+    );
+    assert.equal(isolatedConfig.android.googleServicesFile, undefined);
+    assert.equal(isolatedConfig.plugins.length, 7);
+    assert.equal(typeof isolatedConfig.plugins.at(-1), 'function');
+  } finally {
+    if (previous === undefined) delete process.env.CLEVER_DRIVER_ISOLATED_ANDROID;
+    else process.env.CLEVER_DRIVER_ISOLATED_ANDROID = previous;
+    delete require.cache[configPath];
+  }
+});
+
 test('keeps Google Play submissions on internal testing until promotion', () => {
   const easConfig = JSON.parse(
     readFileSync(new URL('../../eas.json', import.meta.url), 'utf8'),
@@ -123,4 +193,25 @@ test('keeps Google Play submissions on internal testing until promotion', () => 
 
   assert.match(dynamicConfig, /process\.env\.GOOGLE_SERVICES_JSON/);
   assert.match(dynamicConfig, /appConfig\.android\.googleServicesFile/);
+});
+
+test('includes operational features in formal candidates without enabling synthetic verification', () => {
+  const easConfig = JSON.parse(readFileSync(new URL('../../eas.json', import.meta.url), 'utf8'));
+  const production = easConfig.build.production;
+  assert.equal(production.env.EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED, 'true');
+  assert.equal(production.env.EXPO_PUBLIC_DSV_API_BASE_URL, 'https://clever-route-api.cleversystem.ai');
+  assert.equal(production.env.CLEVER_DRIVER_ISOLATED_ANDROID, undefined);
+  assert.equal(production.env.EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION, undefined);
+  assert.equal(easConfig.cli.appVersionSource, 'remote');
+  assert.equal(production.autoIncrement, true);
+
+  const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  assert.match(packageJson.scripts['build:android:release:apk'], /export NODE_ENV=production EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED=true/u);
+  const prebuild = readFileSync(new URL('../../scripts/prebuild-android.mjs', import.meta.url), 'utf8');
+  assert.match(prebuild, /prebuildEnv\.EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED = "true"/u);
+  const template = 'expo-template-bare-minimum@56.0.37';
+  assert.equal(production.android.prebuildCommand, `prebuild --no-install --template ${template}`);
+  assert.equal(easConfig.build.preview.android.prebuildCommand, `prebuild --no-install --template ${template}`);
+  assert.ok(prebuild.includes(template));
+  assert.match(prebuild, /previousTemplate !== template/u);
 });
