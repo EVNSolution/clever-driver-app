@@ -14,6 +14,12 @@ assert.ok(
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const androidRoot = join(repositoryRoot, "android");
 const markerPath = join(androidRoot, ".clever-driver-generation-mode");
+// Expo 56.0.23 bundles a 57.x template. Use the published SDK 56 template.
+const template = "expo-template-bare-minimum@56.0.37";
+const templateMarkerPath = join(androidRoot, ".clever-driver-generation-template");
+const previousTemplate = existsSync(templateMarkerPath)
+  ? readFileSync(templateMarkerPath, "utf8").trim()
+  : null;
 const generatedFirebasePath = join(androidRoot, "app", "google-services.json");
 const firebaseSourcePath = resolve(
   repositoryRoot,
@@ -31,6 +37,7 @@ assert.ok(
 );
 const clean =
   (previousMode !== null && previousMode !== mode) ||
+  (existsSync(androidRoot) && previousTemplate !== template) ||
   hasIntegrationFirebaseResidue;
 
 if (mode === "release") {
@@ -41,14 +48,14 @@ if (mode === "release") {
 }
 
 const expo = join(repositoryRoot, "node_modules", ".bin", "expo");
-const args = ["prebuild", "--platform", "android", "--no-install"];
+const args = ["prebuild", "--platform", "android", "--no-install", "--template", template];
 if (clean) args.push("--clean");
 
 const prebuildEnv = { ...process.env };
 if (mode === "release") {
   delete prebuildEnv.CLEVER_DRIVER_ISOLATED_ANDROID;
   delete prebuildEnv.EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION;
-  delete prebuildEnv.EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED;
+  prebuildEnv.EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED = "true";
   delete prebuildEnv.EXPO_PUBLIC_DSV_API_BASE_URL;
 }
 
@@ -98,3 +105,4 @@ if (mode === "integration") {
 }
 
 writeFileSync(markerPath, `${mode}\n`);
+writeFileSync(templateMarkerPath, `${template}\n`);

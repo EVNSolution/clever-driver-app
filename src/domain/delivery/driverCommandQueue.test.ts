@@ -125,6 +125,32 @@ describe('durable driver commands', () => {
     assert.equal(firstReport.status, 'pending');
   });
 
+  it('restores a free-text report verbatim after response loss and process restart', async () => {
+    const { queue, makeQueue, state, store } = harness();
+    const details = { targetStopId: report.targetStopId, reason: '수취인 부재\n연락\t시도' };
+    state.send = async () => { throw new TypeError('response lost after commit'); };
+    const pending = await queue.enqueueDeliveryException(context, details);
+    assert.equal(pending.status, 'pending');
+    const originalBody = structuredClone(pending.payload);
+    assert.deepEqual(parseStoredDriverCommands(JSON.parse(JSON.stringify(store.saved)))[0].payload, originalBody);
+    state.send = async (command) => acknowledge(command);
+    const restarted = makeQueue(); await restarted.retryPending();
+    assert.deepEqual(state.sends.map(({ payload }) => payload), [originalBody, originalBody]);
+    assert.equal(restarted.listForAccount(accountId)[0].status, 'confirmed');
+    assert.equal('reasonCode' in originalBody, false);
+  });
+
+  it('keeps a saved legacy reasonCode and explanation unchanged across upgrade and retry', async () => {
+    const { queue, makeQueue, state, store } = harness();
+    state.send = async () => { throw new TypeError('offline'); };
+    await queue.enqueueDeliveryException(context, { ...report, explanation: '기존 내용' });
+    const originalBody = structuredClone(store.saved[0].payload);
+    state.send = async (command) => acknowledge(command);
+    const restarted = makeQueue(); await restarted.retryPending();
+    assert.deepEqual(state.sends[1].payload, originalBody);
+    assert.equal('reason' in state.sends[1].payload, false);
+  });
+
   it('does no work when the queue is empty or on initialization and list reads', async () => {
     const { queue, state } = harness();
     await queue.initialize();

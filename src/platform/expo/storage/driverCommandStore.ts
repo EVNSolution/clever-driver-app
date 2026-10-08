@@ -33,3 +33,21 @@ export function createDriverCommandStore(): DriverCommandStore {
     },
   };
 }
+
+/** Unsubmitted text is separate from the immutable command. The key includes account and every execution fence. */
+export function loadDriverDeliveryExceptionDraft(key: string): Promise<string> {
+  return serializeStorage(async () => {
+    const saved = await AsyncStorage.getItem(`clever-driver.delivery-exception-draft.v1:${key}`);
+    if (saved === null) return '';
+    let parsed: unknown;
+    try { parsed = JSON.parse(saved); } catch { throw new DriverCommandQueueError('STORAGE_INVALID'); }
+    if (typeof parsed !== 'string') throw new DriverCommandQueueError('STORAGE_INVALID');
+    return parsed;
+  });
+}
+
+export function saveDriverDeliveryExceptionDraft(key: string, reason: string): Promise<void> {
+  return serializeStorage(() => AsyncStorage.setItem(
+    `clever-driver.delivery-exception-draft.v1:${key}`, JSON.stringify(reason),
+  ));
+}

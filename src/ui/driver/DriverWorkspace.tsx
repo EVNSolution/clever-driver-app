@@ -74,7 +74,8 @@ import {
 import { DriverRefreshControl } from './DriverRefreshControl';
 import { DriverSettingsModal } from './DriverSettingsModal';
 import { DeliverySpaceScreen } from './DeliverySpaceScreen';
-import { DriverDeliveryException, type DriverDeliveryExceptionReason } from './DriverDeliveryException';
+import { DriverDeliveryException } from './DriverDeliveryException';
+import { deliveryExceptionReasonError } from '../../domain/delivery/driverDeliveryException';
 
 type DriverWorkspaceTab = 'delivery' | 'map';
 type DriverRouteGroup = 'active' | 'terminal';
@@ -96,7 +97,6 @@ type DriverWorkspaceProps = {
   onNotificationDestinationDeferred?(notificationId: string): void;
   onWorkProtectionChange?(isProtected: boolean): void;
   onAuthenticationRequired?(): void;
-  deliveryExceptionReasons?: readonly DriverDeliveryExceptionReason[];
   protectedNotificationOverlay?: ReactNode;
 };
 
@@ -112,7 +112,6 @@ export function DriverWorkspace({
   onAuthenticationRequired,
   onNotificationDestinationDeferred,
   onWorkProtectionChange,
-  deliveryExceptionReasons = [],
   protectedNotificationOverlay,
 }: DriverWorkspaceProps) {
   const insets = useSafeAreaInsets();
@@ -129,7 +128,7 @@ export function DriverWorkspace({
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const routeRef = useRef<DriverDeliveryRoute | null>(null);
   const [executionContext, setExecutionContext] = useState<DriverExecutionContext | null>(null);
-  const [pendingCommands, setPendingCommands] = useState<DriverQueuedCommand[]>([]);
+  const [queuedCommands, setQueuedCommands] = useState<DriverQueuedCommand[]>([]);
   const [commandError, setCommandError] = useState<string>();
   const [isRetryingCommands, setIsRetryingCommands] = useState(false);
   const [isRecoveringCompletion, setIsRecoveringCompletion] = useState(false);
@@ -190,6 +189,17 @@ export function DriverWorkspace({
 
   const activeDeliveryStopId = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
     ? notificationTarget.targetStopId : route?.nextDeliveryStopId ?? null;
+  const pendingCommands = queuedCommands.filter((command) => command.status !== 'confirmed');
+  const savedReportCommand = [...queuedCommands].reverse().find((command): command is Extract<DriverQueuedCommand, { type: 'REPORT_DELIVERY_EXCEPTION' }> =>
+    command.type === 'REPORT_DELIVERY_EXCEPTION' && command.payload.targetStopId === activeDeliveryStopId
+    && command.executionContextId === executionContext?.executionContextId
+    && command.payload.assignmentEpoch === executionContext.assignmentEpoch
+    && command.payload.assignmentGeneration === executionContext.assignmentGeneration
+    && command.payload.expectedRouteVersionId === executionContext.expectedRouteVersionId
+    && command.payload.routeVersion === executionContext.routeVersion);
+  const reportDraftKey = executionContext === null ? '' : [authSession.account.id, executionContext.executionContextId,
+    executionContext.assignmentEpoch, executionContext.assignmentGeneration, executionContext.expectedRouteVersionId,
+    executionContext.routeVersion, activeDeliveryStopId].join(':');
   const targetOrder = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
     ? orders.find((order) => order.id === notificationTarget.targetStopId) : undefined;
   const deliveryExecution = useDeliveryExecution({
@@ -248,9 +258,7 @@ export function DriverWorkspace({
         createCommandId: () => uuid.v4(),
         onAuthenticationRequired: () => authenticationRequiredRef.current?.(),
         onChange: (commands) => {
-          if (mountedRef.current) setPendingCommands(commands.filter((command) => (
-            command.accountId === sessionRef.current.account.id && command.status !== 'confirmed'
-          )));
+          if (mountedRef.current) setQueuedCommands(commands);
         },
       });
       commandQueueRef.current = queue;
@@ -813,13 +821,13 @@ export function DriverWorkspace({
     }
   }
 
-  async function reportDeliveryException(reasonCode: string, explanation?: string) {
+  async function reportDeliveryException(reason: string) {
     if (route === null || executionContext === null || isRouteReadOnly) throw new Error('현재 배차를 확인해 주세요.');
     const targetStopId = activeDeliveryStopId;
     const target = orders.find((order) => order.id === targetStopId);
     if (target === undefined || isTerminalDeliveryStatus(target.status)) throw new Error('이미 처리됐거나 변경된 배송지는 보고할 수 없습니다.');
-    const reason = deliveryExceptionReasons.find((candidate) => candidate.code === reasonCode);
-    if (reason === undefined || (reason.requiresExplanation && !explanation?.trim())) throw new Error('보고 사유와 필수 내용을 확인해 주세요.');
+    const validationError = deliveryExceptionReasonError(reason);
+    if (validationError !== undefined) throw new Error(validationError);
     const reportingRoute = route;
     const context = executionContext;
     if (!mountedRef.current || context.status !== 'ACTIVE' ||
@@ -830,7 +838,14 @@ export function DriverWorkspace({
     }
     const queue = commandQueueRef.current;
     if (queue === null) throw new Error('명령 저장소를 확인하지 못했습니다.');
-    const command = await queue.enqueueDeliveryException(context, { targetStopId: target.id, reasonCode, explanation });
+    let command: DriverQueuedCommand | undefined = savedReportCommand;
+    if (command?.status === 'pending') {
+      await queue.retryPending();
+      command = queue.listForAccount(authSession.account.id).find((item) => item.payload.commandId === savedReportCommand!.payload.commandId);
+    } else if (command === undefined) {
+      command = await queue.enqueueDeliveryException(context, { targetStopId: target.id, reason: reason.trim() });
+    }
+    if (command === undefined) throw new Error('저장된 보고 명령을 확인하지 못했습니다.');
     if (command.status !== 'confirmed') throw new Error(command.status === 'blocked'
       ? '배차 또는 배송지가 변경되어 보고 명령이 차단됐습니다.'
       : '서버 승인을 기다리고 있습니다. 연결 후 저장된 명령을 다시 시도해 주세요.');
@@ -1095,9 +1110,10 @@ export function DriverWorkspace({
             {DRIVER_OPERATIONAL_ENABLED && executionContext?.expectedRouteVersionId === route.routeVersionId &&
               !isRouteReadOnly && activeDeliveryStopId !== null ? (
               <DriverDeliveryException
-                key={`${route.routePlanId}:${activeDeliveryStopId}`}
+                key={reportDraftKey}
+                draftKey={reportDraftKey}
+                savedCommand={savedReportCommand}
                 destinationName={orders.find((order) => order.id === activeDeliveryStopId)?.destinationName ?? '배송지'}
-                reasons={deliveryExceptionReasons}
                 onSubmit={reportDeliveryException}
                 onWorkProtectionChange={reportExceptionInput}
               />

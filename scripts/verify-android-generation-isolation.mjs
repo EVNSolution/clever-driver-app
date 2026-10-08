@@ -20,7 +20,11 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = mkdtempSync(
   join(tmpdir(), "clever-driver-android-generation-"),
 );
-const evidenceRoot = "/tmp/dsv-driver-android-generation-isolation";
+const evidenceRoot = process.env.DRIVER_ANDROID_GENERATION_EVIDENCE
+  ?? "/tmp/dsv-driver-android-generation-isolation";
+const candidateConfig = JSON.parse(readFileSync(join(repositoryRoot, "app.json"), "utf8")).expo;
+const template = JSON.parse(readFileSync(join(repositoryRoot, "eas.json"), "utf8"))
+  .build.production.android.prebuildCommand.split("--template ")[1];
 const excludedNames = new Set([
   ".expo",
   ".git",
@@ -53,7 +57,7 @@ const syntheticFirebase = {
 
 const runPrebuild = (isolated, clean) => {
   const expo = join(temporaryRoot, "node_modules", ".bin", "expo");
-  const args = ["prebuild", "--platform", "android", "--no-install"];
+  const args = ["prebuild", "--platform", "android", "--no-install", "--template", template];
   if (clean) args.push("--clean");
 
   const env = {
@@ -180,6 +184,7 @@ try {
   );
 
   runGuardedPrebuild("release");
+  assert.equal(readFileSync(join(temporaryRoot, "android", ".clever-driver-generation-template"), "utf8").trim(), template);
   assert.equal(
     readFileSync(
       join(temporaryRoot, "android", ".clever-driver-generation-mode"),
@@ -208,6 +213,8 @@ try {
 
   runGuardedPrebuild("release");
   const guardedRelease = readGenerated();
+  assert.match(guardedRelease.gradle, new RegExp(`versionName\\s+"${candidateConfig.version.replaceAll(".", "\\.")}"`, "u"));
+  assert.match(guardedRelease.gradle, new RegExp(`versionCode\\s+${candidateConfig.android.versionCode}\\b`, "u"));
   assert.doesNotMatch(guardedRelease.manifest, /android:usesCleartextTraffic/u);
   assert.match(
     guardedRelease.gradle,
@@ -237,6 +244,9 @@ try {
         sequence: "isolated clean -> production nonclean",
         releaseEnvironmentContaminationCleared: true,
         syntheticFirebaseOnly: true,
+        versionName: candidateConfig.version,
+        versionCode: candidateConfig.android.versionCode,
+        template,
         hashes,
       },
       null,

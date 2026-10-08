@@ -8,6 +8,7 @@ import type { DriverAuthSession } from '../api/dsvDriverAuth';
 import * as events from '../api/dsvDriverEvents';
 import type { DriverDeliveryRoute } from '../api/dsvDriverRoute';
 import * as plan from '../domain/delivery/deliveryPlan';
+import * as exceptionReason from '../domain/delivery/driverDeliveryException';
 import * as commandQueue from '../domain/delivery/driverCommandQueue';
 import * as executionState from '../domain/delivery/deliveryExecutionState';
 import { DriverOperationalApiError, type DriverExecutionContext } from '../api/dsvDriverOperational';
@@ -115,6 +116,7 @@ export function workspaceHarness(overrides: {
     '../../api/dsvDriverOperational': { DriverOperationalApiError, DRIVER_OPERATIONAL_ENABLED: false, ...overrides.operationalApi },
     '../../config/driverOperational': { DRIVER_OPERATIONAL_ENABLED: overrides.operationalApi?.DRIVER_OPERATIONAL_ENABLED ?? false },
     '../../domain/delivery/deliveryPlan': plan,
+    '../../domain/delivery/driverDeliveryException': exceptionReason,
     '../../domain/navigation/androidBackNavigation': {},
     '../../domain/delivery/driverCommandQueue': overrides.commands ?? commandQueue,
     '../../platform/expo/storage/driverCommandStore': { createDriverCommandStore: () => ({
@@ -312,7 +314,7 @@ describe('Driver workspace operational commands and exact notification target', 
     assert.equal(legacyPosts, 0); h.unmount(); delete (globalThis as { fetch?: unknown }).fetch;
   });
 
-  it('reports an injected reason to the exact stop without any completion event', async () => {
+  it('reports trimmed free text to the exact stop without any completion event', async () => {
     const reports: (commandQueue.DriverCommandPayload & commandQueue.DriverDeliveryExceptionDetails)[] = [];
     let legacyPosts = 0;
     globalThis.fetch = async () => { legacyPosts += 1; throw new Error('Unexpected event'); };
@@ -323,14 +325,45 @@ describe('Driver workspace operational commands and exact notification target', 
         reports.push(payload); return { ...payload, executionContextId: id };
       },
     } });
-    h.render({ deliveryExceptionReasons: [{ code: 'SYNTHETIC_ONLY', label: '합성 사유', requiresExplanation: true }] });
+    h.render();
     await h.settle(); h.select(); await h.settle();
     const form = h.find((element) => element.type === 'DriverDeliveryException'); assert.ok(form);
-    const submit = form.props.onSubmit as (reason: string, explanation?: string) => Promise<void>;
-    await assert.rejects(submit('SYNTHETIC_ONLY'), /필수/u);
-    await submit('SYNTHETIC_ONLY', '합성 흐름 확인');
+    const submit = form.props.onSubmit as (reason: string) => Promise<void>;
+    await assert.rejects(submit('  '), /공백/u);
+    await submit('  합성 흐름 확인  ');
+    assert.equal(reports[0]!.reason, '합성 흐름 확인');
+    assert.equal('reasonCode' in reports[0]!, false);
     assert.equal(reports.length, 1); assert.equal(reports[0]!.targetStopId, operationalRoute.nextDeliveryStopId);
     assert.equal(legacyPosts, 0); h.unmount(); delete (globalThis as { fetch?: unknown }).fetch;
+  });
+
+  it('restores an offline report in the form and retries the exact saved body after restart', async () => {
+    const stored = { current: [] as commandQueue.DriverQueuedCommand[] };
+    const bodies: commandQueue.DriverQueuedCommand['payload'][] = [];
+    const report = async (_token: string, _id: string, payload: commandQueue.DriverQueuedCommand['payload']) => {
+      bodies.push(structuredClone(payload)); throw new Error('response lost after acceptance');
+    };
+    const initial = workspaceHarness({ loadedRoute: operationalRoute, storedCommands: stored, operationalApi: {
+      DRIVER_OPERATIONAL_ENABLED: true, loadDriverExecutionContexts: async () => [context], reportDriverDeliveryException: report,
+    } });
+    initial.render(); await initial.settle(); initial.select(); await initial.settle();
+    const form = initial.find((element) => element.type === 'DriverDeliveryException')!;
+    await assert.rejects((form.props.onSubmit as (reason: string) => Promise<void>)('  현장 미배송\n연락 필요  '), /서버 승인/u);
+    const original = structuredClone(stored.current[0]!); initial.unmount();
+    assert.equal(original.type, 'REPORT_DELIVERY_EXCEPTION');
+    const restarted = workspaceHarness({ loadedRoute: operationalRoute, storedCommands: stored, operationalApi: {
+      DRIVER_OPERATIONAL_ENABLED: true, loadDriverExecutionContexts: async () => [context], reportDriverDeliveryException: report,
+    } });
+    restarted.render(); await restarted.settle(); restarted.select(); await restarted.settle();
+    const restoredForm = restarted.find((element) => element.type === 'DriverDeliveryException')!;
+    assert.ok(restoredForm);
+    assert.deepEqual((restoredForm.props.savedCommand as commandQueue.DriverQueuedCommand).payload, original.payload);
+    assert.match(String(restoredForm.props.draftKey), new RegExp(context.assignmentGeneration));
+    await assert.rejects((restoredForm.props.onSubmit as (reason: string) => Promise<void>)('다른 본문을 전달해도 저장한 명령만 재시도'), /서버 승인/u);
+    assert.equal(stored.current.length, 1);
+    assert.ok(bodies.length >= 3);
+    assert.ok(bodies.every((body) => JSON.stringify(body) === JSON.stringify(original.payload)));
+    restarted.unmount();
   });
 
   it('replays an offline user start after app restart with the same identity, even when the server already started it', async () => {
@@ -400,7 +433,7 @@ describe('Driver workspace operational commands and exact notification target', 
         startDriverExecution: async () => { sends += 1; throw new Error('must not send offline'); },
         reportDriverDeliveryException: async () => { sends += 1; throw new Error('must not send offline'); },
       } });
-      h.render({ deliveryExceptionReasons: [{ code: 'SYNTHETIC_ONLY', label: '합성 사유' }] }); await h.settle(); h.select(); await h.settle();
+      h.render(); await h.settle(); h.select(); await h.settle();
       offline = true;
       if (kind === 'START_EXECUTION') await assert.rejects(h.execution.onStartDelivery(), /서버 승인/u);
       else {

@@ -47,7 +47,7 @@ const response = (data: unknown, status = 200) =>
 const invalidResponse = (error: unknown) =>
   error instanceof DriverOperationalApiError && error.code === 'INVALID_RESPONSE';
 
-describe('Driver operational API at server af9b4b43', () => {
+describe('Driver operational API at server b3710cad', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     if (originalBase === undefined) delete process.env.EXPO_PUBLIC_DSV_API_BASE_URL;
@@ -120,6 +120,31 @@ describe('Driver operational API at server af9b4b43', () => {
     };
     assert.deepEqual(await reportDriverDeliveryException('token', id, report), exceptionResult);
     assert.equal(calls, 1);
+  });
+
+  it('accepts free-text reports and prepared-mail acceptance snapshots without delivery events', async () => {
+    const bodies: unknown[] = [];
+    const report = { ...command, targetStopId: stopId, reason: '수취인 부재\n연락\t시도' };
+    globalThis.fetch = async (url, init) => {
+      assert.ok(String(url).endsWith(`/executions/${id}/delivery-exceptions`));
+      bodies.push(JSON.parse(init!.body as string));
+      return response({ ...exceptionResult, duplicate: bodies.length > 1, reportStatus: 'ACCEPTED', emailStatus: 'PREPARED' }, bodies.length > 1 ? 200 : 201);
+    };
+    assert.equal((await reportDriverDeliveryException('token', id, report)).emailStatus, 'PREPARED');
+    assert.equal((await reportDriverDeliveryException('token', id, report)).duplicate, true);
+    assert.deepEqual(bodies, [report, report]);
+    globalThis.fetch = async () => response({ ...exceptionResult, duplicate: true, reportStatus: 'ACCEPTED', emailStatus: 'NOT_PREPARED' });
+    assert.equal((await reportDriverDeliveryException('token', id, { ...command, targetStopId: stopId, reasonCode: 'LEGACY' })).emailStatus, 'NOT_PREPARED');
+  });
+
+  it('rejects blank, over-limit and control-character free text before network access', async () => {
+    globalThis.fetch = async () => { assert.fail('Invalid free text must not fetch'); };
+    for (const reason of ['', ' \t\n ', '가'.repeat(1001), '본문\u0000', '본문\u007f']) {
+      await assert.rejects(() => reportDriverDeliveryException('token', id, { ...command, targetStopId: stopId, reason }),
+        (error) => error instanceof DriverOperationalApiError && error.code === 'BAD_REQUEST');
+    }
+    globalThis.fetch = async () => response({ ...exceptionResult, reportStatus: 'ACCEPTED', emailStatus: 'PREPARED' });
+    assert.equal((await reportDriverDeliveryException('token', id, { ...command, targetStopId: stopId, reason: '가'.repeat(1000) })).reportStatus, 'ACCEPTED');
   });
 
   it('accepts only the limited N03 release destination', async () => {

@@ -26,7 +26,7 @@ describe('Android Google Drive release policy', () => {
     );
     assert.equal(
       packageJson.scripts?.['build:android:release:apk'],
-      "unset CLEVER_DRIVER_ISOLATED_ANDROID EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED EXPO_PUBLIC_DSV_API_BASE_URL && export NODE_ENV=production && node scripts/prebuild-android.mjs release && cd android && ./gradlew assembleRelease --build-cache -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxMetaspaceSize=1g' -PreactNativeArchitectures=armeabi-v7a,arm64-v8a",
+      "unset CLEVER_DRIVER_ISOLATED_ANDROID EXPO_PUBLIC_DSV_ISOLATED_VERIFICATION EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED EXPO_PUBLIC_DSV_API_BASE_URL && export NODE_ENV=production EXPO_PUBLIC_DSV_OPERATIONAL_ENABLED=true && node scripts/prebuild-android.mjs release && cd android && ./gradlew assembleRelease --build-cache -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxMetaspaceSize=1g' -PreactNativeArchitectures=armeabi-v7a,arm64-v8a",
     );
   });
 

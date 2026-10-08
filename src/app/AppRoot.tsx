@@ -75,7 +75,7 @@ const INITIAL_APP_UPDATE_STATE: DriverAppUpdateState =
 const APP_UPDATE_RECHECK_INTERVAL_MS = 5 * 60 * 1_000;
 const APP_UPDATE_FAILURE_RETRY_INTERVAL_MS = 5 * 60 * 1_000;
 
-export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; deliveryExceptionReasons?: readonly { code: string; label: string; requiresExplanation?: boolean }[] } = {}) {
+export function AppRoot({ shell: _shell }: { shell?: boolean } = {}) {
   const [appUpdateState, setAppUpdateState] = useState<DriverAppUpdateState>(INITIAL_APP_UPDATE_STATE);
   const [dismissedOptionalVersionCode, setDismissedOptionalVersionCode] = useState<number | null>(null);
   const [authSession, setAuthSession] = useState<DriverAuthSession | null>(null);
@@ -667,7 +667,6 @@ export function AppRoot({ deliveryExceptionReasons = [] }: { shell?: boolean; de
                   key={authSession.account.id}
                   authSession={authSession}
                   isVisible={isWorkspaceVisible}
-                  deliveryExceptionReasons={deliveryExceptionReasons}
                   notificationDestination={notificationDestination}
                   notificationRefreshId={notificationRefreshId}
                   onNotificationDestinationAccepted={acceptNotificationDestination}

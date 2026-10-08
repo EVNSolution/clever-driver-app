@@ -6,6 +6,12 @@
 
 ## 목적
 
+`0.2.0` 후보부터 Android prebuild는 공식 `expo-template-bare-minimum@56.0.37`을 사용한다.
+현재 Expo56 패키지의 내장 SDK57 템플릿 혼입을 피하기 위한 고정값이다.
+생성 템플릿 표식이 없거나 변경되면 helper가 native 디렉터리를 한 번 재생성한다.
+같은 템플릿·모드의 후속 빌드는 기존 생성물과 Gradle 캐시를 재사용한다.
+후보 버전·기능·검증과 출시 차단은 [0.2.0 후보 기록](driver-policy-candidate-20261008.md)을 따른다.
+
 CLEVER Driver의 Android APK를 동일한 소스와 서명으로 반복 가능하게 만들면서
 Gradle 산출물과 로컬 Build Cache를 재사용한다. 매 릴리스마다 새 clone을 만들지
 않는다. APK 게시 절차와 고정 Google Drive 계약은

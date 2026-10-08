@@ -8,6 +8,7 @@ import * as plan from '../domain/delivery/deliveryPlan';
 import * as notes from '../domain/delivery/destinationNotesPreview';
 import * as sortable from '../domain/delivery/sortableOrder';
 import * as finalEta from '../domain/delivery/finalDeliveryEta';
+import * as exceptionReason from '../domain/delivery/driverDeliveryException';
 import type { DriverOperationalInboxItem } from '../api/dsvDriverOperational';
 
 type ProtectionProps = { onWorkProtectionChange?(isProtected: boolean): void };
@@ -114,12 +115,18 @@ export function createDeliveryDraftHarness(initial: Partial<DeliveryProps> = {})
   return componentHarness('DeliveryScreen.tsx', 'DeliveryScreen', props);
 }
 
-export function createExceptionDraftHarness(initial: Partial<ExceptionProps> = {}) {
+export function createExceptionDraftHarness(initial: Partial<ExceptionProps> = {}, drafts = new Map<string, string>()) {
   const props: ExceptionProps = {
-    destinationName: '합성 배송지', reasons: [{ code: 'SYNTHETIC_ONLY', label: '합성 사유', requiresExplanation: true }],
+    destinationName: '합성 배송지', draftKey: 'account:execution:fences:stop',
     onSubmit: async () => undefined, ...initial,
   };
-  return componentHarness('DriverDeliveryException.tsx', 'DriverDeliveryException', props);
+  return componentHarness('DriverDeliveryException.tsx', 'DriverDeliveryException', props, {
+    '../../domain/delivery/driverDeliveryException': exceptionReason,
+    '../../platform/expo/storage/driverCommandStore': {
+      loadDriverDeliveryExceptionDraft: async (key: string) => drafts.get(key) ?? '',
+      saveDriverDeliveryExceptionDraft: async (key: string, reason: string) => { drafts.set(key, reason); },
+    },
+  });
 }
 
 function invoke(element: Element | undefined, key: string, ...args: unknown[]) {
@@ -161,20 +168,70 @@ describe('Production notification work protection and draft retention', () => {
     assert.equal(protection.at(-1), false); h.unmount();
   });
 
+  it('restores an unsent free-text draft after unmount and restart within its exact account/fence key', async () => {
+    const drafts = new Map<string, string>();
+    const h = createExceptionDraftHarness({}, drafts); h.render(); await h.settle();
+    invoke(h.find((element) => element.type === 'Pressable'), 'onPress'); h.render();
+    invoke(h.find((element) => element.type === 'TextInput'), 'onChangeText', '  미배송\n연락\t필요  ');
+    h.render(); await h.settle(); h.unmount();
+    const restarted = createExceptionDraftHarness({}, drafts); restarted.render(); await restarted.settle();
+    invoke(restarted.find((element) => element.type === 'Pressable'), 'onPress'); restarted.render();
+    assert.equal(restarted.find((element) => element.type === 'TextInput')!.props.value, '  미배송\n연락\t필요  ');
+    assert.equal(restarted.find((element) => element.props.accessibilityRole === 'radio'), undefined);
+    restarted.unmount();
+    const other = createExceptionDraftHarness({ draftKey: 'other-account:execution:fences:stop' }, drafts); other.render(); await other.settle();
+    invoke(other.find((element) => element.type === 'Pressable'), 'onPress'); other.render();
+    assert.equal(other.find((element) => element.type === 'TextInput')!.props.value, ''); other.unmount();
+  });
+
+  it('validates whitespace, maximum length and controls, and submits trimmed text without a photo', async () => {
+    const submitted: string[] = [];
+    const h = createExceptionDraftHarness({ onSubmit: async (reason) => { submitted.push(reason); } }); h.render(); await h.settle();
+    invoke(h.find((element) => element.type === 'Pressable'), 'onPress'); h.render();
+    const send = () => h.findAll((element) => element.type === 'Pressable').find((element) =>
+      (element.props.children as Element | undefined)?.props.children === '보고 전송');
+    for (const invalid of [' \n\t ', '가'.repeat(1001), '내용\u0000']) {
+      invoke(h.find((element) => element.type === 'TextInput'), 'onChangeText', invalid); h.render();
+      assert.equal(send()!.props.disabled, true);
+    }
+    invoke(h.find((element) => element.type === 'TextInput'), 'onChangeText', '  ' + '가'.repeat(1000) + '  '); h.render();
+    assert.equal(send()!.props.disabled, false); invoke(send(), 'onPress'); await h.settle();
+    assert.deepEqual(submitted, ['가'.repeat(1000)]);
+    assert.ok(h.find((element) => element.props.children === '미배송 보고가 접수되었습니다'));
+    assert.equal(h.find((element) => element.props.children === '메일 발송 완료'), undefined); h.unmount();
+  });
+
+  it('restores pending legacy report text, locks its body, and reflects the saved acceptance', async () => {
+    const savedCommand = {
+      accountId: 'account', attempts: 1, executionContextId: 'execution', lastError: 'NETWORK_ERROR', status: 'pending' as const,
+      type: 'REPORT_DELIVERY_EXCEPTION' as const,
+      payload: { commandId: 'command', occurredAt: '2026-10-08T01:00:00.000Z', assignmentEpoch: '1', assignmentGeneration: '1',
+        expectedRouteVersionId: 'version', routeVersion: 1, targetStopId: 'stop', reasonCode: 'LEGACY', explanation: '기존 보고 내용' },
+    };
+    const h = createExceptionDraftHarness({ savedCommand }); h.render(); await h.settle();
+    invoke(h.find((element) => element.type === 'Pressable'), 'onPress'); h.render();
+    assert.equal(h.find((element) => element.type === 'TextInput')!.props.value, '기존 보고 내용');
+    assert.equal(h.find((element) => element.type === 'TextInput')!.props.editable, false);
+    invoke(h.find((element) => element.type === 'TextInput'), 'onChangeText', '변경 불가'); h.render();
+    assert.equal(h.find((element) => element.type === 'TextInput')!.props.value, '기존 보고 내용');
+    h.render({ savedCommand: { ...savedCommand, status: 'confirmed' } });
+    assert.ok(h.find((element) => element.props.children === '미배송 보고가 접수되었습니다')); h.unmount();
+  });
+
   it('retains exception reason and text during parent updates, failure, close, and reopen', async () => {
     const protection: boolean[] = []; const pending = deferred<void>(); const reports: unknown[][] = [];
     const h = createExceptionDraftHarness({ onWorkProtectionChange: (value) => { protection.push(value); },
-      onSubmit: (...values) => { reports.push(values); return pending.promise; } }); h.render();
+      onSubmit: (...values) => { reports.push(values); return pending.promise; } }); h.render(); await h.settle();
     invoke(h.find((element) => element.type === 'Pressable'), 'onPress'); h.render();
     assert.equal(protection.at(-1), true);
-    invoke(h.find((element) => element.props.accessibilityRole === 'radio'), 'onPress');
     invoke(h.find((element) => element.type === 'TextInput'), 'onChangeText', '입력한 합성 보고'); h.render();
-    h.render({ destinationName: '같은 배송지 최신 표시', reasons: [{ code: 'SYNTHETIC_ONLY', label: '합성 사유', requiresExplanation: true }] });
+    h.render({ destinationName: '같은 배송지 최신 표시' });
     assert.equal(h.find((element) => element.type === 'TextInput')?.props.value, '입력한 합성 보고');
     const send = h.findAll((element) => element.type === 'Pressable').find((element) =>
       Array.isArray(element.props.children) ? false : (element.props.children as Element | undefined)?.props.children === '보고 전송');
     invoke(send, 'onPress'); h.render();
-    assert.deepEqual(reports, [['SYNTHETIC_ONLY', '입력한 합성 보고']]);
+    await flush();
+    assert.deepEqual(reports, [['입력한 합성 보고']]);
     invoke(h.find((element) => element.type === 'Modal'), 'onRequestClose'); h.render();
     assert.ok(h.find((element) => element.type === 'Modal')); assert.equal(protection.at(-1), true);
     pending.reject(new Error('승인 대기')); await h.settle();
@@ -183,7 +240,7 @@ describe('Production notification work protection and draft retention', () => {
     assert.equal(protection.at(-1), false);
     invoke(h.find((element) => element.type === 'Pressable'), 'onPress'); h.render();
     assert.equal(h.find((element) => element.type === 'TextInput')?.props.value, '입력한 합성 보고');
-    assert.equal((h.find((element) => element.props.accessibilityRole === 'radio')?.props.accessibilityState as { checked: boolean }).checked, true);
+    assert.equal(h.find((element) => element.props.accessibilityRole === 'radio'), undefined);
     h.unmount(); assert.equal(protection.at(-1), false);
   });
 });

@@ -1,3 +1,7 @@
+import { deliveryExceptionReasonError, type DriverDeliveryExceptionDetails } from './driverDeliveryException';
+
+export type { DriverDeliveryExceptionDetails } from './driverDeliveryException';
+
 /** Small operational commands only. Tokens, photos, GPS, and local timers are excluded. */
 export type DriverCommandSession = { accountId: string; generation: number | string };
 
@@ -18,12 +22,6 @@ export type DriverCommandPayload = {
   expectedRouteVersionId: string;
   occurredAt: string;
   routeVersion: number;
-};
-
-export type DriverDeliveryExceptionDetails = {
-  explanation?: string | null;
-  reasonCode: string;
-  targetStopId: string;
 };
 
 type StoredCommandState = {
@@ -161,7 +159,7 @@ export class DriverCommandQueue {
       session.accountId, session.generation, session.queueGeneration,
       context.executionContextId, context.routeVersion, context.assignmentEpoch,
       context.assignmentGeneration, context.expectedRouteVersionId, type,
-      details?.targetStopId ?? null, details?.reasonCode ?? null, details?.explanation ?? null,
+      details?.targetStopId ?? null, details?.reason ?? null, details?.reasonCode ?? null, details?.explanation ?? null,
     ]);
     const concurrent = this.enqueues.get(inputKey);
     if (concurrent !== undefined) return concurrent;
@@ -178,6 +176,7 @@ export class DriverCommandQueue {
         && (type === 'START_EXECUTION' || command.status !== 'confirmed')
         && (type === 'START_EXECUTION' || (command.type === 'REPORT_DELIVERY_EXCEPTION'
           && command.payload.targetStopId === details?.targetStopId
+          && command.payload.reason === details?.reason
           && command.payload.reasonCode === details?.reasonCode
           && (command.payload.explanation ?? null) === (details?.explanation ?? null))));
       if (existing !== undefined) {
@@ -373,7 +372,7 @@ export function parseStoredDriverCommands(value: unknown): DriverQueuedCommand[]
       || !isRecord(item.payload)) throw new DriverCommandQueueError('STORAGE_INVALID');
     const payload = item.payload;
     const keys = ['assignmentEpoch', 'assignmentGeneration', 'commandId', 'expectedRouteVersionId', 'occurredAt', 'routeVersion'];
-    if (item.type === 'REPORT_DELIVERY_EXCEPTION') keys.push('targetStopId', 'reasonCode', 'explanation');
+    if (item.type === 'REPORT_DELIVERY_EXCEPTION') keys.push('targetStopId', 'reason', 'reasonCode', 'explanation');
     if (!exactKeys(payload, keys) || !isUuid(payload.commandId) || ids.has(payload.commandId)
       || !isUuid(payload.expectedRouteVersionId) || !isPositiveBigint(payload.assignmentEpoch)
       || !isPositiveBigint(payload.assignmentGeneration) || !Number.isSafeInteger(payload.routeVersion)
@@ -381,12 +380,15 @@ export function parseStoredDriverCommands(value: unknown): DriverQueuedCommand[]
       || !ISO_INSTANT.test(payload.occurredAt) || !Number.isFinite(Date.parse(payload.occurredAt))) {
       throw new DriverCommandQueueError('STORAGE_INVALID');
     }
-    if (item.type === 'REPORT_DELIVERY_EXCEPTION' && (!isUuid(payload.targetStopId)
-      || typeof payload.reasonCode !== 'string' || payload.reasonCode.trim() !== payload.reasonCode
-      || payload.reasonCode.length < 1 || payload.reasonCode.length > 80
-      || (payload.explanation !== undefined && payload.explanation !== null
-        && (typeof payload.explanation !== 'string' || payload.explanation.length > 1_000)))) {
-      throw new DriverCommandQueueError('STORAGE_INVALID');
+    if (item.type === 'REPORT_DELIVERY_EXCEPTION') {
+      const validReason = payload.reason !== undefined
+        ? typeof payload.reason === 'string' && deliveryExceptionReasonError(payload.reason) === undefined
+          && payload.reasonCode === undefined && payload.explanation === undefined
+        : typeof payload.reasonCode === 'string' && payload.reasonCode.trim() === payload.reasonCode
+          && payload.reasonCode.length >= 1 && payload.reasonCode.length <= 80
+          && (payload.explanation === undefined || payload.explanation === null
+            || (typeof payload.explanation === 'string' && payload.explanation.length <= 1_000));
+      if (!isUuid(payload.targetStopId) || !validReason) throw new DriverCommandQueueError('STORAGE_INVALID');
     }
     ids.add(payload.commandId);
     commands.push(cloneCommand(item as DriverQueuedCommand));

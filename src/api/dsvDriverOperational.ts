@@ -1,3 +1,4 @@
+import { deliveryExceptionReasonError, type DriverDeliveryExceptionDetails } from '../domain/delivery/driverDeliveryException';
 import { isDriverOperationalUuid as isUuid } from '../domain/notifications/driverOperationalIdentity';
 import { resolveDsvApiUrl } from './dsvApiUrl';
 
@@ -24,11 +25,7 @@ export type DriverOperationalCommandInput = {
   expectedRouteVersionId: string;
 };
 
-export type DriverDeliveryExceptionInput = DriverOperationalCommandInput & {
-  targetStopId: string;
-  reasonCode: string;
-  explanation?: string | null;
-};
+export type DriverDeliveryExceptionInput = DriverOperationalCommandInput & DriverDeliveryExceptionDetails;
 
 export type DriverStartExecutionResult = {
   assignmentEpoch: string;
@@ -48,6 +45,8 @@ export type DriverDeliveryExceptionResult = {
   executionContextId: string;
   notificationId: string;
   routeVersion: number;
+  reportStatus?: 'ACCEPTED';
+  emailStatus?: 'PREPARED' | 'NOT_PREPARED';
 };
 
 export type DriverOperationalInboxItem = {
@@ -195,7 +194,10 @@ function isStartResult(value: unknown): value is DriverStartExecutionResult {
 function isExceptionResult(value: unknown): value is DriverDeliveryExceptionResult {
   return hasOnlyKeys(value, [
     'assignmentEpoch', 'commandId', 'duplicate', 'exceptionId', 'executionContextId', 'notificationId', 'routeVersion',
-  ]) && isCommandResult(value) && isUuid(value.exceptionId) && isUuid(value.notificationId);
+    'reportStatus', 'emailStatus',
+  ]) && isCommandResult(value) && isUuid(value.exceptionId) && isUuid(value.notificationId)
+    && (value.reportStatus === undefined || value.reportStatus === 'ACCEPTED')
+    && (value.emailStatus === undefined || value.emailStatus === 'PREPARED' || value.emailStatus === 'NOT_PREPARED');
 }
 
 function isInboxItem(value: unknown): value is DriverOperationalInboxItem {
@@ -283,10 +285,14 @@ export async function reportDriverDeliveryException(
   executionContextId: string,
   input: DriverDeliveryExceptionInput,
 ): Promise<DriverDeliveryExceptionResult> {
-  if (!isUuid(executionContextId) || !hasOnlyKeys(input, [...commandKeys, 'targetStopId', 'reasonCode', 'explanation'])
-    || !isCommand(input) || !isUuid(input.targetStopId) || !isBoundedText(input.reasonCode, 80)
+  if (!isUuid(executionContextId) || !hasOnlyKeys(input, [...commandKeys, 'targetStopId', 'reason', 'reasonCode', 'explanation'])
+    || !isCommand(input) || !isUuid(input.targetStopId)) badRequest();
+  if (input.reason !== undefined) {
+    if (typeof input.reason !== 'string' || deliveryExceptionReasonError(input.reason) !== undefined
+      || input.reasonCode !== undefined || input.explanation !== undefined) badRequest();
+  } else if (!isBoundedText(input.reasonCode, 80)
     || (input.explanation !== undefined && input.explanation !== null && !isBoundedText(input.explanation, 1_000))) badRequest();
-  // D05 defines no approved fleet catalog. Send the caller's injected reason.
+  // Do not normalize a saved body: replay must preserve the original command fingerprint.
   return request(`${root}/executions/${executionContextId}/delivery-exceptions`, accessToken, post(input),
     (value): value is DriverDeliveryExceptionResult => isExceptionResult(value) && matchesCommand(value, executionContextId, input));
 }
