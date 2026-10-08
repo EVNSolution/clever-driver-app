@@ -273,6 +273,9 @@ describe('Driver workspace operational commands and exact notification target', 
     await h.settle();
     assert.equal(accepted, 1); assert.equal(rejected, 0);
     assert.equal(h.execution.summary?.deliveryStopId, operationalRoute.orders[1]!.id);
+    assert.equal(h.find((element) => element.type === 'Text' && element.props.children === '알림 배송지'), undefined);
+    assert.equal(h.find((element) => element.type === 'Text'
+      && element.props.children === '이 배송지의 현재 배정과 상태를 확인했습니다.'), undefined);
     h.render({ notificationDestination: undefined }); await h.settle();
     assert.equal(h.execution.summary?.destinationName, 'Notification target');
     assert.equal(h.find((element) => element.type === 'DeliveryScreen')?.props.nextDeliveryStopId, operationalRoute.orders[1]!.id);

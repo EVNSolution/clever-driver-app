@@ -6,10 +6,6 @@ import {
   loadDriverOperationalInbox,
   type DriverOperationalInboxItem,
 } from '../../api/dsvDriverOperational';
-import {
-  canScheduleIsolatedDriverInboxNotification,
-  scheduleIsolatedDriverInboxNotification,
-} from '../../platform/expo/notifications/expoDriverNotificationService';
 
 export function DriverOperationalInbox({ accessToken, onClose, onOpen, refreshRequestKey = 0 }: {
   accessToken: string;
@@ -21,8 +17,6 @@ export function DriverOperationalInbox({ accessToken, onClose, onOpen, refreshRe
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
-  const [schedulingId, setSchedulingId] = useState<string>();
-  const [syntheticNotice, setSyntheticNotice] = useState<string>();
   const loadedRefreshKeyRef = useRef(refreshRequestKey);
   const [request, setRequest] = useState<{ cursor?: string; sequence: number }>({ sequence: 0 });
 
@@ -54,20 +48,6 @@ export function DriverOperationalInbox({ accessToken, onClose, onOpen, refreshRe
     }
   }
 
-  async function scheduleSyntheticNotification(item: DriverOperationalInboxItem) {
-    if (schedulingId !== undefined) return;
-    setSchedulingId(item.id);
-    setSyntheticNotice(undefined);
-    try {
-      await scheduleIsolatedDriverInboxNotification(item);
-      setSyntheticNotice('10초 뒤 합성 Android 알림이 표시됩니다. 알림창에서 눌러 주세요.');
-    } catch {
-      setSyntheticNotice('합성 Android 알림을 예약하지 못했습니다. 알림 권한과 격리 설정을 확인해 주세요.');
-    } finally {
-      setSchedulingId(undefined);
-    }
-  }
-
   return <View style={styles.root}>
     <View style={styles.header}>
       <Text style={styles.title}>알림함</Text>
@@ -75,7 +55,6 @@ export function DriverOperationalInbox({ accessToken, onClose, onOpen, refreshRe
     </View>
     <ScrollView contentContainerStyle={styles.content}>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-      {syntheticNotice ? <Text accessibilityRole="alert">{syntheticNotice}</Text> : null}
       <Button label="새로고침" disabled={loading} onPress={() => setRequest((old) => ({ sequence: old.sequence + 1 }))} />
       {loading ? <ActivityIndicator /> : null}
       {!loading && !error && items.length === 0 ? <Text>받은 알림이 없습니다.</Text> : null}
@@ -87,13 +66,6 @@ export function DriverOperationalInbox({ accessToken, onClose, onOpen, refreshRe
         <View style={styles.actions}>
           <Button label="열기" onPress={() => onOpen(item.id)} />
           {item.ackedAt === null ? <Button label="읽음" onPress={() => { void markRead(item.id); }} /> : null}
-          {canScheduleIsolatedDriverInboxNotification() ? (
-            <Button
-              label={schedulingId === item.id ? '합성 알림 예약 중' : '10초 뒤 합성 알림'}
-              disabled={schedulingId !== undefined}
-              onPress={() => { void scheduleSyntheticNotification(item); }}
-            />
-          ) : null}
         </View>
       </View>)}
       {cursor !== null ? <Button label="더 보기" disabled={loading} onPress={() => setRequest((old) => ({ cursor, sequence: old.sequence + 1 }))} /> : null}

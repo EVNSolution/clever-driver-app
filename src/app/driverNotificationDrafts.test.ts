@@ -247,7 +247,7 @@ describe('Production notification work protection and draft retention', () => {
 
 function inboxItem(id: string, title: string): DriverOperationalInboxItem {
   return { id, kind: 'N01', businessStatus: 'OPEN', ackedAt: null,
-    createdAt: '2026-10-07T01:00:00.000Z', expiresAt: '2026-10-07T04:00:00.000Z', summary: { title, body: '합성 알림' } };
+    createdAt: '2026-10-07T01:00:00.000Z', expiresAt: '2026-10-07T04:00:00.000Z', summary: { title, body: '배송 정보를 확인해 주세요.' } };
 }
 type InboxProps = Parameters<typeof import('../ui/driver/DriverOperationalInbox')['DriverOperationalInbox']>[0];
 function createInboxHarness(load: (token: string, cursor?: string) => Promise<{ items: DriverOperationalInboxItem[]; nextCursor: string | null }>, isolated = false) {
@@ -279,23 +279,24 @@ function createInboxHarness(load: (token: string, cursor?: string) => Promise<{ 
 }
 
 describe('Production inbox receipt refresh after pagination', () => {
-  it('shows the guarded isolated scheduler only and forwards the exact server inbox item', async () => {
+  it('keeps inbox open and read actions without exposing test controls in either app', async () => {
     const item = inboxItem('31200000-0000-4000-8000-000000000006', '정확한 N06');
     item.kind = 'N06';
-    const production = createInboxHarness(async () => ({ items: [item], nextCursor: null }));
-    production.render(); await production.settle();
-    assert.equal(production.find((element) => element.props.label === '10초 뒤 합성 알림'), undefined);
-    production.unmount();
-
-    const isolated = createInboxHarness(async () => ({ items: [item], nextCursor: null }), true);
-    isolated.render(); await isolated.settle();
-    await invoke(isolated.find((element) => element.props.label === '10초 뒤 합성 알림'), 'onPress');
-    isolated.render(); await isolated.settle();
-    assert.deepEqual(isolated.scheduled, [item]);
-    assert.ok(isolated.find((element) => element.type === 'Text'
-      && element.props.children === '10초 뒤 합성 Android 알림이 표시됩니다. 알림창에서 눌러 주세요.'));
-    assert.equal(isolated.businessPosts, 0);
-    isolated.unmount();
+    for (const isolated of [false, true]) {
+      const h = createInboxHarness(async () => ({ items: [item], nextCursor: null }), isolated);
+      h.render(); await h.settle();
+      assert.equal(h.find((element) => /합성|예약/u.test(String(element.props.label ?? element.props.children))), undefined);
+      assert.ok(h.find((element) => element.type === 'Text' && element.props.children === item.summary.title));
+      await invoke(h.find((element) => element.props.label === '열기'), 'onPress');
+      await invoke(h.find((element) => element.props.label === '읽음'), 'onPress');
+      await h.settle();
+      assert.deepEqual(h.opened, [item.id]);
+      assert.deepEqual(h.acknowledgements, ['READ']);
+      assert.equal(h.find((element) => element.props.label === '읽음'), undefined);
+      assert.deepEqual(h.scheduled, []);
+      assert.equal(h.businessPosts, 0);
+      h.unmount();
+    }
   });
 
   it('requests and replaces the first page on a new receipt key without business commands or OPENED acknowledgement', async () => {

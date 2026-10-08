@@ -200,8 +200,6 @@ export function DriverWorkspace({
   const reportDraftKey = executionContext === null ? '' : [authSession.account.id, executionContext.executionContextId,
     executionContext.assignmentEpoch, executionContext.assignmentGeneration, executionContext.expectedRouteVersionId,
     executionContext.routeVersion, activeDeliveryStopId].join(':');
-  const targetOrder = notificationTarget !== null && route !== null && notificationTarget.routePlanId === route.routePlanId
-    ? orders.find((order) => order.id === notificationTarget.targetStopId) : undefined;
   const deliveryExecution = useDeliveryExecution({
     etaStatus: route?.etaStatus ?? 'READY',
     isReadOnly: isRouteReadOnly,
@@ -1099,14 +1097,6 @@ export function DriverWorkspace({
           />
         ) : (
           <>
-            {targetOrder !== undefined ? (
-              <View accessibilityRole="summary" style={styles.notificationTarget}>
-                <Text style={styles.recoveryButtonText}>알림 배송지</Text>
-                <Text>{targetOrder.destinationName}</Text>
-                <Text>{targetOrder.address}</Text>
-                <Text>이 배송지의 현재 배정과 상태를 확인했습니다.</Text>
-              </View>
-            ) : null}
             {DRIVER_OPERATIONAL_ENABLED && executionContext?.expectedRouteVersionId === route.routeVersionId &&
               !isRouteReadOnly && activeDeliveryStopId !== null ? (
               <DriverDeliveryException
@@ -1608,7 +1598,6 @@ function formatDeliveryDate(deliveryDate: string): string {
 
 const styles = StyleSheet.create({
   commandStatus: { backgroundColor: '#FFF4D6', padding: 12, gap: 6 },
-  notificationTarget: { backgroundColor: '#EFF6FF', padding: 12, gap: 4 },
   recoveryButton: { backgroundColor: '#FFF4D6', margin: 12, padding: 12, borderRadius: 12, gap: 6 },
   recoveryButtonText: { fontSize: 16, fontWeight: '700', color: '#7A4B00' },
   workspace: {
