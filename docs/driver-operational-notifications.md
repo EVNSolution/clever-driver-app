@@ -65,6 +65,8 @@ nil UUID와 잘못된 version/variant는 unsupported 안내로 종료한다. 영
 
 자동 검증은 합성 payload·API 응답·영속 저장과 실제 앱 함수/화면 조회 effect를 실행한다. 합성 클릭, 실제 FCM 수신, Android native 설치/화면 증거를 별도로 기록한다. 검증 결과와 남은 차단은 `driver-operational-verification.md`에 기록한다.
 
-격리 Android 후보는 알림함에서 조회한 서버 항목을 10초 뒤 local notification으로 예약할 수 있다. 이 버튼은 격리 검증 flag, 운영 기능 flag, integration package와 loopback HTTP API가 모두 일치할 때만 표시된다. local notification은 조회한 `kind`, `id`, `expiresAt`만 production click classifier에 전달한다. 격리 후보는 FCM token 등록과 foreground push receipt를 계속 차단한다. 이 검사는 Android notification tap과 기존 resolver 경로를 확인하지만 실제 FCM 수신 증거가 아니다.
+알림함은 업무 알림의 열기·읽음만 제공한다. 일반 앱과 격리 앱 모두 합성 알림 예약 버튼과 검증 설명을 표시하지 않는다. 알림으로 연 배송지는 기존 배송 화면의 현재 배송지에 반영하며 별도 `알림 배송지` 확인 배너를 표시하지 않는다. 목적지 해석과 입력 보호는 유지한다.
+
+격리 검증 adapter의 local notification은 조회한 `kind`, `id`, `expiresAt`만 production click classifier에 전달한다. 이 adapter는 격리 검증 flag, 운영 기능 flag, integration package와 loopback HTTP API가 모두 일치할 때만 허용된다. 격리 후보는 FCM token 등록과 foreground push receipt를 계속 차단한다. 합성 Android notification tap은 실제 FCM 수신 증거가 아니다. adapter 회귀 검사와 실기기 클릭 증거를 구분한다.
 
 범위 제외: 병합, 서버 배포, 실발송 활성화, Play·Drive 게시, 운영 DB 변경, iOS, 외부 HTTPS App Links, 전체 사진 오프라인 큐.
