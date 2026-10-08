@@ -45,5 +45,66 @@
     "scope": "public RSA modulus/signature/message; no private signing key copied",
     "modulusSha256": "ce6c43eec7fec2b7110cc0d4cf61be025ea0026e1baf7bbb71c3b70c16ed1491",
     "signatureSha256": "1e98dfff39bb416ec1baedd3ab1831e15131d428f008379e9aaa3a5f69201296"
+  },
+  "verification": {
+    "runtime": "Node.js20.19.4 / OpenSSL3.0.15+quic",
+    "publicForgeryBaseline": "unmodified registry1.4.0 accepts forged signature; native Node crypto rejects it",
+    "appSecurityTests": {
+      "total": 9,
+      "baselinePassed": 7,
+      "baselineExpectedFailures": 2,
+      "patchedPassed": 9
+    },
+    "upstreamNodeSuite": {
+      "sourceCommit": "ceba34402e329f0365134f23fe19898756527d65",
+      "runner": "Mocha5.2.0",
+      "testOnlyAdjustment": "Remove accidental describe.only in tests/unit/jsbn.js in external evidence copy; no assertion removed.",
+      "baseline": {
+        "suites": 38,
+        "tests": 833,
+        "passes": 828,
+        "pending": 4,
+        "failures": 1,
+        "start": "2026-10-08T10:04:17.537Z",
+        "end": "2026-10-08T10:04:21.617Z",
+        "duration": 4080
+      },
+      "patchedDefault": {
+        "suites": 38,
+        "tests": 833,
+        "passes": 829,
+        "pending": 4,
+        "failures": 0,
+        "start": "2026-10-08T10:06:18.185Z",
+        "end": "2026-10-08T10:06:22.172Z",
+        "duration": 3987
+      },
+      "patchedPureJavaScript": {
+        "suites": 38,
+        "tests": 833,
+        "passes": 829,
+        "pending": 4,
+        "failures": 0,
+        "start": "2026-10-08T10:54:38.864Z",
+        "end": "2026-10-08T10:54:45.843Z",
+        "duration": 6979
+      },
+      "pureJavaScriptInitialization": "Require public node-forge module first, then set options.usePureJavaScript=true. Upstream mode-switching tests retain their original behavior.",
+      "pending": "4 upstream deterministic RSA key generation comparisons skip under Node20; listed in evidence summaries."
+    },
+    "compatibility": [
+      "Expo0.0.6 certificate and key PEM conversion",
+      "Self-signed X509 validity and signature validation",
+      "SHA256 manifest signing and tamper rejection",
+      "CSR parsing, development certificate issuance, project metadata",
+      "ASN1 DER certificate roundtrip and truncated input rejection",
+      "AES256 encrypted PKCS12 key/certificate roundtrip and wrong-password rejection"
+    ],
+    "notTested": [
+      "Browser, browser-worker and legacy Flash runtimes",
+      "Prebuilt dist bundles (unchanged and not covered by runtime patch)",
+      "Real release signing credentials or hosted signing services",
+      "Security audit waiver or Issue62 closure"
+    ]
   }
 }
