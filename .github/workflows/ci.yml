@@ -39,7 +39,7 @@ jobs:
         run: npm run build
 
       - name: Audit npm dependencies
-        run: npm audit --audit-level=moderate
+        run: node scripts/audit-allowlist.mjs
 
       - name: Check Expo dependency alignment
         run: npx expo install --check

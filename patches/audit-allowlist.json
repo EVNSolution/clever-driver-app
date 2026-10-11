@@ -1,0 +1,19 @@
+{
+  "expiresOn": "2026-12-31",
+  "advisories": [
+    {
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "version": "3.0.3",
+      "patchTarget": "node_modules/braces",
+      "reason": "Stack-exhaustion DoS in Expo CLI glob handling (build time only, not in the app bundle). No upstream fix release. Local source patch from micromatch/braces#78 is verified by scripts/security/braces.test.mjs."
+    },
+    {
+      "ghsa": "GHSA-86w9-cpqp-85rv",
+      "package": "node-forge",
+      "version": "1.4.0",
+      "patchTarget": "node_modules/node-forge",
+      "reason": "RSA PKCS#1 v1.5 forgery in Expo signing tooling (build time only, not in the app bundle). No upstream fix release. Local source patch from digitalbazaar/forge#1152 is verified by scripts/security/node-forge.test.mjs."
+    }
+  ]
+}

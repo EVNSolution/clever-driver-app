@@ -63,7 +63,7 @@ A passing source regression test does not make audit pass and does not authorize
 1. Check the official advisories and SDK 56 dependency guidance before a future dependency update.
 2. If an official compatible fix exists, remove the corresponding local patch only after validating the new package.
 3. Update the provenance, original/patched hashes and regression controls for any intentional patch change.
-4. Run a clean install, upstream suites, workspace checks, exports, native build and the unchanged audit gate.
+4. Run a clean install, upstream suites, workspace checks, exports, native build and the audit allowlist gate.
 5. Do not weaken the hash checks to accept a changed dependency without review.
 
 To abandon this candidate, revert its dependency-patch commits as one unit and run `npm ci`.
@@ -74,3 +74,14 @@ Local installation patches do not modify a separately installed EAS CLI or remot
 Remote EAS credentials and version state are outside this change.
 The previous version-28 artifacts do not validate the changed dependency installation.
 An adopted candidate needs fresh release artifacts and the applicable real-device/Play update checks.
+
+## Audit allowlist
+
+`npm audit` reports the registry versions, so the source patches above can never make it pass.
+CI therefore runs `node scripts/audit-allowlist.mjs` instead of a bare `npm audit`.
+It still runs `npm audit --audit-level=moderate` and fails on every finding except the advisories in
+`patches/audit-allowlist.json`, and it accepts those only while `--check` verifies the installed patches
+and the `expiresOn` date has not passed. Decision record: Issue #62 and change control #315, 2026-10-11.
+
+On or before the expiry date, re-check the two advisories and upstream PRs. Remove an entry as soon as a
+supported fix release exists; otherwise renew the date with a new review note.
