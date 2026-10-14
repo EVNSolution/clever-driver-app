@@ -1,0 +1,78 @@
+name: Android Release AAB
+
+# Manual only. Builds the Play AAB on a GitHub runner with `eas build --local`.
+# EAS-managed signing keys are used for this run; nothing is submitted to Play.
+# Measure first: compare `eas account:usage` before and after to confirm that local
+# builds do not consume the EAS monthly build quota.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-release-aab-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build release AAB (eas --local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: android-release
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EAS_NO_VCS: '0'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: EAS usage before
+        run: npx eas-cli account:usage evandsolution --json --non-interactive | tee "$RUNNER_TEMP/usage-before.json" | head -c 600
+
+      - name: Restore Firebase config
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p .private
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > .private/google-services.json
+          echo "GOOGLE_SERVICES_JSON=$PWD/.private/google-services.json" >> "$GITHUB_ENV"
+
+      - name: Build AAB locally
+        run: |
+          set -euo pipefail
+          npx eas-cli build --platform android --profile production --local \
+            --non-interactive --output "$RUNNER_TEMP/clever-driver.aab"
+
+      - name: EAS usage after
+        run: npx eas-cli account:usage evandsolution --json --non-interactive | tee "$RUNNER_TEMP/usage-after.json" | head -c 600
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: clever-driver-aab-${{ github.sha }}
+          path: ${{ runner.temp }}/clever-driver.aab
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Remove secret files
+        if: always()
+        run: rm -f .private/google-services.json
