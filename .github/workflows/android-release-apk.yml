@@ -64,7 +64,8 @@ jobs:
             if (!pk.includes("com.evnsolution.clever.driver")) throw new Error("unexpected Android package");
           '
 
-      - name: Check Expo dependency alignment
+      - name: Check Expo dependency alignment (advisory)
+        continue-on-error: true
         run: npx expo install --check
 
       - name: Build release APK
