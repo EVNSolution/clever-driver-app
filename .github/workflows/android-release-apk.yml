@@ -1,0 +1,92 @@
+name: Android Release APK
+
+# Manual only. Builds the Drive-channel APK on a GitHub runner and verifies the
+# signing certificate. The APK is uploaded as a short-lived artifact; it is already
+# distributed by a public Drive link and signed with the public debug key.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-release-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: android-release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore Firebase config
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > "$RUNNER_TEMP/google-services.json"
+          echo "CLEVER_DRIVER_GOOGLE_SERVICES_FILE=$RUNNER_TEMP/google-services.json" >> "$GITHUB_ENV"
+
+      - name: Prepare Firebase config
+        run: npm run prepare:firebase:android
+
+      - name: Check Expo dependency alignment
+        run: npx expo install --check
+
+      - name: Build release APK
+        run: npm run build:android:release:apk
+
+      - name: Verify APK signer and ABIs
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          expected="$(sed -n "s/^EXPECTED_SIGNER_SHA256='\(.*\)'/\1/p" scripts/publish-android-drive-release.sh)"
+          apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          actual="$("$apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          echo "expected=$expected"
+          echo "actual=$actual"
+          test -n "$expected" && test "$expected" = "$actual"
+          unzip -l "$apk" | grep -E 'lib/(x86|x86_64)/' && { echo 'emulator ABI found'; exit 1; } || true
+          sha256sum "$apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: clever-driver-apk-${{ github.sha }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Remove secret files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/google-services.json" .private/google-services.json
