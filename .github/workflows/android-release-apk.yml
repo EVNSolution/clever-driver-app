@@ -54,11 +54,15 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > "$RUNNER_TEMP/google-services.json"
-          echo "CLEVER_DRIVER_GOOGLE_SERVICES_FILE=$RUNNER_TEMP/google-services.json" >> "$GITHUB_ENV"
-
-      - name: Prepare Firebase config
-        run: npm run prepare:firebase:android
+          mkdir -p .private
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > .private/google-services.json
+          # prepare-driver-firebase.mjs requires a gcloud login even for a supplied file, so validate here.
+          node -e '
+            const c = JSON.parse(require("fs").readFileSync(".private/google-services.json", "utf8"));
+            const pk = (c.client ?? []).map(x => x.client_info?.android_client_info?.package_name);
+            if (c.project_info?.project_id !== "clever-routes-prod") throw new Error("unexpected Firebase project");
+            if (!pk.includes("com.evnsolution.clever.driver")) throw new Error("unexpected Android package");
+          '
 
       - name: Check Expo dependency alignment
         run: npx expo install --check
@@ -89,4 +93,4 @@ jobs:
 
       - name: Remove secret files
         if: always()
-        run: rm -f "$RUNNER_TEMP/google-services.json" .private/google-services.json
+        run: rm -f .private/google-services.json
