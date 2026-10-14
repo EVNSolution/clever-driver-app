@@ -109,8 +109,23 @@ jobs:
         run: |
           set -euo pipefail
           npx expo prebuild --platform android --no-install
+          # The generated build.gradle only has debug signing; sign release with the upload key.
+          cat > "$RUNNER_TEMP/signing.init.gradle" <<'GRADLE'
+          allprojects { p ->
+            p.afterEvaluate {
+              if (p.plugins.hasPlugin('com.android.application')) {
+                def sc = p.android.signingConfigs.maybeCreate('release')
+                sc.storeFile = new File(System.getenv('CLEVER_ANDROID_KEYSTORE_PATH'))
+                sc.storePassword = System.getenv('CLEVER_ANDROID_KEYSTORE_PASSWORD')
+                sc.keyAlias = System.getenv('CLEVER_ANDROID_KEY_ALIAS')
+                sc.keyPassword = System.getenv('CLEVER_ANDROID_KEY_PASSWORD')
+                p.android.buildTypes.getByName('release').signingConfig = sc
+              }
+            }
+          }
+          GRADLE
           cd android
-          ./gradlew bundleRelease --build-cache \
+          ./gradlew bundleRelease --build-cache -I "$RUNNER_TEMP/signing.init.gradle" \
             -Dorg.gradle.jvmargs='-Xmx3072m -XX:MaxMetaspaceSize=1g'
 
       - name: Verify AAB signer and versionCode
