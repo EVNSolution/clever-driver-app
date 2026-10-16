@@ -118,6 +118,7 @@ export function DriverWorkspace({
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DriverWorkspaceTab>('delivery');
   const [isDeliverySpaceOpen, setIsDeliverySpaceOpen] = useState(false);
+  const [deliverySpaceFocusId, setDeliverySpaceFocusId] = useState<string>();
   const [isSequenceEditing, setIsSequenceEditing] = useState(false);
   const [isSequenceSaving, setIsSequenceSaving] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -654,16 +655,22 @@ export function DriverWorkspace({
   }
 
   function openDeliverySpace() {
+    openDeliverySpaceFor(undefined);
+  }
+
+  function openDeliverySpaceFor(destinationId: string | undefined) {
     if (deliveryExecution.isLocked) return;
     protectWorkNow();
     resetRootBackPress();
     setIsSequenceEditing(false);
+    setDeliverySpaceFocusId(destinationId);
     setIsDeliverySpaceOpen(true);
   }
 
   function closeDeliverySpace() {
     if (deliveryExecution.isLocked) return;
     resetRootBackPress();
+    setDeliverySpaceFocusId(undefined);
     setIsDeliverySpaceOpen(false);
   }
 
@@ -1125,6 +1132,7 @@ export function DriverWorkspace({
             ) : null}
             {isDeliverySpaceOpen ? (
               <DeliverySpaceScreen
+                {...(deliverySpaceFocusId === undefined ? {} : { focusDestinationId: deliverySpaceFocusId })}
                 key={`${route.routePlanId}:${route.deliveryDate}`}
                 selectedRoute={route}
                 onAssignmentsChanged={() => setLoadAttempt((attempt) => attempt + 1)}
@@ -1146,6 +1154,7 @@ export function DriverWorkspace({
                 onAcknowledgeTimeConstraint={acknowledgeTimeConstraint}
                 onEditingChange={changeSequenceEditing}
                 onOpenDeliverySpace={openDeliverySpace}
+                onOpenExchangeForDestination={openDeliverySpaceFor}
                 onReadDriverMessage={readDriverMessage}
                 onRefresh={refreshRoute}
                 onSequenceSavingChange={changeSequenceSaving}
@@ -1171,6 +1180,7 @@ export function DriverWorkspace({
                 isReadOnly={isRouteReadOnly}
                 lastUpdatedAt={lastRouteUpdatedAt}
                 nextDeliveryStopId={activeDeliveryStopId}
+                onOpenExchange={openDeliverySpaceFor}
                 onRefresh={refreshRoute}
                 orders={orders}
                 refreshing={isRefreshingRoute}

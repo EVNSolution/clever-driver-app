@@ -30,6 +30,7 @@ export function DestinationNotesSheet({
   notes,
   onAcknowledgeTimeConstraint,
   onClose,
+  onOpenExchange,
   onOpenVisitHistory,
   onReadDriverMessage,
   onSave,
@@ -43,6 +44,8 @@ export function DestinationNotesSheet({
   notes: DestinationNotes;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onClose(): void;
+  /** Opens 주문 교환 with this destination first, to hand it over or return it. */
+  onOpenExchange?(): void;
   /** Opens the driver's own past visits to this destination. */
   onOpenVisitHistory?(): void;
   onReadDriverMessage(messageId: string): Promise<void>;
@@ -122,16 +125,28 @@ export function DestinationNotesSheet({
               <Text numberOfLines={2} style={styles.address}>
                 {address}
               </Text>
-              {onOpenVisitHistory === undefined ? null : (
-                <Pressable
-                  accessibilityRole="button"
-                  hitSlop={8}
-                  onPress={onOpenVisitHistory}
-                  style={({ pressed }) => [styles.historyButton, pressed && styles.buttonPressed]}
-                >
-                  <Text style={styles.historyButtonText}>이력 보기</Text>
-                </Pressable>
-              )}
+              <View style={styles.headerActions}>
+                {onOpenVisitHistory === undefined ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={onOpenVisitHistory}
+                    style={({ pressed }) => [styles.historyButton, pressed && styles.buttonPressed]}
+                  >
+                    <Text style={styles.historyButtonText}>이력 보기</Text>
+                  </Pressable>
+                )}
+                {onOpenExchange === undefined || isReadOnly ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={onOpenExchange}
+                    style={({ pressed }) => [styles.historyButton, pressed && styles.buttonPressed]}
+                  >
+                    <Text style={styles.historyButtonText}>주문 교환</Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
             <Pressable
               accessibilityLabel="배송 정보 닫기"
@@ -591,11 +606,15 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 2,
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
   historyButton: {
     alignSelf: 'flex-start',
     backgroundColor: '#eff4ff',
     borderRadius: 9,
-    marginTop: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
