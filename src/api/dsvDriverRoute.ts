@@ -30,6 +30,12 @@ type RouteLookupEnvelope = {
 
 type AssignedRouteStop = {
   completedAt?: string | null;
+  items?: {
+    name: string;
+    options?: { key: string; value: string }[] | null;
+    quantity: number;
+    sku?: string | null;
+  }[];
   address: {
     address1: string | null;
     address2: string | null;
@@ -612,6 +618,12 @@ function mapAssignedRouteStop(
     shippedBoxes: stop.shippedBoxes as number,
     status: stop.status,
     completedAt: stop.completedAt ?? null,
+    items: (stop.items ?? []).map(({ name, options, quantity, sku }) => ({
+      name,
+      options: options ?? [],
+      quantity,
+      sku: sku ?? null,
+    })),
     timeWindowEnd: stop.timeWindowEnd ?? null,
     timeWindowStart: stop.timeWindowStart ?? null,
   };

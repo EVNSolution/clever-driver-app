@@ -581,7 +581,13 @@ describe('authenticated driver screens', () => {
     assert.match(source, /내 위치 권한 허용/u);
     assert.match(source, /<Images/u);
     assert.match(source, /'icon-anchor': 'bottom'/u);
-    assert.match(source, /'text-offset': \[0, -2\]/u);
+    assert.match(source, /'text-offset': \[0, -1\.53\]/u);
+    // Destination pins follow the DSV web pin: one image per state, no tinted SDF pin.
+    for (const state of ['planned', 'current', 'completed', 'failed']) {
+      assert.match(source, new RegExp(`assets/map/destination-pin-${state}\\.png`, 'u'));
+    }
+    assert.doesNotMatch(source, /sdf: true/u);
+    assert.match(source, /onSelectDestination\(destinationId\)/u);
     assert.match(source, /'text-font': \['Noto Sans Bold'\]/u);
     assert.match(source, /id="delivery-destination-marker"/u);
     assert.match(source, /id="delivery-depot-marker"/u);
@@ -601,8 +607,13 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /지금 가는 배송지/u);
     assert.match(screenSource, /주문 수/u);
     assert.match(screenSource, /박스 수/u);
-    assert.match(screenSource, /주문 정보/u);
-    assert.match(screenSource, /summary\.orderBoxes/u);
+    assert.match(screenSource, /상품 정보/u);
+    assert.match(screenSource, /destinationOrders\.map\(\(order\)/u);
+    assert.match(screenSource, /order\.items/u);
+    assert.match(screenSource, /onSelectDestination=\{selectDestination\}/u);
+    assert.match(screenSource, /<GestureDetector gesture=\{sheetDrag\}>/u);
+    assert.match(screenSource, /배송 정보 펼치기/u);
+    assert.match(screenSource, /지금 가는 배송지 보기/u);
     assert.match(screenSource, /summary\.destinationSequence/u);
     assert.match(screenSource, /<ScrollView/u);
     assert.match(screenSource, /<DeliveryExecutionActions/u);
@@ -805,8 +816,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(deliveryScreen, /maxFontSizeMultiplier=.*styles\.address/u);
     assert.match(mapScreen, /styles\.destinationCopy/u);
     assert.match(mapScreen, /useWindowDimensions/u);
-    assert.match(mapScreen, /fontScale > 1\.3 && styles\.mapAreaLargeText/u);
-    assert.match(mapScreen, /mapAreaLargeText:[\s\S]*height: '42%'/u);
+    assert.match(mapScreen, /fontScale > 1\.3 \? SHEET_OPEN_SHARE_LARGE_TEXT : SHEET_OPEN_SHARE/u);
     assert.doesNotMatch(
       mapScreen,
       /numberOfLines=\{[23]\} style=\{styles\.destination(?:Name|Address)\}/u,

@@ -1,12 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
+import { destinationCompletionTime } from '../../domain/delivery/deliveryCompletionTime';
 import {
   buildCurrentDeliverySummary,
   type DeliveryCoordinate,
@@ -34,6 +44,12 @@ type DeliveryMapScreenProps = {
   timezone: string;
 };
 
+// Share of the screen the open sheet covers; large text gets more room.
+const SHEET_OPEN_SHARE = 0.78;
+const SHEET_OPEN_SHARE_LARGE_TEXT = 0.88;
+const SHEET_SETTLE = { duration: 260, easing: Easing.out(Easing.cubic) };
+const SHEET_FLICK_VELOCITY = 600;
+
 export function DeliveryMapScreen({
   depotCoordinate,
   executionController,
@@ -50,37 +66,181 @@ export function DeliveryMapScreen({
   const { fontScale } = useWindowDimensions();
   const deliveryScrollRef = useRef<ScrollView>(null);
   const previousDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
-  const summary = buildCurrentDeliverySummary(orders, nextDeliveryStopId);
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [screenHeight, setScreenHeight] = useState(0);
+  const [peekHeight, setPeekHeight] = useState(0);
+
+  const currentDestinationId = orders.find(({ id }) => id === nextDeliveryStopId)?.destinationId ?? null;
+  const shownDestinationId = selectedDestinationId !== null
+    && orders.some(({ destinationId }) => destinationId === selectedDestinationId)
+    ? selectedDestinationId
+    : currentDestinationId;
+  const isCurrentShown = shownDestinationId === currentDestinationId;
+  const destinationOrders = orders.filter(({ destinationId }) => destinationId === shownDestinationId);
+  const summary = buildCurrentDeliverySummary(
+    orders,
+    isCurrentShown ? nextDeliveryStopId : destinationOrders[0]?.id ?? null,
+  );
+  const completionTime = destinationCompletionTime(destinationOrders);
   const totalBoxes = orders.reduce((total, order) => total + order.shippedBoxes, 0);
+
+  const openHeight = Math.round(
+    screenHeight * (fontScale > 1.3 ? SHEET_OPEN_SHARE_LARGE_TEXT : SHEET_OPEN_SHARE),
+  );
+  const closedOffset = Math.max(0, openHeight - peekHeight);
+  const sheetOffset = useSharedValue(0);
+  const dragStartOffset = useSharedValue(0);
+  const maxOffset = useSharedValue(0);
+
+  useEffect(() => {
+    maxOffset.set(closedOffset);
+    sheetOffset.set(withTiming(isSheetOpen ? 0 : closedOffset, SHEET_SETTLE));
+  }, [closedOffset, isSheetOpen, maxOffset, sheetOffset]);
 
   useEffect(() => {
     if (previousDeliveryStopIdRef.current === nextDeliveryStopId) return;
     previousDeliveryStopIdRef.current = nextDeliveryStopId;
+    setSelectedDestinationId(null);
     deliveryScrollRef.current?.scrollTo({ animated: false, y: 0 });
   }, [nextDeliveryStopId]);
 
+  const sheetDrag = Gesture.Pan()
+    .minDistance(6)
+    .onStart(() => {
+      dragStartOffset.set(sheetOffset.get());
+    })
+    .onUpdate((event) => {
+      sheetOffset.set(Math.max(0, Math.min(maxOffset.get(), dragStartOffset.get() + event.translationY)));
+    })
+    .onEnd((event) => {
+      const open = event.velocityY < -SHEET_FLICK_VELOCITY
+        || (event.velocityY <= SHEET_FLICK_VELOCITY && sheetOffset.get() < maxOffset.get() / 2);
+      sheetOffset.set(withTiming(open ? 0 : maxOffset.get(), SHEET_SETTLE));
+      scheduleOnRN(setIsSheetOpen, open);
+    });
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetOffset.get() }],
+  }));
+
+  function selectDestination(destinationId: string) {
+    setSelectedDestinationId(destinationId);
+    setIsSheetOpen(true);
+    deliveryScrollRef.current?.scrollTo({ animated: false, y: 0 });
+  }
+
   return (
-    <View style={styles.screen}>
-      <View style={[
-        styles.mapArea,
-        fontScale > 1.3 && styles.mapAreaLargeText,
-      ]}>
-        <DeliveryRouteMap
-          currentDeliveryStopId={nextDeliveryStopId}
-          depotCoordinate={depotCoordinate}
-          interactionMode="explore"
-          orders={orders}
-          serverRouteGeometry={serverRouteGeometry}
-          style={styles.map}
-        />
+    <View
+      onLayout={(event) => setScreenHeight(event.nativeEvent.layout.height)}
+      style={styles.screen}
+    >
+      <DeliveryRouteMap
+        bottomInset={peekHeight}
+        currentDeliveryStopId={nextDeliveryStopId}
+        depotCoordinate={depotCoordinate}
+        interactionMode="explore"
+        onSelectDestination={selectDestination}
+        orders={orders}
+        selectedDestinationId={isCurrentShown ? null : shownDestinationId}
+        serverRouteGeometry={serverRouteGeometry}
+        style={styles.map}
+      />
 
-        {summary === null ? null : (
-          <DeliveryAttentionBanner summary={summary} timezone={timezone} />
-        )}
+      {summary === null ? null : (
+        <DeliveryAttentionBanner summary={summary} timezone={timezone} />
+      )}
 
-      </View>
+      <Animated.View
+        style={[
+          styles.sheet,
+          screenHeight > 0 && { height: openHeight },
+          sheetStyle,
+        ]}
+      >
+        <View onLayout={(event) => setPeekHeight(event.nativeEvent.layout.height)}>
+          <GestureDetector gesture={sheetDrag}>
+            <View style={styles.sheetHeader}>
+              <Pressable
+                accessibilityLabel={isSheetOpen ? '배송 정보 접기' : '배송 정보 펼치기'}
+                accessibilityRole="button"
+                hitSlop={10}
+                onPress={() => setIsSheetOpen((open) => !open)}
+                style={styles.sheetHandleArea}
+              >
+                <View style={styles.sheetHandle} />
+              </Pressable>
+              <Text maxFontSizeMultiplier={1.3} style={styles.panelLabel}>
+                {isReadOnly ? '완료된 배차' : isCurrentShown ? '지금 가는 배송지' : '선택한 배송지'}
+              </Text>
+              <View style={styles.destinationRow}>
+                {summary === null ? null : (
+                  <View style={styles.destinationSequenceBadge}>
+                    <Text maxFontSizeMultiplier={1.3} style={styles.destinationSequenceText}>
+                      {summary.destinationSequence}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.destinationCopy}>
+                  <Text numberOfLines={isSheetOpen ? undefined : 1} style={styles.destinationName}>
+                    {summary?.destinationName ?? (
+                      isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
+                    )}
+                    {completionTime === null ? '' : ` (${completionTime})`}
+                  </Text>
+                  {summary === null ? null : (
+                    <Text numberOfLines={isSheetOpen ? undefined : 1} style={styles.destinationAddress}>
+                      {summary.address}
+                    </Text>
+                  )}
+                </View>
+              </View>
 
-      <View style={styles.detailsArea}>
+              <View style={styles.metrics}>
+                <DeliveryMetric
+                  label="주문 수"
+                  value={`${isReadOnly ? orders.length : summary?.orderCount ?? 0}건`}
+                />
+                <View style={styles.metricDivider} />
+                <DeliveryMetric
+                  label="박스 수"
+                  value={`${isReadOnly ? totalBoxes : summary?.boxCount ?? 0}개`}
+                />
+                <View style={styles.metricDivider} />
+                <DeliveryMetric
+                  label="ETA"
+                  value={isReadOnly
+                    ? '종료'
+                    : formatEta(
+                        summary?.estimatedArrivalAt ?? null,
+                        timezone,
+                        etaStatus,
+                      )}
+                />
+              </View>
+            </View>
+          </GestureDetector>
+
+          {isCurrentShown ? (
+            <DeliveryExecutionActions
+              controller={executionController}
+              variant="map"
+            />
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setSelectedDestinationId(null);
+                setIsSheetOpen(false);
+              }}
+              style={styles.backToCurrentButton}
+            >
+              <Text maxFontSizeMultiplier={1.3} style={styles.backToCurrentText}>
+                지금 가는 배송지 보기
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
         <ScrollView
           contentContainerStyle={styles.deliveryPanelContent}
           ref={deliveryScrollRef}
@@ -94,84 +254,46 @@ export function DeliveryMapScreen({
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >
-          <Text maxFontSizeMultiplier={1.3} style={styles.panelLabel}>
-            {isReadOnly ? '완료된 배차' : '지금 가는 배송지'}
-          </Text>
-          <View style={styles.destinationRow}>
-            {summary === null ? null : (
-              <View style={styles.destinationSequenceBadge}>
-                <Text maxFontSizeMultiplier={1.3} style={styles.destinationSequenceText}>
-                  {summary.destinationSequence}
-                </Text>
-              </View>
-            )}
-            <View style={styles.destinationCopy}>
-              <Text style={styles.destinationName}>
-                {summary?.destinationName ?? (
-                  isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
-                )}
-              </Text>
-              {summary === null ? null : (
-                <Text style={styles.destinationAddress}>
-                  {summary.address}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.metrics}>
-            <DeliveryMetric
-              label="주문 수"
-              value={`${isReadOnly ? orders.length : summary?.orderCount ?? 0}건`}
-            />
-            <View style={styles.metricDivider} />
-            <DeliveryMetric
-              label="박스 수"
-              value={`${isReadOnly ? totalBoxes : summary?.boxCount ?? 0}개`}
-            />
-            <View style={styles.metricDivider} />
-            <DeliveryMetric
-              label="ETA"
-              value={isReadOnly
-                ? '종료'
-                : formatEta(
-                    summary?.estimatedArrivalAt ?? null,
-                    timezone,
-                    etaStatus,
-                  )}
-            />
-          </View>
-
-          {summary === null ? null : (
+          {destinationOrders.length === 0 ? null : (
             <View style={styles.conditionSection}>
               <Text maxFontSizeMultiplier={1.3} style={styles.conditionSectionTitle}>
-                주문 정보
+                상품 정보
               </Text>
               <View style={styles.conditionList}>
-                {summary.orderBoxes.map(({ boxCount, conditionCode, orderId }) => (
-                  <View key={orderId} style={styles.conditionRow}>
-                    <View style={[
-                      styles.conditionDot,
-                      conditionDotStyle(conditionCode),
-                    ]} />
-                    <Text maxFontSizeMultiplier={1.3} style={styles.conditionLabel}>
-                      {formatConditionLabel(conditionCode)}
-                    </Text>
-                    <Text maxFontSizeMultiplier={1.3} style={styles.conditionBoxCount}>
-                      {boxCount}박스
-                    </Text>
+                {destinationOrders.map((order) => (
+                  <View key={order.id} style={styles.conditionRow}>
+                    <View style={styles.conditionHeader}>
+                      <View style={[
+                        styles.conditionDot,
+                        conditionDotStyle(order.conditionCode),
+                      ]} />
+                      <Text maxFontSizeMultiplier={1.3} style={styles.conditionLabel}>
+                        {formatConditionLabel(order.conditionCode)}
+                      </Text>
+                      <Text maxFontSizeMultiplier={1.3} style={styles.conditionBoxCount}>
+                        {order.shippedBoxes}박스
+                      </Text>
+                    </View>
+                    {(order.items ?? []).map((item, index) => (
+                      <Text
+                        key={`${order.id}:${index}`}
+                        maxFontSizeMultiplier={1.3}
+                        style={styles.itemLine}
+                      >
+                        {item.name}
+                        {item.options.length === 0
+                          ? ''
+                          : ` (${item.options.map(({ key, value }) => `${key}: ${value}`).join(', ')})`}
+                        {` × ${item.quantity}`}
+                      </Text>
+                    ))}
                   </View>
                 ))}
               </View>
             </View>
           )}
         </ScrollView>
-
-        <DeliveryExecutionActions
-          controller={executionController}
-          variant="map"
-        />
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -296,34 +418,65 @@ function conditionDotStyle(conditionCode: string) {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#e8eef7',
     flex: 1,
+    overflow: 'hidden',
   },
   map: {
-    flex: 1,
-    width: '100%',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
-  mapArea: {
-    height: '56%',
-    position: 'relative',
-  },
-  mapAreaLargeText: {
-    height: '42%',
-  },
-  detailsArea: {
+  sheet: {
     backgroundColor: '#ffffff',
-    borderTopColor: '#e5e7eb',
-    borderTopWidth: 1,
-    elevation: 8,
-    flex: 1,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    bottom: 0,
+    elevation: 12,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    shadowColor: '#101828',
+    shadowOffset: { height: -4, width: 0 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+  },
+  sheetHeader: {
+    paddingHorizontal: 18,
+  },
+  sheetHandleArea: {
+    alignItems: 'center',
+    paddingBottom: 8,
+    paddingTop: 10,
+  },
+  sheetHandle: {
+    backgroundColor: '#d0d5dd',
+    borderRadius: 3,
+    height: 5,
+    width: 44,
+  },
+  backToCurrentButton: {
+    alignItems: 'center',
+    backgroundColor: '#eff4ff',
+    borderRadius: 12,
+    marginBottom: 12,
+    marginHorizontal: 18,
+    paddingVertical: 13,
+  },
+  backToCurrentText: {
+    color: '#0b57d0',
+    fontSize: 14,
+    fontWeight: '800',
   },
   deliveryPanel: {
     flex: 1,
   },
   deliveryPanelContent: {
-    paddingBottom: 14,
+    paddingBottom: 24,
     paddingHorizontal: 18,
-    paddingTop: 12,
+    paddingTop: 4,
   },
   attentionBanner: {
     alignItems: 'flex-start',
@@ -430,12 +583,22 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   conditionRow: {
-    alignItems: 'center',
     borderBottomColor: '#e2e8f0',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    minHeight: 36,
+    gap: 4,
     paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  conditionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  itemLine: {
+    color: '#475467',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+    paddingLeft: 17,
   },
   conditionDot: {
     borderRadius: 4,
