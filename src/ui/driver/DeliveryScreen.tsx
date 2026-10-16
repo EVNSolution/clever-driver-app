@@ -32,6 +32,10 @@ import {
   type DeliveryRouteMarkerState,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
+import {
+  completedRouteDestinations,
+  destinationCompletionTime,
+} from '../../domain/delivery/deliveryCompletionTime';
 import { buildFinalDeliveryEtaSummary } from '../../domain/delivery/finalDeliveryEta';
 import {
   EMPTY_DESTINATION_NOTES,
@@ -300,7 +304,7 @@ export function DeliveryScreen({
         </View>
         {!isReadOnly ? <View style={styles.headerActions}>
           <Pressable
-            accessibilityLabel="주문 목록 열기"
+            accessibilityLabel="주문 교환 열기"
             accessibilityRole="button"
             onPress={onOpenDeliverySpace}
             style={({ pressed }) => [
@@ -313,7 +317,7 @@ export function DeliveryScreen({
               maxFontSizeMultiplier={1.3}
               style={[styles.headerActionText, styles.spaceButtonText]}
             >
-              주문 목록
+              주문 교환
             </Text>
           </Pressable>
           <Pressable
@@ -371,13 +375,13 @@ export function DeliveryScreen({
       />
 
       <View style={styles.orderList}>
-        {destinationGroups.length === 0 ? (
+        {destinationGroups.length === 0 && (historySummary === undefined || historySummary.stops.length === 0) ? (
           <View style={styles.emptyState}>
             {historySummary === undefined ? (
               <>
                 <Text style={styles.emptyStateTitle}>이 배차에 배정된 배송이 없습니다.</Text>
                 <Text style={styles.emptyStateText}>
-                  주문 목록에서 공용 배송을 확인할 수 있습니다.
+                  주문 교환에서 공용 배송을 확인할 수 있습니다.
                 </Text>
               </>
             ) : (
@@ -390,6 +394,30 @@ export function DeliveryScreen({
             )}
           </View>
         ) : null}
+        {destinationGroups.length === 0 && historySummary !== undefined
+          ? completedRouteDestinations(historySummary.stops).map((destination, index, all) => (
+            <View
+              key={destination.destinationId}
+              style={[
+                styles.orderRow,
+                index < all.length - 1 && styles.orderRowDivider,
+              ]}
+            >
+              <View style={[styles.sequenceBadge, styles.sequenceBadgeCompleted]}>
+                <Text
+                  maxFontSizeMultiplier={1.3}
+                  style={[styles.sequenceBadgeText, styles.sequenceBadgeTextInverse]}
+                >
+                  {index + 1}
+                </Text>
+              </View>
+              <Text numberOfLines={2} style={styles.destinationName}>
+                {destination.destinationName}
+                {destination.completionTime === null ? '' : ` (${destination.completionTime})`}
+              </Text>
+            </View>
+          ))
+          : null}
         {destinationGroups.map((group, index) => {
           const progressState = resolveDeliveryDestinationProgressState(
             group,
@@ -478,6 +506,7 @@ function DestinationGroupRow({
 }) {
   const isCompleted = progressState === 'completed';
   const isCurrent = progressState === 'current';
+  const completionTime = destinationCompletionTime(group.orders);
 
   return (
     <View
@@ -523,6 +552,7 @@ function DestinationGroupRow({
             ]}
           >
             {group.destinationName}
+            {completionTime === null ? '' : ` (${completionTime})`}
           </Text>
           <Text
             numberOfLines={3}

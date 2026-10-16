@@ -65,7 +65,7 @@ export function DeliverySpaceScreen({
       setLastUpdatedAt(new Date());
       setState('ready');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '주문 목록을 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '주문 교환을 불러오지 못했습니다.');
       setState('error');
     } finally {
       setIsRefreshing(false);
@@ -81,7 +81,7 @@ export function DeliverySpaceScreen({
       setState('ready');
     }).catch((error: unknown) => {
       if (!isActive) return;
-      setMessage(error instanceof Error ? error.message : '주문 목록을 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '주문 교환을 불러오지 못했습니다.');
       setState('error');
     });
     return () => {
@@ -256,7 +256,7 @@ export function DeliverySpaceScreen({
           <Text style={styles.backText}>‹</Text>
         </Pressable>
         <View style={styles.headingCopy}>
-          <Text style={styles.title}>주문 목록</Text>
+          <Text style={styles.title}>주문 교환</Text>
           <Text style={styles.description}>배송지 전체 묶음을 반납·전달하거나 가져옵니다</Text>
         </View>
       </View>
@@ -293,11 +293,11 @@ export function DeliverySpaceScreen({
       {state === 'loading' && space === null ? (
         <View style={styles.centerState}>
           <ActivityIndicator color="#0b57d0" />
-          <Text style={styles.stateText}>주문 목록을 불러오는 중입니다.</Text>
+          <Text style={styles.stateText}>주문 교환을 불러오는 중입니다.</Text>
         </View>
       ) : state === 'error' && space === null ? (
         <View style={styles.centerState}>
-          <Text style={styles.stateText}>주문 목록을 불러오지 못했습니다.</Text>
+          <Text style={styles.stateText}>주문 교환을 불러오지 못했습니다.</Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => void refresh()}

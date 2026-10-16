@@ -676,6 +676,12 @@ export function DriverWorkspace({
       deliveryStopIds,
       identity,
     );
+    // Show the entered 배송완료 time at once; the last destination is not reloaded before route completion.
+    if (mountedRef.current && routeRef.current?.routePlanId === completingRoute.routePlanId) {
+      setOrders((current) => current.map((order) => (
+        deliveryStopIds.includes(order.id) ? { ...order, completedAt: identity.occurredAt } : order
+      )));
+    }
     const completedTarget = notificationTargetRef.current;
     if (mountedRef.current && completedTarget?.routePlanId === completingRoute.routePlanId
       && deliveryStopIds.includes(completedTarget.targetStopId)) {

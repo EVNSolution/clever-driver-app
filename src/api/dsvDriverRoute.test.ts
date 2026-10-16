@@ -35,6 +35,14 @@ describe('DSV assigned route API client', () => {
             routePlanId: 'route-358',
             status: 'completed',
             stopCount: 8,
+            stops: [{
+              completedAt: '2026-08-26T04:10:00.000Z',
+              deliveryStopId: 'stop-1',
+              destinationId: 'destination-1',
+              destinationName: '부림약품',
+              sequence: 1,
+              status: 'DELIVERED',
+            }],
             timezone: 'Asia/Seoul',
           }],
         },
@@ -49,6 +57,9 @@ describe('DSV assigned route API client', () => {
     assert.equal(history[0]?.routeName, '#358');
     assert.equal(history[0]?.executionStatus, 'COMPLETED');
     assert.equal(history[0]?.stopCount, 8);
+    assert.deepEqual(history[0]?.stops.map(({ completedAt, destinationName }) => [destinationName, completedAt]), [
+      ['부림약품', '2026-08-26T04:10:00.000Z'],
+    ]);
   });
 
   it('loads the persisted route order including already completed stops', async () => {

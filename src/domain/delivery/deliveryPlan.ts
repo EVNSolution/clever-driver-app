@@ -14,6 +14,8 @@ export type DeliveryOrder = {
   timeWindowEnd?: string | null;
   timeWindowStart?: string | null;
   status?: string;
+  /** When the driver entered 배송완료 for this order; null or absent until then. */
+  completedAt?: string | null;
   address: string;
   coordinate: {
     latitude: number;

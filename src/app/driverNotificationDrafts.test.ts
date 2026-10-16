@@ -7,6 +7,7 @@ import ts from 'typescript';
 import * as plan from '../domain/delivery/deliveryPlan';
 import * as notes from '../domain/delivery/destinationNotesPreview';
 import * as sortable from '../domain/delivery/sortableOrder';
+import * as completionTime from '../domain/delivery/deliveryCompletionTime';
 import * as finalEta from '../domain/delivery/finalDeliveryEta';
 import * as exceptionReason from '../domain/delivery/driverDeliveryException';
 import type { DriverOperationalInboxItem } from '../api/dsvDriverOperational';
@@ -63,6 +64,7 @@ function componentHarness<P extends object>(fileName: string, exportName: string
     '../../domain/delivery/deliveryPlan': plan,
     '../../domain/delivery/destinationNotesPreview': notes,
     '../../domain/delivery/sortableOrder': sortable,
+    '../../domain/delivery/deliveryCompletionTime': completionTime,
     '../../domain/delivery/finalDeliveryEta': finalEta,
     './AppDialog': { useAppDialog: () => ({ dialog: null, showDialog: (value: unknown) => { dialog = value; } }) },
     './DeliveryExecutionActions': { DeliveryExecutionActions: 'DeliveryExecutionActions' },

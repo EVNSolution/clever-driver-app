@@ -29,6 +29,7 @@ type RouteLookupEnvelope = {
 };
 
 type AssignedRouteStop = {
+  completedAt?: string | null;
   address: {
     address1: string | null;
     address2: string | null;
@@ -104,6 +105,7 @@ type DriverRouteHistoryEnvelope = {
       routePlanId: string;
       status: 'active' | 'completed' | 'pending';
       stopCount: number;
+      stops?: DriverCompletedRouteStop[];
       timezone: string;
     }[];
   } | null;
@@ -180,7 +182,17 @@ export type DriverCompletedRouteHistory = {
   routeName: string;
   routePlanId: string;
   stopCount: number;
+  stops: DriverCompletedRouteStop[];
   timezone: string;
+};
+
+export type DriverCompletedRouteStop = {
+  completedAt: string | null;
+  deliveryStopId: string;
+  destinationId: string;
+  destinationName: string;
+  sequence: number;
+  status: string;
 };
 
 export class DriverRouteApiError extends Error {
@@ -525,6 +537,7 @@ export async function loadDriverCompletedRouteHistory(
       routeName: route.name,
       routePlanId: route.routePlanId,
       stopCount: route.stopCount,
+      stops: route.stops ?? [],
       timezone: route.timezone,
     }));
 }
@@ -598,6 +611,7 @@ function mapAssignedRouteStop(
     sequence: stop.sequence,
     shippedBoxes: stop.shippedBoxes as number,
     status: stop.status,
+    completedAt: stop.completedAt ?? null,
     timeWindowEnd: stop.timeWindowEnd ?? null,
     timeWindowStart: stop.timeWindowStart ?? null,
   };
