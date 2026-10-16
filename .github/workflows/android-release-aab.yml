@@ -1,0 +1,152 @@
+name: Android Release AAB
+
+# Manual only. Builds the Play AAB with Gradle on a GitHub runner, signed with the
+# Play upload key from Environment secrets. No Expo token and no EAS build quota.
+# Nothing is submitted to Play: download the artifact and upload it yourself.
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'Android versionCode (must be higher than the last Play upload)'
+        required: true
+        type: string
+
+concurrency:
+  group: android-release-aab-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Upload certificate SHA-256 recorded in docs/google-play-release.md.
+  EXPECTED_UPLOAD_CERT_SHA256: '10:CC:17:26:41:CB:6C:83:E1:76:1C:6A:FE:F7:05:3E:A8:16:06:32:FF:6C:3C:06:B7:AA:6C:6B:1F:89:3B:E4'
+  NODE_ENV: production
+  EXPO_PUBLIC_DSV_API_BASE_URL: https://clever-route-api.cleversystem.ai
+
+jobs:
+  build:
+    name: Build and verify release AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: android-release
+
+    steps:
+      - name: Validate versionCode
+        env:
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]{0,8}$ ]] || { echo 'version_code must be a positive integer'; exit 1; }
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore Firebase config and signing key
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+          UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p .private
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > .private/google-services.json
+          node -e '
+            const c = JSON.parse(require("fs").readFileSync(".private/google-services.json", "utf8"));
+            const pk = (c.client ?? []).map(x => x.client_info?.android_client_info?.package_name);
+            if (c.project_info?.project_id !== "clever-routes-prod") throw new Error("unexpected Firebase project");
+            if (!pk.includes("com.evnsolution.clever.driver")) throw new Error("unexpected Android package");
+          '
+          printf '%s' "$UPLOAD_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          {
+            echo "CLEVER_ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks"
+            echo "CLEVER_ANDROID_KEYSTORE_PASSWORD=$UPLOAD_KEYSTORE_PASSWORD"
+            echo "CLEVER_ANDROID_KEY_ALIAS=$UPLOAD_KEY_ALIAS"
+            echo "CLEVER_ANDROID_KEY_PASSWORD=$UPLOAD_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "::add-mask::$UPLOAD_KEYSTORE_PASSWORD"
+          echo "::add-mask::$UPLOAD_KEY_PASSWORD"
+
+      - name: Set versionCode
+        env:
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            app.expo.android.versionCode = Number(process.env.VERSION_CODE);
+            fs.writeFileSync("app.json", JSON.stringify(app, null, 2) + "\n");
+          '
+
+      - name: Prebuild and bundle release
+        run: |
+          set -euo pipefail
+          npx expo prebuild --platform android --no-install
+          # The generated build.gradle only has debug signing; sign release with the upload key.
+          cat > "$RUNNER_TEMP/signing.init.gradle" <<'GRADLE'
+          allprojects { p ->
+            p.afterEvaluate {
+              if (p.plugins.hasPlugin('com.android.application')) {
+                def sc = p.android.signingConfigs.maybeCreate('release')
+                sc.storeFile = new File(System.getenv('CLEVER_ANDROID_KEYSTORE_PATH'))
+                sc.storePassword = System.getenv('CLEVER_ANDROID_KEYSTORE_PASSWORD')
+                sc.keyAlias = System.getenv('CLEVER_ANDROID_KEY_ALIAS')
+                sc.keyPassword = System.getenv('CLEVER_ANDROID_KEY_PASSWORD')
+                p.android.buildTypes.getByName('release').signingConfig = sc
+              }
+            }
+          }
+          GRADLE
+          cd android
+          ./gradlew bundleRelease --build-cache -I "$RUNNER_TEMP/signing.init.gradle" \
+            -Dorg.gradle.jvmargs='-Xmx3072m -XX:MaxMetaspaceSize=1g'
+
+      - name: Verify AAB signer and versionCode
+        run: |
+          set -euo pipefail
+          aab=android/app/build/outputs/bundle/release/app-release.aab
+          actual="$(keytool -printcert -jarfile "$aab" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)"
+          echo "expected=$EXPECTED_UPLOAD_CERT_SHA256"
+          echo "actual=$actual"
+          test "$EXPECTED_UPLOAD_CERT_SHA256" = "$actual"
+          grep -n "versionCode" android/app/build.gradle | head -2
+          sha256sum "$aab"
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: clever-driver-aab-${{ github.sha }}-${{ inputs.version_code }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Remove secret files
+        if: always()
+        run: rm -f .private/google-services.json "$RUNNER_TEMP/upload.jks"
