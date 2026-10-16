@@ -396,21 +396,21 @@ export function DriverWorkspace({
       : terminalRoutesRef.current[selectedRoutePlanId];
     const routeRequest = selectedRoutePlanId === undefined
       ? loadDriverDeliveryRouteChoices(authSession.accessToken)
+        .catch((error: unknown) => {
+          // No open route is not an error: completed routes are still listed with the account token.
+          if (error instanceof DriverRouteApiError && error.code === 'ROUTE_NOT_AVAILABLE') return [];
+          throw error;
+        })
         .then(async (nextRouteChoices) => {
-          const historyAccessRoute = nextRouteChoices[0];
-          const historyRoutes = historyAccessRoute === undefined
-            ? []
-            : await loadDriverCompletedRouteHistory(
-                historyAccessRoute.routeAccessToken,
+          const historyRoutes = await loadDriverCompletedRouteHistory(authSession.accessToken)
+            .then((history) => history.map((summary) => (
+              completedRouteFromHistory(
+                summary,
+                authSession.accessToken,
+                nextRouteChoices,
               )
-              .then((history) => history.map((summary) => (
-                completedRouteFromHistory(
-                  summary,
-                  historyAccessRoute,
-                  nextRouteChoices,
-                )
-              )))
-              .catch(() => []);
+            )))
+            .catch(() => []);
           if (!isActive || workProtectedRef.current) return;
           const completedRoutes = historyRoutes;
           if (completedRoutes.length > 0) {
@@ -1257,7 +1257,7 @@ function sameExecutionFences(left: DriverExecutionContext, right: DriverExecutio
 
 function completedRouteFromHistory(
   summary: DriverCompletedRouteHistory,
-  accessRoute: DriverDeliveryRouteChoice,
+  accessToken: string,
   availableRoutes: DriverDeliveryRouteChoice[],
 ): DriverDeliveryRoute {
   return {
@@ -1271,7 +1271,7 @@ function completedRouteFromHistory(
     nextDeliveryStopId: null,
     orders: [],
     pickupCompletedAt: null,
-    routeAccessToken: accessRoute.routeAccessToken,
+    routeAccessToken: accessToken,
     routeContext: summary.routePlanId,
     routeId: summary.routePlanId,
     routeName: summary.routeName,

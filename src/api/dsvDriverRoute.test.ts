@@ -18,7 +18,7 @@ describe('DSV assigned route API client', () => {
     delete (globalThis as { fetch?: unknown }).fetch;
   });
 
-  it('loads completed route history through an active route token', async () => {
+  it('loads recent completed route history with the account token', async () => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
     let request: { input: string; init?: RequestInit } | undefined;
     globalThis.fetch = async (input, init) => {
@@ -50,10 +50,10 @@ describe('DSV assigned route API client', () => {
       }));
     };
 
-    const history = await loadDriverCompletedRouteHistory('active-route-token');
+    const history = await loadDriverCompletedRouteHistory('account-token', new Date(2026, 9, 16, 12));
 
-    assert.equal(request?.input, 'https://dsv.example.test/driver/routes?status=completed');
-    assert.equal((request?.init?.headers as Headers).get('Authorization'), 'Bearer active-route-token');
+    assert.equal(request?.input, 'https://dsv.example.test/driver/routes?status=completed&from=2026-10-02');
+    assert.equal((request?.init?.headers as Headers).get('Authorization'), 'Bearer account-token');
     assert.equal(history[0]?.routeName, '#358');
     assert.equal(history[0]?.executionStatus, 'COMPLETED');
     assert.equal(history[0]?.stopCount, 8);

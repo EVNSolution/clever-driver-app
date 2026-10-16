@@ -523,12 +523,23 @@ export async function loadDriverDeliveryRouteChoices(
     );
 }
 
+// Recent completed routes. The server lists oldest first in pages of 25, so the window keeps them recent.
+const COMPLETED_ROUTE_HISTORY_DAYS = 14;
+
 export async function loadDriverCompletedRouteHistory(
-  routeAccessToken: string,
+  accountAccessToken: string,
+  now = new Date(),
 ): Promise<DriverCompletedRouteHistory[]> {
+  const from = new Date(now);
+  from.setDate(from.getDate() - COMPLETED_ROUTE_HISTORY_DAYS);
+  const fromDate = [
+    from.getFullYear(),
+    String(from.getMonth() + 1).padStart(2, '0'),
+    String(from.getDate()).padStart(2, '0'),
+  ].join('-');
   const envelope = await requestJson<DriverRouteHistoryEnvelope>(
-    '/driver/routes?status=completed',
-    routeAccessToken,
+    `/driver/routes?status=completed&from=${fromDate}`,
+    accountAccessToken,
   );
   if (envelope.data === null) throwEnvelopeError(envelope.error);
 
