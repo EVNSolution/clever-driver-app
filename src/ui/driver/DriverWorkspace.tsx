@@ -127,6 +127,8 @@ export function DriverWorkspace({
   const notifiedRefreshRef = useRef<string | undefined>(undefined);
   const [route, setRoute] = useState<DriverDeliveryRoute | null>(null);
   const routeRef = useRef<DriverDeliveryRoute | null>(null);
+  // Latest orders for callbacks held by an open completion transaction, which keep an older render's state.
+  const ordersRef = useRef<DeliveryOrder[]>([]);
   const [executionContext, setExecutionContext] = useState<DriverExecutionContext | null>(null);
   const [queuedCommands, setQueuedCommands] = useState<DriverQueuedCommand[]>([]);
   const [commandError, setCommandError] = useState<string>();
@@ -227,6 +229,10 @@ export function DriverWorkspace({
   useEffect(() => {
     routeRef.current = route;
   }, [route]);
+
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
 
   useEffect(() => {
     sessionRef.current = authSession;
@@ -678,9 +684,11 @@ export function DriverWorkspace({
     );
     // Show the entered 배송완료 time at once; the last destination is not reloaded before route completion.
     if (mountedRef.current && routeRef.current?.routePlanId === completingRoute.routePlanId) {
-      setOrders((current) => current.map((order) => (
+      const stamp = (current: DeliveryOrder[]) => current.map((order) => (
         deliveryStopIds.includes(order.id) ? { ...order, completedAt: identity.occurredAt } : order
-      )));
+      ));
+      ordersRef.current = stamp(ordersRef.current);
+      setOrders(stamp);
     }
     const completedTarget = notificationTargetRef.current;
     if (mountedRef.current && completedTarget?.routePlanId === completingRoute.routePlanId
@@ -758,7 +766,7 @@ export function DriverWorkspace({
     await AsyncStorage.removeItem(identityKey);
     if (!mountedRef.current || routeRef.current?.routePlanId !== completingRoute.routePlanId ||
       routeRef.current.routeVersionId !== completingRoute.routeVersionId) return;
-    const completedRoute = completedDeliveryRoute(route, orders);
+    const completedRoute = completedDeliveryRoute(route, ordersRef.current);
     terminalRoutesRef.current = {
       ...terminalRoutesRef.current,
       [completedRoute.routePlanId]: completedRoute,
