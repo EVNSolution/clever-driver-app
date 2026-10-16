@@ -614,6 +614,10 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /<GestureDetector gesture=\{sheetDrag\}>/u);
     assert.match(screenSource, /배송 정보 펼치기/u);
     assert.match(screenSource, /지금 가는 배송지 보기/u);
+    // The sheet drops to a minimum card: number, name, status, orders, boxes and completion time only.
+    assert.match(screenSource, /type SheetSnap = 'mini' \| 'summary' \| 'open'/u);
+    assert.match(screenSource, /styles\.miniSummary/u);
+    assert.match(screenSource, /`완료 \$\{completionTime\}`/u);
     assert.match(screenSource, /summary\.destinationSequence/u);
     assert.match(screenSource, /<ScrollView/u);
     assert.match(screenSource, /<DeliveryExecutionActions/u);

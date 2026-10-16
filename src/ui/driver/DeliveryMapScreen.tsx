@@ -50,6 +50,10 @@ const SHEET_OPEN_SHARE_LARGE_TEXT = 0.72;
 const SHEET_SETTLE = { duration: 260, easing: Easing.out(Easing.cubic) };
 const SHEET_FLICK_VELOCITY = 600;
 
+// mini: handle and the minimum summary (number, name, status, orders, boxes, completion time).
+// summary: adds the address, the metrics and the delivery buttons. open: adds 상품 정보.
+type SheetSnap = 'mini' | 'summary' | 'open';
+
 export function DeliveryMapScreen({
   depotCoordinate,
   executionController,
@@ -67,9 +71,11 @@ export function DeliveryMapScreen({
   const deliveryScrollRef = useRef<ScrollView>(null);
   const previousDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>('summary');
   const [screenHeight, setScreenHeight] = useState(0);
+  const [miniHeight, setMiniHeight] = useState(0);
   const [peekHeight, setPeekHeight] = useState(0);
+  const isSheetOpen = sheetSnap === 'open';
 
   const currentDestinationId = orders.find(({ id }) => id === nextDeliveryStopId)?.destinationId ?? null;
   const shownDestinationId = selectedDestinationId !== null
@@ -84,19 +90,26 @@ export function DeliveryMapScreen({
   );
   const completionTime = destinationCompletionTime(destinationOrders);
   const totalBoxes = orders.reduce((total, order) => total + order.shippedBoxes, 0);
+  const shownLabel = isReadOnly ? '완료된 배차' : isCurrentShown ? '지금 가는 배송지' : '선택한 배송지';
+  const shownOrderCount = isReadOnly ? orders.length : summary?.orderCount ?? 0;
+  const shownBoxCount = isReadOnly ? totalBoxes : summary?.boxCount ?? 0;
 
   const openHeight = Math.round(
     screenHeight * (fontScale > 1.3 ? SHEET_OPEN_SHARE_LARGE_TEXT : SHEET_OPEN_SHARE),
   );
-  const closedOffset = Math.max(0, openHeight - peekHeight);
+  const summaryOffset = Math.max(0, openHeight - peekHeight);
+  const miniOffset = Math.max(summaryOffset, openHeight - miniHeight);
   const sheetOffset = useSharedValue(0);
   const dragStartOffset = useSharedValue(0);
-  const maxOffset = useSharedValue(0);
+  const summarySnapOffset = useSharedValue(0);
+  const miniSnapOffset = useSharedValue(0);
 
   useEffect(() => {
-    maxOffset.set(closedOffset);
-    sheetOffset.set(withTiming(isSheetOpen ? 0 : closedOffset, SHEET_SETTLE));
-  }, [closedOffset, isSheetOpen, maxOffset, sheetOffset]);
+    summarySnapOffset.set(summaryOffset);
+    miniSnapOffset.set(miniOffset);
+    const target = sheetSnap === 'open' ? 0 : sheetSnap === 'summary' ? summaryOffset : miniOffset;
+    sheetOffset.set(withTiming(target, SHEET_SETTLE));
+  }, [miniOffset, miniSnapOffset, sheetOffset, sheetSnap, summaryOffset, summarySnapOffset]);
 
   useEffect(() => {
     if (previousDeliveryStopIdRef.current === nextDeliveryStopId) return;
@@ -111,13 +124,22 @@ export function DeliveryMapScreen({
       dragStartOffset.set(sheetOffset.get());
     })
     .onUpdate((event) => {
-      sheetOffset.set(Math.max(0, Math.min(maxOffset.get(), dragStartOffset.get() + event.translationY)));
+      sheetOffset.set(Math.max(0, Math.min(miniSnapOffset.get(), dragStartOffset.get() + event.translationY)));
     })
     .onEnd((event) => {
-      const open = event.velocityY < -SHEET_FLICK_VELOCITY
-        || (event.velocityY <= SHEET_FLICK_VELOCITY && sheetOffset.get() < maxOffset.get() / 2);
-      sheetOffset.set(withTiming(open ? 0 : maxOffset.get(), SHEET_SETTLE));
-      scheduleOnRN(setIsSheetOpen, open);
+      const snaps = [0, summarySnapOffset.get(), miniSnapOffset.get()];
+      const position = sheetOffset.get();
+      let target = snaps.reduce((best, snap) => (
+        Math.abs(snap - position) < Math.abs(best - position) ? snap : best
+      ), 0);
+      // A flick moves one step from where the finger let go.
+      if (event.velocityY < -SHEET_FLICK_VELOCITY) {
+        target = snaps.filter((snap) => snap < position - 1).reduce((best, snap) => Math.max(best, snap), 0);
+      } else if (event.velocityY > SHEET_FLICK_VELOCITY) {
+        target = snaps.filter((snap) => snap > position + 1).reduce((best, snap) => Math.min(best, snap), snaps[2]!);
+      }
+      sheetOffset.set(withTiming(target, SHEET_SETTLE));
+      scheduleOnRN(setSheetSnap, target === 0 ? 'open' : target === snaps[1] ? 'summary' : 'mini');
     });
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetOffset.get() }],
@@ -125,7 +147,7 @@ export function DeliveryMapScreen({
 
   function selectDestination(destinationId: string) {
     setSelectedDestinationId(destinationId);
-    setIsSheetOpen(true);
+    setSheetSnap('open');
     deliveryScrollRef.current?.scrollTo({ animated: false, y: 0 });
   }
 
@@ -135,7 +157,7 @@ export function DeliveryMapScreen({
       style={styles.screen}
     >
       <DeliveryRouteMap
-        bottomInset={isSheetOpen ? openHeight : peekHeight}
+        bottomInset={sheetSnap === 'open' ? openHeight : sheetSnap === 'summary' ? peekHeight : miniHeight}
         currentDeliveryStopId={nextDeliveryStopId}
         depotCoordinate={depotCoordinate}
         interactionMode="explore"
@@ -160,50 +182,62 @@ export function DeliveryMapScreen({
         <View onLayout={(event) => setPeekHeight(event.nativeEvent.layout.height)}>
           <GestureDetector gesture={sheetDrag}>
             <View style={styles.sheetHeader}>
-              <Pressable
-                accessibilityLabel={isSheetOpen ? '배송 정보 접기' : '배송 정보 펼치기'}
-                accessibilityRole="button"
-                hitSlop={10}
-                onPress={() => setIsSheetOpen((open) => !open)}
-                style={styles.sheetHandleArea}
+              <View
+                onLayout={(event) => setMiniHeight(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}
+                style={styles.miniCard}
               >
-                <View style={styles.sheetHandle} />
-              </Pressable>
-              <Text maxFontSizeMultiplier={1.3} style={styles.panelLabel}>
-                {isReadOnly ? '완료된 배차' : isCurrentShown ? '지금 가는 배송지' : '선택한 배송지'}
-              </Text>
-              <View style={styles.destinationRow}>
-                {summary === null ? null : (
-                  <View style={styles.destinationSequenceBadge}>
-                    <Text maxFontSizeMultiplier={1.3} style={styles.destinationSequenceText}>
-                      {summary.destinationSequence}
+                <Pressable
+                  accessibilityLabel={isSheetOpen ? '배송 정보 접기' : '배송 정보 펼치기'}
+                  accessibilityRole="button"
+                  hitSlop={10}
+                  onPress={() => setSheetSnap((snap) => (snap === 'open' ? 'summary' : snap === 'summary' ? 'open' : 'summary'))}
+                  style={styles.sheetHandleArea}
+                >
+                  <View style={styles.sheetHandle} />
+                </Pressable>
+                <View style={styles.destinationRow}>
+                  {summary === null ? null : (
+                    <View style={styles.destinationSequenceBadge}>
+                      <Text maxFontSizeMultiplier={1.3} style={styles.destinationSequenceText}>
+                        {summary.destinationSequence}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.destinationCopy}>
+                    <Text numberOfLines={isSheetOpen ? undefined : 1} style={styles.destinationName}>
+                      {summary?.destinationName ?? (
+                        isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
+                      )}
+                    </Text>
+                    <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={styles.miniSummary}>
+                      {[
+                        shownLabel,
+                        `주문 ${shownOrderCount}건`,
+                        `${shownBoxCount}박스`,
+                        ...(completionTime === null ? [] : [`완료 ${completionTime}`]),
+                      ].join(' · ')}
                     </Text>
                   </View>
-                )}
-                <View style={styles.destinationCopy}>
-                  <Text numberOfLines={isSheetOpen ? undefined : 1} style={styles.destinationName}>
-                    {summary?.destinationName ?? (
-                      isReadOnly ? '모든 배송을 완료했습니다' : '배송 시작 전입니다'
-                    )}
-                    {completionTime === null ? '' : ` (${completionTime})`}
-                  </Text>
-                  {summary === null ? null : (
-                    <Text numberOfLines={isSheetOpen ? undefined : 1} style={styles.destinationAddress}>
-                      {summary.address}
-                    </Text>
-                  )}
                 </View>
               </View>
+              {summary === null ? null : (
+                <Text
+                  numberOfLines={isSheetOpen ? undefined : 1}
+                  style={[styles.destinationAddress, styles.summaryAddress]}
+                >
+                  {summary.address}
+                </Text>
+              )}
 
               <View style={styles.metrics}>
                 <DeliveryMetric
                   label="주문 수"
-                  value={`${isReadOnly ? orders.length : summary?.orderCount ?? 0}건`}
+                  value={`${shownOrderCount}건`}
                 />
                 <View style={styles.metricDivider} />
                 <DeliveryMetric
                   label="박스 수"
-                  value={`${isReadOnly ? totalBoxes : summary?.boxCount ?? 0}개`}
+                  value={`${shownBoxCount}개`}
                 />
                 <View style={styles.metricDivider} />
                 <DeliveryMetric
@@ -230,7 +264,7 @@ export function DeliveryMapScreen({
               accessibilityRole="button"
               onPress={() => {
                 setSelectedDestinationId(null);
-                setIsSheetOpen(false);
+                setSheetSnap('summary');
               }}
               style={styles.backToCurrentButton}
             >
@@ -446,6 +480,19 @@ const styles = StyleSheet.create({
   sheetHeader: {
     paddingHorizontal: 18,
   },
+  miniCard: {
+    paddingBottom: 12,
+  },
+  summaryAddress: {
+    // Aligns with the name, past the 30 px badge and its 10 px gap.
+    marginLeft: 40,
+  },
+  miniSummary: {
+    color: '#475467',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 1,
+  },
   sheetHandleArea: {
     alignItems: 'center',
     paddingBottom: 8,
@@ -498,11 +545,6 @@ const styles = StyleSheet.create({
   attentionText: {
     color: '#9a3412',
     fontSize: 12,
-    fontWeight: '800',
-  },
-  panelLabel: {
-    color: '#667085',
-    fontSize: 10,
     fontWeight: '800',
   },
   destinationName: {
