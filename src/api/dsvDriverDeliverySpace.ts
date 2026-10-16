@@ -166,7 +166,7 @@ async function request<T>(
   ) {
     throw new DriverDeliverySpaceApiError(
       envelope.error?.code ?? `DELIVERY_SPACE_HTTP_${response.status}`,
-      envelope.error?.message ?? '주문 목록 서버 연결을 확인할 수 없습니다.',
+      envelope.error?.message ?? '주문 교환 서버 연결을 확인할 수 없습니다.',
     );
   }
   return envelope.data;

@@ -5,6 +5,7 @@ export type DriverProofPhotoSource = 'camera' | 'library';
 export type DriverProofPhotoUpload = {
   deliveryStopId: string;
   fileName: string;
+  idempotencyKey: string;
   mimeType: string;
   routePlanId: string;
   source: DriverProofPhotoSource;
@@ -49,6 +50,7 @@ export async function uploadDriverProofPhoto(
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${accessToken}`,
+      'Idempotency-Key': input.idempotencyKey,
     },
     method: 'POST',
   });

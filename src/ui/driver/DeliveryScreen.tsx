@@ -6,7 +6,6 @@ import {
   Text,
   useWindowDimensions,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -20,7 +19,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import type { DriverCompletedRouteHistory } from '../../api/dsvDriverRoute';
+import type {
+  DriverCompletedRouteHistory,
+  DriverDestinationVisitPage,
+  DriverRouteExecutionStatus,
+} from '../../api/dsvDriverRoute';
 import {
   groupDeliveryOrdersByDestination,
   moveDeliveryDestinationToIndex,
@@ -30,6 +33,11 @@ import {
   type DeliveryRouteMarkerState,
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
+import {
+  completedRouteDestinations,
+  destinationCompletionTime,
+} from '../../domain/delivery/deliveryCompletionTime';
+import { buildFinalDeliveryEtaSummary } from '../../domain/delivery/finalDeliveryEta';
 import {
   EMPTY_DESTINATION_NOTES,
   type DestinationNotes,
@@ -49,6 +57,7 @@ import {
 import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
+import { DestinationVisitHistory } from './DestinationVisitHistory';
 
 const EDITOR_ORDER_ROW_BASE_HEIGHT = 84;
 const EDITOR_ORDER_ROW_GAP = 6;
@@ -61,7 +70,9 @@ const DRAG_ACTIVATION_DISTANCE = 2;
 type DeliveryScreenProps = {
   deliveryDate: string;
   destinationNotesById: Record<string, DestinationNotes>;
+  etaStatus: 'FAILED' | 'PRE_PICKUP' | 'READY';
   executionController: DeliveryExecutionController;
+  executionStatus: DriverRouteExecutionStatus;
   historySummary?: DriverCompletedRouteHistory;
   isEditing: boolean;
   isReadOnly: boolean;
@@ -71,9 +82,13 @@ type DeliveryScreenProps = {
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
+  /** Opens 주문 교환 with one destination first. */
+  onOpenExchangeForDestination?(destinationId: string): void;
+  onLoadDestinationVisits?(destinationId: string, cursor: string | null): Promise<DriverDestinationVisitPage>;
   onReadDriverMessage(messageId: string): Promise<void>;
   onRefresh(): void;
   onSequenceSavingChange(isSaving: boolean): void;
+  onWorkProtectionChange?(isProtected: boolean): void;
   onSaveDestinationNotes(
     destinationId: string,
     previous: DestinationNotes,
@@ -81,6 +96,7 @@ type DeliveryScreenProps = {
   ): Promise<DestinationNotes>;
   onSaveDeliveryOrder(orders: DeliveryOrder[]): Promise<void>;
   orders: DeliveryOrder[];
+  pickupCompletedAt: string | null;
   refreshing: boolean;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   timezone: string;
@@ -89,7 +105,9 @@ type DeliveryScreenProps = {
 export function DeliveryScreen({
   deliveryDate,
   destinationNotesById: initialDestinationNotesById,
+  etaStatus,
   executionController,
+  executionStatus,
   historySummary,
   isEditing,
   isReadOnly,
@@ -99,35 +117,60 @@ export function DeliveryScreen({
   onAcknowledgeTimeConstraint,
   onEditingChange,
   onOpenDeliverySpace,
+  onOpenExchangeForDestination,
+  onLoadDestinationVisits,
   onReadDriverMessage,
   onRefresh,
   onSequenceSavingChange,
+  onWorkProtectionChange,
   onSaveDestinationNotes,
   onSaveDeliveryOrder,
   orders,
+  pickupCompletedAt,
   refreshing,
   serverRouteGeometry,
   timezone,
 }: DeliveryScreenProps) {
   const { dialog, showDialog } = useAppDialog();
   const deliveryScrollRef = useRef<ScrollView>(null);
-  const orderListTopRef = useRef(0);
-  const revealedDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
+  const previousDeliveryStopIdRef = useRef<string | null>(nextDeliveryStopId);
   const [draftOrders, setDraftOrders] = useState(orders);
   const [isOrderActionPending, setIsOrderActionPending] = useState(false);
   const [isSequenceSaving, setIsSequenceSaving] = useState(false);
   const [selectedDestinationId, setSelectedDestinationId] =
     useState<string | null>(null);
+  const [visitHistory, setVisitHistory] =
+    useState<{ destinationId: string; destinationName: string } | null>(null);
   const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
   );
   const destinationGroups = groupDeliveryOrdersByDestination(orders);
+  const finalEtaSummary = buildFinalDeliveryEtaSummary({
+    etaStatus,
+    executionStatus,
+    orders,
+    pickupCompletedAt,
+    timezone,
+  });
   const selectedDestinationGroup = selectedDestinationId === null
     ? null
     : destinationGroups.find(
       (group) => group.destinationId === selectedDestinationId,
     ) ?? null;
+  const isWorkProtected = selectedDestinationGroup !== null || isOrderActionPending;
+
+  useEffect(() => {
+    onWorkProtectionChange?.(isWorkProtected);
+  }, [isWorkProtected, onWorkProtectionChange]);
+
+  useEffect(() => () => onWorkProtectionChange?.(false), [onWorkProtectionChange]);
+
+  useEffect(() => {
+    if (previousDeliveryStopIdRef.current === nextDeliveryStopId) return;
+    previousDeliveryStopIdRef.current = nextDeliveryStopId;
+    deliveryScrollRef.current?.scrollTo({ animated: false, y: 0 });
+  }, [nextDeliveryStopId]);
 
   function startEditing() {
     if (!isSequenceEditingSupported) return;
@@ -184,25 +227,8 @@ export function DeliveryScreen({
     });
   }
 
-  function revealCurrentDestination(event: LayoutChangeEvent) {
-    if (
-      nextDeliveryStopId === null ||
-      revealedDeliveryStopIdRef.current === nextDeliveryStopId
-    ) {
-      return;
-    }
-
-    revealedDeliveryStopIdRef.current = nextDeliveryStopId;
-    const destinationTop = event.nativeEvent.layout.y;
-    requestAnimationFrame(() => {
-      deliveryScrollRef.current?.scrollTo({
-        animated: false,
-        y: Math.max(0, orderListTopRef.current + destinationTop - 12),
-      });
-    });
-  }
-
   async function runOrderAction(action: () => Promise<void>) {
+    onWorkProtectionChange?.(true);
     setIsOrderActionPending(true);
     try {
       await action();
@@ -287,7 +313,7 @@ export function DeliveryScreen({
         </View>
         {!isReadOnly ? <View style={styles.headerActions}>
           <Pressable
-            accessibilityLabel="주문 목록 열기"
+            accessibilityLabel="주문 교환 열기"
             accessibilityRole="button"
             onPress={onOpenDeliverySpace}
             style={({ pressed }) => [
@@ -300,7 +326,7 @@ export function DeliveryScreen({
               maxFontSizeMultiplier={1.3}
               style={[styles.headerActionText, styles.spaceButtonText]}
             >
-              주문 목록
+              주문 교환
             </Text>
           </Pressable>
           <Pressable
@@ -329,24 +355,42 @@ export function DeliveryScreen({
         </View> : null}
       </View>
 
+      {finalEtaSummary === null ? null : (
+        <View
+          accessibilityLabel={[
+            finalEtaSummary.primaryText,
+            finalEtaSummary.secondaryText,
+          ].filter(Boolean).join('. ')}
+          accessible
+          style={styles.finalEtaCard}
+        >
+          <Text maxFontSizeMultiplier={1.3} style={styles.finalEtaLabel}>
+            배송 시작 → 마지막 배송
+          </Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.finalEtaPrimary}>
+            {finalEtaSummary.primaryText}
+          </Text>
+          {finalEtaSummary.secondaryText === null ? null : (
+            <Text maxFontSizeMultiplier={1.3} style={styles.finalEtaSecondary}>
+              {finalEtaSummary.secondaryText}
+            </Text>
+          )}
+        </View>
+      )}
+
       <DeliveryExecutionActions
         controller={executionController}
         variant="delivery"
       />
 
-      <View
-        onLayout={(event) => {
-          orderListTopRef.current = event.nativeEvent.layout.y;
-        }}
-        style={styles.orderList}
-      >
-        {destinationGroups.length === 0 ? (
+      <View style={styles.orderList}>
+        {destinationGroups.length === 0 && (historySummary === undefined || historySummary.stops.length === 0) ? (
           <View style={styles.emptyState}>
             {historySummary === undefined ? (
               <>
                 <Text style={styles.emptyStateTitle}>이 배차에 배정된 배송이 없습니다.</Text>
                 <Text style={styles.emptyStateText}>
-                  주문 목록에서 공용 배송을 확인할 수 있습니다.
+                  주문 교환에서 공용 배송을 확인할 수 있습니다.
                 </Text>
               </>
             ) : (
@@ -359,6 +403,38 @@ export function DeliveryScreen({
             )}
           </View>
         ) : null}
+        {destinationGroups.length === 0 && historySummary !== undefined
+          ? completedRouteDestinations(historySummary.stops).map((destination, index, all) => (
+            <Pressable
+              accessibilityLabel={`${destination.destinationName} 방문 이력 보기`}
+              accessibilityRole="button"
+              disabled={onLoadDestinationVisits === undefined}
+              key={destination.destinationId}
+              onPress={() => setVisitHistory({
+                destinationId: destination.destinationId,
+                destinationName: destination.destinationName,
+              })}
+              style={({ pressed }) => [
+                styles.orderRow,
+                index < all.length - 1 && styles.orderRowDivider,
+                pressed && styles.groupRowPressed,
+              ]}
+            >
+              <View style={[styles.sequenceBadge, styles.sequenceBadgeCompleted]}>
+                <Text
+                  maxFontSizeMultiplier={1.3}
+                  style={[styles.sequenceBadgeText, styles.sequenceBadgeTextInverse]}
+                >
+                  {index + 1}
+                </Text>
+              </View>
+              <Text numberOfLines={2} style={styles.destinationName}>
+                {destination.destinationName}
+                {destination.completionTime === null ? '' : ` (${destination.completionTime})`}
+              </Text>
+            </Pressable>
+          ))
+          : null}
         {destinationGroups.map((group, index) => {
           const progressState = resolveDeliveryDestinationProgressState(
             group,
@@ -371,8 +447,8 @@ export function DeliveryScreen({
               index={index}
               isLast={index === destinationGroups.length - 1}
               key={`${group.key}:${progressState}`}
-              onCurrentLayout={revealCurrentDestination}
               onOpenDeliveryInformation={() => {
+                onWorkProtectionChange?.(true);
                 setSelectedDestinationId(group.destinationId);
               }}
               progressState={progressState}
@@ -394,6 +470,22 @@ export function DeliveryScreen({
             () => onAcknowledgeTimeConstraint(deliveryStopId),
           )}
           onClose={() => setSelectedDestinationId(null)}
+          {...(onOpenExchangeForDestination === undefined ? {} : {
+            onOpenExchange: () => {
+              const destinationId = selectedDestinationGroup.destinationId;
+              setSelectedDestinationId(null);
+              onOpenExchangeForDestination(destinationId);
+            },
+          })}
+          {...(onLoadDestinationVisits === undefined ? {} : {
+            onOpenVisitHistory: () => {
+              setVisitHistory({
+                destinationId: selectedDestinationGroup.destinationId,
+                destinationName: selectedDestinationGroup.destinationName,
+              });
+              setSelectedDestinationId(null);
+            },
+          })}
           onReadDriverMessage={(messageId) => runOrderAction(
             () => onReadDriverMessage(messageId),
           )}
@@ -413,6 +505,14 @@ export function DeliveryScreen({
             }
           }}
           timezone={timezone}
+        />
+      )}
+      {visitHistory === null || onLoadDestinationVisits === undefined ? null : (
+        <DestinationVisitHistory
+          destinationName={visitHistory.destinationName}
+          key={visitHistory.destinationId}
+          onClose={() => setVisitHistory(null)}
+          onLoad={(cursor) => onLoadDestinationVisits(visitHistory.destinationId, cursor)}
         />
       )}
       {dialog}
@@ -436,23 +536,21 @@ function DestinationGroupRow({
   group,
   index,
   isLast,
-  onCurrentLayout,
   onOpenDeliveryInformation,
   progressState,
 }: {
   group: DeliveryDestinationGroup;
   index: number;
   isLast: boolean;
-  onCurrentLayout(event: LayoutChangeEvent): void;
   onOpenDeliveryInformation(): void;
   progressState: DeliveryRouteMarkerState;
 }) {
   const isCompleted = progressState === 'completed';
   const isCurrent = progressState === 'current';
+  const completionTime = destinationCompletionTime(group.orders);
 
   return (
     <View
-      onLayout={isCurrent ? onCurrentLayout : undefined}
       style={[
         !isLast && !isCompleted && !isCurrent && styles.orderRowDivider,
         (isCompleted || isCurrent) && styles.destinationGroupEmphasis,
@@ -495,6 +593,7 @@ function DestinationGroupRow({
             ]}
           >
             {group.destinationName}
+            {completionTime === null ? '' : ` (${completionTime})`}
           </Text>
           <Text
             numberOfLines={3}
@@ -930,6 +1029,33 @@ const styles = StyleSheet.create({
     gap: 6,
     marginLeft: 8,
     marginTop: 2,
+  },
+  finalEtaCard: {
+    backgroundColor: '#eef5ff',
+    borderColor: '#c9dcff',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 3,
+    marginBottom: 12,
+    marginHorizontal: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
+  },
+  finalEtaLabel: {
+    color: '#475467',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  finalEtaPrimary: {
+    color: '#0b3f91',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 23,
+  },
+  finalEtaSecondary: {
+    color: '#475467',
+    fontSize: 13,
+    lineHeight: 19,
   },
   spaceButton: {
     backgroundColor: '#e8f1ff',

@@ -5,6 +5,7 @@ import {
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
   loadDriverCompletedRouteHistory,
+  loadDriverDestinationVisits,
   updateDriverDeliveryOrder,
   updateDriverDestinationNotes,
 } from './dsvDriverRoute';
@@ -18,7 +19,23 @@ describe('DSV assigned route API client', () => {
     delete (globalThis as { fetch?: unknown }).fetch;
   });
 
-  it('loads completed route history through an active route token', async () => {
+  it('pages destination visits with the account token and an encoded cursor', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    const requests: { input: string; init?: RequestInit }[] = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ input: input.toString(), init });
+      return new Response(JSON.stringify({ data: { nextCursor: null, visits: [] }, error: null }));
+    };
+
+    assert.deepEqual(await loadDriverDestinationVisits('account-token', 'destination/1', null), { nextCursor: null, visits: [] });
+    await loadDriverDestinationVisits('account-token', 'destination-1', 'a+b=');
+
+    assert.equal(requests[0]?.input, 'https://dsv.example.test/driver/destinations/destination%2F1/visits');
+    assert.equal(requests[1]?.input, 'https://dsv.example.test/driver/destinations/destination-1/visits?cursor=a%2Bb%3D');
+    assert.equal((requests[0]?.init?.headers as Headers).get('Authorization'), 'Bearer account-token');
+  });
+
+  it('loads recent completed route history with the account token', async () => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
     let request: { input: string; init?: RequestInit } | undefined;
     globalThis.fetch = async (input, init) => {
@@ -35,6 +52,14 @@ describe('DSV assigned route API client', () => {
             routePlanId: 'route-358',
             status: 'completed',
             stopCount: 8,
+            stops: [{
+              completedAt: '2026-08-26T04:10:00.000Z',
+              deliveryStopId: 'stop-1',
+              destinationId: 'destination-1',
+              destinationName: '부림약품',
+              sequence: 1,
+              status: 'DELIVERED',
+            }],
             timezone: 'Asia/Seoul',
           }],
         },
@@ -42,13 +67,16 @@ describe('DSV assigned route API client', () => {
       }));
     };
 
-    const history = await loadDriverCompletedRouteHistory('active-route-token');
+    const history = await loadDriverCompletedRouteHistory('account-token', new Date(2026, 9, 16, 12));
 
-    assert.equal(request?.input, 'https://dsv.example.test/driver/routes?status=completed');
-    assert.equal((request?.init?.headers as Headers).get('Authorization'), 'Bearer active-route-token');
+    assert.equal(request?.input, 'https://dsv.example.test/driver/routes?status=completed&from=2026-10-02');
+    assert.equal((request?.init?.headers as Headers).get('Authorization'), 'Bearer account-token');
     assert.equal(history[0]?.routeName, '#358');
     assert.equal(history[0]?.executionStatus, 'COMPLETED');
     assert.equal(history[0]?.stopCount, 8);
+    assert.deepEqual(history[0]?.stops.map(({ completedAt, destinationName }) => [destinationName, completedAt]), [
+      ['부림약품', '2026-08-26T04:10:00.000Z'],
+    ]);
   });
 
   it('loads the persisted route order including already completed stops', async () => {
@@ -167,8 +195,15 @@ describe('DSV assigned route API client', () => {
                 },
                 conditionCode: 'AMBIENT',
                 coordinates: { latitude: 37.52, longitude: 127.02 },
+                completedAt: '2026-07-31T02:41:00.000Z',
                 deliveryStopId: 'stop-completed',
                 destinationId: 'destination-completed',
+                items: [{
+                  name: '타이레놀 500mg',
+                  options: [{ key: '포장', value: '30정' }],
+                  quantity: 2,
+                  sku: null,
+                }],
                 orderName: '#0525032087',
                 recipientName: '완료 배송지',
                 sellerOrderKey: '0525032087',
@@ -184,6 +219,15 @@ describe('DSV assigned route API client', () => {
     };
 
     const route = await loadDriverDeliveryRoute('account-token', 'route-116');
+    const completedStop = route?.orders.find(({ id }) => id === 'stop-completed');
+    assert.equal(completedStop?.completedAt, '2026-07-31T02:41:00.000Z');
+    assert.deepEqual(completedStop?.items, [{
+      name: '타이레놀 500mg',
+      options: [{ key: '포장', value: '30정' }],
+      quantity: 2,
+      sku: null,
+    }]);
+    assert.deepEqual(route?.orders.find(({ id }) => id === 'stop-1')?.items, []);
 
     assert.equal(calls[0]?.input, 'https://dsv.example.test/driver/route-access/lookup');
     assert.equal(calls[0]?.init?.headers instanceof Headers, true);

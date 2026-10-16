@@ -5,6 +5,11 @@ name: Android Release APK
 # distributed by a public Drive link and signed with the public debug key.
 on:
   workflow_dispatch:
+    inputs:
+      version_code:
+        description: "Device-test only: build with this Android versionCode without changing app.json in Git"
+        required: false
+        default: ""
 
 concurrency:
   group: android-release-apk-${{ github.ref }}
@@ -67,6 +72,21 @@ jobs:
       - name: Check Expo dependency alignment (advisory)
         continue-on-error: true
         run: npx expo install --check
+
+      - name: Override versionCode for a device test build
+        if: ${{ inputs.version_code != '' }}
+        env:
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]{0,8}$ ]] || { echo "version_code must be a positive integer"; exit 1; }
+          node -e '
+            const fs = require("fs");
+            const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            app.expo.android.versionCode = Number(process.env.VERSION_CODE);
+            fs.writeFileSync("app.json", JSON.stringify(app, null, 2) + "\n");
+          '
+          grep -n '"versionCode"' app.json
 
       - name: Build release APK
         run: npm run build:android:release:apk

@@ -1,0 +1,454 @@
+{
+  "auditReportVersion": 2,
+  "metadata": {
+    "vulnerabilities": {
+      "critical": 0,
+      "high": 20,
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "total": 20
+    }
+  },
+  "vulnerabilities": {
+    "@expo/cli": {
+      "effects": [
+        "expo"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "@expo/cli",
+      "nodes": [
+        "node_modules/expo/node_modules/@expo/cli"
+      ],
+      "range": "<=0.0.0-canary-20231123-1b19f96-4 || >=0.0.1-canary-20231125-d600e44",
+      "severity": "high",
+      "via": [
+        "@expo/code-signing-certificates",
+        "@expo/metro",
+        "@expo/metro-config",
+        "@expo/metro-file-map",
+        "node-forge"
+      ]
+    },
+    "@expo/code-signing-certificates": {
+      "effects": [],
+      "fixAvailable": true,
+      "isDirect": false,
+      "name": "@expo/code-signing-certificates",
+      "nodes": [
+        "node_modules/@expo/code-signing-certificates"
+      ],
+      "range": "*",
+      "severity": "high",
+      "via": [
+        "node-forge"
+      ]
+    },
+    "@expo/metro": {
+      "effects": [
+        "@expo/cli",
+        "@expo/metro-config",
+        "expo"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "@expo/metro",
+      "nodes": [
+        "node_modules/@expo/metro"
+      ],
+      "range": "*",
+      "severity": "high",
+      "via": [
+        "metro",
+        "metro-config",
+        "metro-file-map",
+        "metro-transform-worker"
+      ]
+    },
+    "@expo/metro-config": {
+      "effects": [
+        "expo"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "@expo/metro-config",
+      "nodes": [
+        "node_modules/expo/node_modules/@expo/metro-config"
+      ],
+      "range": ">=0.21.0-canary-20250630-547cd82",
+      "severity": "high",
+      "via": [
+        "@expo/metro"
+      ]
+    },
+    "@expo/metro-file-map": {
+      "effects": [
+        "@expo/cli"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "@expo/metro-file-map",
+      "nodes": [
+        "node_modules/@expo/metro-file-map"
+      ],
+      "range": "<=57.0.3 || 58.0.0-canary-20260806-8c2d007 - 58.0.3",
+      "severity": "high",
+      "via": [
+        "micromatch"
+      ]
+    },
+    "@maplibre/maplibre-react-native": {
+      "effects": [],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "@maplibre/maplibre-react-native",
+        "version": "11.3.2"
+      },
+      "isDirect": true,
+      "name": "@maplibre/maplibre-react-native",
+      "nodes": [
+        "node_modules/@maplibre/maplibre-react-native"
+      ],
+      "range": ">=11.0.0-alpha.1",
+      "severity": "high",
+      "via": [
+        "expo",
+        "react-native"
+      ]
+    },
+    "@react-native/community-cli-plugin": {
+      "effects": [
+        "react-native"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native",
+        "version": "0.72.17"
+      },
+      "isDirect": false,
+      "name": "@react-native/community-cli-plugin",
+      "nodes": [
+        "node_modules/@react-native/community-cli-plugin"
+      ],
+      "range": "*",
+      "severity": "high",
+      "via": [
+        "@react-native/metro-config",
+        "metro",
+        "metro-config"
+      ]
+    },
+    "@react-native/metro-config": {
+      "effects": [
+        "@react-native/community-cli-plugin",
+        "react-native-worklets"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native",
+        "version": "0.72.17"
+      },
+      "isDirect": false,
+      "name": "@react-native/metro-config",
+      "nodes": [
+        "node_modules/@react-native/metro-config"
+      ],
+      "range": "*",
+      "severity": "high",
+      "via": [
+        "metro-config"
+      ]
+    },
+    "@react-native/virtualized-lists": {
+      "effects": [
+        "react-native"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native",
+        "version": "0.72.17"
+      },
+      "isDirect": false,
+      "name": "@react-native/virtualized-lists",
+      "nodes": [
+        "node_modules/@react-native/virtualized-lists"
+      ],
+      "range": ">=0.85.0-nightly-20260108-1236b6be4",
+      "severity": "high",
+      "via": [
+        "react-native"
+      ]
+    },
+    "braces": {
+      "effects": [
+        "micromatch"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "braces",
+      "nodes": [
+        "node_modules/braces"
+      ],
+      "range": "*",
+      "severity": "high",
+      "via": [
+        {
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "cwe": [
+            "CWE-674"
+          ],
+          "dependency": "braces",
+          "name": "braces",
+          "range": "<=3.0.3",
+          "severity": "high",
+          "source": 1240992,
+          "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+          "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm"
+        }
+      ]
+    },
+    "expo": {
+      "effects": [
+        "@maplibre/maplibre-react-native"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": true,
+      "name": "expo",
+      "nodes": [
+        "node_modules/expo"
+      ],
+      "range": ">=45.0.0-beta.1",
+      "severity": "high",
+      "via": [
+        "@expo/cli",
+        "@expo/metro",
+        "@expo/metro-config"
+      ]
+    },
+    "metro": {
+      "effects": [
+        "@react-native/community-cli-plugin",
+        "metro-config",
+        "metro-transform-worker"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native",
+        "version": "0.72.17"
+      },
+      "isDirect": false,
+      "name": "metro",
+      "nodes": [
+        "node_modules/metro"
+      ],
+      "range": ">=0.71.0",
+      "severity": "high",
+      "via": [
+        "metro-config",
+        "metro-file-map",
+        "metro-transform-worker"
+      ]
+    },
+    "metro-config": {
+      "effects": [
+        "@react-native/community-cli-plugin",
+        "@react-native/metro-config"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native",
+        "version": "0.72.17"
+      },
+      "isDirect": false,
+      "name": "metro-config",
+      "nodes": [
+        "node_modules/metro-config"
+      ],
+      "range": ">=0.71.0",
+      "severity": "high",
+      "via": [
+        "metro"
+      ]
+    },
+    "metro-file-map": {
+      "effects": [
+        "@expo/metro",
+        "metro"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "metro-file-map",
+      "nodes": [
+        "node_modules/metro-file-map"
+      ],
+      "range": "*",
+      "severity": "high",
+      "via": [
+        "micromatch"
+      ]
+    },
+    "metro-transform-worker": {
+      "effects": [],
+      "fixAvailable": true,
+      "isDirect": false,
+      "name": "metro-transform-worker",
+      "nodes": [
+        "node_modules/metro-transform-worker"
+      ],
+      "range": ">=0.71.0",
+      "severity": "high",
+      "via": [
+        "metro"
+      ]
+    },
+    "micromatch": {
+      "effects": [
+        "@expo/metro-file-map",
+        "metro-file-map"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "micromatch",
+      "nodes": [
+        "node_modules/micromatch"
+      ],
+      "range": ">=0.2.0",
+      "severity": "high",
+      "via": [
+        "braces"
+      ]
+    },
+    "node-forge": {
+      "effects": [
+        "@expo/cli",
+        "@expo/code-signing-certificates"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "expo",
+        "version": "44.0.6"
+      },
+      "isDirect": false,
+      "name": "node-forge",
+      "nodes": [
+        "node_modules/node-forge"
+      ],
+      "range": "*",
+      "severity": "high",
+      "via": [
+        {
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+          },
+          "cwe": [
+            "CWE-347"
+          ],
+          "dependency": "node-forge",
+          "name": "node-forge",
+          "range": "<=1.4.0",
+          "severity": "high",
+          "source": 1240912,
+          "title": "node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements",
+          "url": "https://github.com/advisories/GHSA-86w9-cpqp-85rv"
+        }
+      ]
+    },
+    "react-native": {
+      "effects": [
+        "@maplibre/maplibre-react-native",
+        "@react-native/virtualized-lists",
+        "react-native-reanimated"
+      ],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native",
+        "version": "0.72.17"
+      },
+      "isDirect": true,
+      "name": "react-native",
+      "nodes": [
+        "node_modules/react-native"
+      ],
+      "range": ">=0.73.0-nightly-20230506-1af868c52",
+      "severity": "high",
+      "via": [
+        "@react-native/community-cli-plugin",
+        "@react-native/virtualized-lists"
+      ]
+    },
+    "react-native-reanimated": {
+      "effects": [],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native-reanimated",
+        "version": "4.2.2"
+      },
+      "isDirect": true,
+      "name": "react-native-reanimated",
+      "nodes": [
+        "node_modules/react-native-reanimated"
+      ],
+      "range": "4.1.7 || >=4.2.3",
+      "severity": "high",
+      "via": [
+        "react-native"
+      ]
+    },
+    "react-native-worklets": {
+      "effects": [],
+      "fixAvailable": {
+        "isSemVerMajor": true,
+        "name": "react-native-worklets",
+        "version": "0.7.4"
+      },
+      "isDirect": true,
+      "name": "react-native-worklets",
+      "nodes": [
+        "node_modules/react-native-worklets"
+      ],
+      "range": ">=0.8.0-bundle-mode-preview-1",
+      "severity": "high",
+      "via": [
+        "@react-native/metro-config",
+        "react-native"
+      ]
+    }
+  }
+}

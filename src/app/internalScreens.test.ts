@@ -26,6 +26,34 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /label="배송 순서"/u);
   });
 
+  it('adds a route-level final ETA without replacing next-stop ETA or completion actions', () => {
+    const workspace = readFileSync(
+      join(appDirectory, '../ui/driver/DriverWorkspace.tsx'),
+      'utf8',
+    );
+    const deliveryScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryScreen.tsx'),
+      'utf8',
+    );
+    const mapScreen = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryMapScreen.tsx'),
+      'utf8',
+    );
+    const executionActions = readFileSync(
+      join(appDirectory, '../ui/driver/DeliveryExecutionActions.tsx'),
+      'utf8',
+    );
+
+    assert.match(deliveryScreen, /buildFinalDeliveryEtaSummary/u);
+    assert.match(deliveryScreen, /배송 시작 → 마지막 배송/u);
+    assert.match(workspace, /executionStatus=\{route\.executionStatus\}/u);
+    assert.match(workspace, /pickupCompletedAt=\{route\.pickupCompletedAt\}/u);
+    assert.match(mapScreen, /summary\?\.estimatedArrivalAt/u);
+    assert.match(mapScreen, /label="ETA"/u);
+    assert.match(executionActions, /배송 완료/u);
+    assert.match(executionActions, /onCompleteDelivery/u);
+  });
+
   it('renders the device bottom inset as part of the authenticated tab bar', () => {
     const appRoot = readFileSync(join(appDirectory, 'AppRoot.tsx'), 'utf8');
     const workspace = readFileSync(
@@ -90,7 +118,7 @@ describe('authenticated driver screens', () => {
     assert.equal(workspace.match(/disabled=\{isSequenceSaving\}/gu)?.length, 4);
     assert.match(
       workspace,
-      /useEffect\(\(\) => \{\s+if \(isSequenceSaving\) return undefined;/u,
+      /useEffect\(\(\) => \{\s+\/\/[^\n]+\n\s+if \(isWorkProtected\) return undefined;/u,
     );
     assert.match(workspace, /sequenceSaveReloadBaselineRef/u);
     assert.match(
@@ -155,11 +183,12 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(source, /2026-07-31.*배송 선택/u);
     assert.doesNotMatch(routeClient, /등록된 차량이 있어야/u);
     assert.match(deliveryScreen, /이 배차에 배정된 배송이 없습니다/u);
-    assert.match(deliveryScreen, /주문 목록에서 공용 배송을 확인할 수 있습니다/u);
+    assert.match(deliveryScreen, /주문 교환에서 공용 배송을 확인할 수 있습니다/u);
     assert.match(routeClient, /executionStatus: DriverRouteExecutionStatus/u);
     assert.match(source, /completeDriverDeliveryRoute/u);
     assert.match(source, /completesDeliveryRoute/u);
-    assert.match(source, /reconcileCompletedRoutes/u);
+    assert.doesNotMatch(source, /reconcileCompletedRoutes/u);
+    assert.match(source, /accessibilityLabel="배차 완료 복구"/u);
     assert.match(source, /executionStatus: 'COMPLETED'/u);
     assert.match(source, /setRouteGroup\('terminal'\)/u);
     assert.match(
@@ -398,11 +427,12 @@ describe('authenticated driver screens', () => {
     assert.match(source, /groupOrderCount:[\s\S]*lineHeight: 16/u);
     assert.match(source, /boxCount:[\s\S]*lineHeight: 16/u);
     assert.match(source, /key=\{`\$\{group\.key\}:\$\{progressState\}`\}/u);
-    assert.match(workspace, /nextDeliveryStopId=\{route\.nextDeliveryStopId\}/u);
+    assert.match(workspace, /nextDeliveryStopId=\{activeDeliveryStopId\}/u);
     assert.match(source, /destinationGroupEmphasis:[\s\S]*paddingHorizontal: 9/u);
     assert.match(source, /completedPrimaryText:[\s\S]*color: '#475467'/u);
     assert.match(source, /paddingBottom: 88/u);
-    assert.match(source, /scrollTo\(\{[\s\S]*destinationTop/u);
+    assert.match(source, /scrollTo\(\{ animated: false, y: 0 \}\)/u);
+    assert.doesNotMatch(source, /destinationTop/u);
   });
 
   it('uses matching action-button geometry, typography, and visual summary separators', () => {
@@ -454,7 +484,7 @@ describe('authenticated driver screens', () => {
     assert.match(workspace, /route\.routeVersionId/u);
     assert.match(workspace, /serverRouteGeometry: null/u);
     assert.match(workspace, /setLoadAttempt\(\(attempt\) => attempt \+ 1\)/u);
-    assert.match(workspace, /if \(!completesRoute\) \{\s+setLoadAttempt/u);
+    assert.match(workspace, /if \(!completesRoute && mountedRef\.current[\s\S]*?setLoadAttempt/u);
     assert.doesNotMatch(workspace, /onOrdersChange=\{setOrders\}/u);
   });
 
@@ -551,7 +581,13 @@ describe('authenticated driver screens', () => {
     assert.match(source, /내 위치 권한 허용/u);
     assert.match(source, /<Images/u);
     assert.match(source, /'icon-anchor': 'bottom'/u);
-    assert.match(source, /'text-offset': \[0, -2\]/u);
+    assert.match(source, /'text-offset': \[0, -1\.53\]/u);
+    // Destination pins follow the DSV web pin: one image per state, no tinted SDF pin.
+    for (const state of ['planned', 'current', 'completed', 'failed']) {
+      assert.match(source, new RegExp(`assets/map/destination-pin-${state}\\.png`, 'u'));
+    }
+    assert.doesNotMatch(source, /sdf: true/u);
+    assert.match(source, /onSelectDestination\(destinationId\)/u);
     assert.match(source, /'text-font': \['Noto Sans Bold'\]/u);
     assert.match(source, /id="delivery-destination-marker"/u);
     assert.match(source, /id="delivery-depot-marker"/u);
@@ -571,8 +607,24 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /지금 가는 배송지/u);
     assert.match(screenSource, /주문 수/u);
     assert.match(screenSource, /박스 수/u);
-    assert.match(screenSource, /주문 정보/u);
-    assert.match(screenSource, /summary\.orderBoxes/u);
+    assert.match(screenSource, /상품 정보/u);
+    assert.match(screenSource, /destinationOrders\.map\(\(order\)/u);
+    assert.match(screenSource, /order\.items/u);
+    assert.match(screenSource, /onSelectDestination=\{selectDestination\}/u);
+    assert.match(screenSource, /<GestureDetector gesture=\{sheetDrag\}>/u);
+    assert.match(screenSource, /배송 정보 펼치기/u);
+    assert.match(screenSource, /지금 가는 배송지 보기/u);
+    // 주문 교환 is reachable from the destination itself, with that destination listed first.
+    assert.match(screenSource, /이 배송지 주문 교환/u);
+    const spaceSource = readFileSync(join(appDirectory, '../ui/driver/DeliverySpaceScreen.tsx'), 'utf8');
+    assert.match(spaceSource, /focusDestinationId/u);
+    assert.match(spaceSource, /선택한 배송지/u);
+    const sheetSource = readFileSync(join(appDirectory, '../ui/driver/DestinationNotesSheet.tsx'), 'utf8');
+    assert.match(sheetSource, /onOpenExchange === undefined \|\| isReadOnly/u);
+    // The sheet drops to a minimum card: number, name, status, orders, boxes and completion time only.
+    assert.match(screenSource, /type SheetSnap = 'mini' \| 'summary' \| 'open'/u);
+    assert.match(screenSource, /styles\.miniSummary/u);
+    assert.match(screenSource, /`완료 \$\{completionTime\}`/u);
     assert.match(screenSource, /summary\.destinationSequence/u);
     assert.match(screenSource, /<ScrollView/u);
     assert.match(screenSource, /<DeliveryExecutionActions/u);
@@ -660,7 +712,7 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /currentDeliveryStopId=\{nextDeliveryStopId\}/u);
   });
 
-  it('offers camera and album proof upload after delivery completion', () => {
+  it('collects completion time and optional proof before confirming delivery', () => {
     const executionActions = readFileSync(
       join(appDirectory, '../ui/driver/DeliveryExecutionActions.tsx'),
       'utf8',
@@ -676,15 +728,19 @@ describe('authenticated driver screens', () => {
 
     assert.match(executionActions, /DeliveryProofModal/u);
     assert.match(executionActions, /transactionCallbacksRef/u);
-    assert.match(
-      executionActions,
-      /onCompleteDelivery\(summary\.destinationId, summary\.deliveryStopIds\)/u,
-    );
-    assert.match(executionActions, /주문 \$\{summary\.deliveryStopIds\.length\}건을 모두/u);
+    assert.match(executionActions, /type: 'COMPLETION_OPENED'/u);
+    assert.match(executionActions, /callbacks\.onCompleteDelivery\([\s\S]*occurredAt/u);
+    assert.doesNotMatch(executionActions, /모두 배송 완료 처리할까요/u);
     assert.match(workspace, /completeDriverDeliveryDestination/u);
-    assert.match(proofModal, /배송 증빙 추가/u);
+    assert.match(proofModal, /완료 시간/u);
+    assert.match(proofModal, /현재 시간/u);
+    assert.match(proofModal, /formatDeliveryCompletionTime/u);
+    assert.match(proofModal, /resolveDeliveryCompletionOccurredAt/u);
+    assert.match(proofModal, /배송 증빙 사진 · 선택/u);
     assert.match(proofModal, /사진 촬영/u);
     assert.match(proofModal, /앨범에서 선택/u);
+    assert.match(proofModal, /완료 확정/u);
+    assert.doesNotMatch(proofModal, /나중에 등록/u);
     assert.match(proofModal, /requestCameraPermissionsAsync/u);
     assert.match(proofModal, /Platform\.OS !== 'android'/u);
     assert.match(proofModal, /launchCameraAsync/u);
@@ -692,7 +748,7 @@ describe('authenticated driver screens', () => {
     assert.match(proofModal, /<Image/u);
     assert.match(proofModal, /10 \* 1024 \* 1024/u);
     assert.match(proofModal, /executionDialog/u);
-    assert.match(proofModal, /배차 완료 저장 중/u);
+    assert.match(proofModal, /배송 완료 처리 중/u);
     assert.match(workspace, /uploadDriverProofPhoto/u);
     const proofClient = readFileSync(
       join(appDirectory, '../api/dsvDriverProofMedia.ts'),
@@ -727,15 +783,24 @@ describe('authenticated driver screens', () => {
     assert.match(deliveryScreen, /executionController/u);
     assert.match(mapScreen, /<DeliveryExecutionActions/u);
     assert.match(mapScreen, /variant="map"/u);
+    assert.match(
+      deliveryScreen,
+      /deliveryScrollRef\.current\?\.scrollTo\(\{ animated: false, y: 0 \}\)/u,
+    );
+    assert.match(
+      mapScreen,
+      /deliveryScrollRef\.current\?\.scrollTo\(\{ animated: false, y: 0 \}\)/u,
+    );
     assert.match(executionActions, /DeliveryProofModal/u);
-    assert.match(executionActions, /onCompleteDelivery\(summary\.destinationId, summary\.deliveryStopIds\)/u);
+    assert.match(executionActions, /type: 'COMPLETION_OPENED'/u);
+    assert.match(executionActions, /submitDeliveryCompletion/u);
     assert.match(executionActions, /픽업을 완료하고 배송을 시작할까요/u);
-    assert.match(executionActions, /주문 \$\{summary\.deliveryStopIds\.length\}건을 모두/u);
+    assert.doesNotMatch(executionActions, /모두 배송 완료 처리할까요/u);
     assert.match(executionActions, /useDeliveryExecution/u);
     assert.match(executionActions, /actionRef\.current/u);
     assert.match(executionActions, /transactionCallbacksRef/u);
     assert.match(executionActions, /executionDialog=\{controller\.dialog\}/u);
-    assert.match(executionActions, /phase === 'completing-route'/u);
+    assert.match(executionActions, /'uploading-proof'/u);
     assert.match(workspace, /const deliveryExecution = useDeliveryExecution/u);
     assert.match(workspace, /executionController=\{deliveryExecution\}/u);
     assert.match(workspace, /<DeliveryExecutionOverlay controller=\{deliveryExecution\}/u);
@@ -762,8 +827,7 @@ describe('authenticated driver screens', () => {
     assert.doesNotMatch(deliveryScreen, /maxFontSizeMultiplier=.*styles\.address/u);
     assert.match(mapScreen, /styles\.destinationCopy/u);
     assert.match(mapScreen, /useWindowDimensions/u);
-    assert.match(mapScreen, /fontScale > 1\.3 && styles\.mapAreaLargeText/u);
-    assert.match(mapScreen, /mapAreaLargeText:[\s\S]*height: '42%'/u);
+    assert.match(mapScreen, /fontScale > 1\.3 \? SHEET_OPEN_SHARE_LARGE_TEXT : SHEET_OPEN_SHARE/u);
     assert.doesNotMatch(
       mapScreen,
       /numberOfLines=\{[23]\} style=\{styles\.destination(?:Name|Address)\}/u,
@@ -835,7 +899,7 @@ describe('authenticated driver screens', () => {
     );
 
     assert.match(workspace, /accessToken=\{authSession\.accessToken\}/u);
-    assert.match(workspace, /onAccountDeletionRequested=\{onLogout\}/u);
+    assert.match(workspace, /onAccountDeletionRequested=\{handleLogout\}/u);
     assert.match(settings, /requestDriverAccountDeletion/u);
     assert.match(settings, /계정 삭제 요청/u);
     assert.match(settings, /ACCOUNT_DELETION_ACTIVE_ROUTE/u);

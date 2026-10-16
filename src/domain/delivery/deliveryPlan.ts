@@ -14,6 +14,10 @@ export type DeliveryOrder = {
   timeWindowEnd?: string | null;
   timeWindowStart?: string | null;
   status?: string;
+  /** When the driver entered 배송완료 for this order; null or absent until then. */
+  completedAt?: string | null;
+  /** Product lines of the order; empty until the dispatch source sends items. */
+  items?: DeliveryOrderItem[];
   address: string;
   coordinate: {
     latitude: number;
@@ -77,7 +81,15 @@ export type DeliveryDestinationPoint = {
   sortOrder: number;
 };
 
-export type DeliveryRouteMarkerState = 'completed' | 'current' | 'upcoming';
+export type DeliveryOrderItem = {
+  name: string;
+  options: { key: string; value: string }[];
+  quantity: number;
+  sku: string | null;
+};
+
+// 'failed' marks a destination with any failed order, as the DSV web pin does.
+export type DeliveryRouteMarkerState = 'completed' | 'current' | 'failed' | 'upcoming';
 
 export type DeliveryRouteVisualState = {
   completedGeometry: ServerDeliveryRouteGeometry | null;
@@ -372,13 +384,18 @@ export function buildDeliveryRouteVisualState(
   const routeIsCompleted =
     orders.length > 0 && orders.every(({ status }) => isTerminalDeliveryStatus(status));
 
+  const failedDestinationIds = new Set(
+    orders.filter(({ status }) => status === 'FAILED').map(({ destinationId }) => destinationId),
+  );
   const markers = points.map((point, index) => ({
     ...point,
-    markerState: routeIsCompleted || index < currentDestinationIndex
-      ? 'completed' as const
-      : index === currentDestinationIndex
-        ? 'current' as const
-        : 'upcoming' as const,
+    markerState: failedDestinationIds.has(point.destinationId)
+      ? 'failed' as const
+      : routeIsCompleted || index < currentDestinationIndex
+        ? 'completed' as const
+        : index === currentDestinationIndex
+          ? 'current' as const
+          : 'upcoming' as const,
   }));
 
   if (serverRouteGeometry === null) {

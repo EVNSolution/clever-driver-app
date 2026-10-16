@@ -188,6 +188,14 @@ describe('delivery order plan', () => {
       visualState.markers.map(({ markerState }) => markerState),
       ['completed', 'completed', 'current'],
     );
+    const failedFirst = orders.map((order) => order.destinationId === visualState.markers[0]?.destinationId
+      ? { ...order, status: 'FAILED' }
+      : order);
+    assert.deepEqual(
+      buildDeliveryRouteVisualState(failedFirst, routeGeometry, currentOrder.id)
+        .markers.map(({ markerState }) => markerState),
+      ['failed', 'completed', 'current'],
+    );
     assert.deepEqual(visualState.completedGeometry?.coordinates, [
       routeGeometry.coordinates[0],
       routeGeometry.coordinates[1],

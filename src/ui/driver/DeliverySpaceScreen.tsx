@@ -32,10 +32,13 @@ import type { DriverDeliveryRoute } from '../../api/dsvDriverRoute';
 type SpaceSection = 'mine' | 'available';
 
 export function DeliverySpaceScreen({
+  focusDestinationId,
   selectedRoute,
   onAssignmentsChanged,
   onBack,
 }: {
+  /** Opened from one destination: it is listed first and marked in 내 배송. */
+  focusDestinationId?: string;
   selectedRoute: Pick<DriverDeliveryRoute,
     'deliveryDate' | 'routeAccessToken' | 'routeName' | 'routePlanId'>;
   onAssignmentsChanged(): void;
@@ -65,7 +68,7 @@ export function DeliverySpaceScreen({
       setLastUpdatedAt(new Date());
       setState('ready');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '주문 목록을 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '주문 교환을 불러오지 못했습니다.');
       setState('error');
     } finally {
       setIsRefreshing(false);
@@ -81,7 +84,7 @@ export function DeliverySpaceScreen({
       setState('ready');
     }).catch((error: unknown) => {
       if (!isActive) return;
-      setMessage(error instanceof Error ? error.message : '주문 목록을 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '주문 교환을 불러오지 못했습니다.');
       setState('error');
     });
     return () => {
@@ -242,7 +245,13 @@ export function DeliverySpaceScreen({
     }
   }
 
-  const bundles = space?.[section] ?? [];
+  const sectionBundles = space?.[section] ?? [];
+  const bundles = section === 'mine' && focusDestinationId !== undefined
+    ? [
+        ...sectionBundles.filter(({ destinationId }) => destinationId === focusDestinationId),
+        ...sectionBundles.filter(({ destinationId }) => destinationId !== focusDestinationId),
+      ]
+    : sectionBundles;
 
   return (
     <View style={styles.screen}>
@@ -256,7 +265,7 @@ export function DeliverySpaceScreen({
           <Text style={styles.backText}>‹</Text>
         </Pressable>
         <View style={styles.headingCopy}>
-          <Text style={styles.title}>주문 목록</Text>
+          <Text style={styles.title}>주문 교환</Text>
           <Text style={styles.description}>배송지 전체 묶음을 반납·전달하거나 가져옵니다</Text>
         </View>
       </View>
@@ -293,11 +302,11 @@ export function DeliverySpaceScreen({
       {state === 'loading' && space === null ? (
         <View style={styles.centerState}>
           <ActivityIndicator color="#0b57d0" />
-          <Text style={styles.stateText}>주문 목록을 불러오는 중입니다.</Text>
+          <Text style={styles.stateText}>주문 교환을 불러오는 중입니다.</Text>
         </View>
       ) : state === 'error' && space === null ? (
         <View style={styles.centerState}>
-          <Text style={styles.stateText}>주문 목록을 불러오지 못했습니다.</Text>
+          <Text style={styles.stateText}>주문 교환을 불러오지 못했습니다.</Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => void refresh()}
@@ -346,6 +355,7 @@ export function DeliverySpaceScreen({
             <BundleCard
               action={section === 'mine' ? 'release' : 'acquire'}
               bundle={bundle}
+              isFocused={section === 'mine' && bundle.destinationId === focusDestinationId}
               isBusy={activeDestinationId === bundle.destinationId}
               isDisabled={activeDestinationId !== undefined}
               key={bundle.destinationId}
@@ -479,6 +489,7 @@ function BundleCard({
   bundle,
   isBusy,
   isDisabled,
+  isFocused = false,
   onCancelHandoff,
   onPress,
   pendingHandoff,
@@ -487,6 +498,7 @@ function BundleCard({
   action: 'acquire' | 'release';
   bundle: DriverDeliveryBundle;
   isBusy: boolean;
+  isFocused?: boolean;
   isDisabled: boolean;
   onCancelHandoff?(handoff: DriverDeliveryOutgoingHandoff): void;
   onPress(): void;
@@ -495,8 +507,9 @@ function BundleCard({
 }) {
   const hasPendingHandoff = pendingHandoff !== undefined;
   return (
-    <View style={styles.bundleCard}>
+    <View style={[styles.bundleCard, isFocused && styles.bundleCardFocused]}>
       <View style={styles.bundleCopy}>
+        {isFocused ? <Text style={styles.focusedLabel}>선택한 배송지</Text> : null}
         <Text numberOfLines={1} style={styles.destinationName}>{bundle.destinationName}</Text>
         <Text numberOfLines={2} style={styles.address}>{bundle.address}</Text>
         <View style={styles.bundleMetaRow}>
@@ -685,6 +698,8 @@ const styles = StyleSheet.create({
   emptyTitle: { color: '#344054', fontSize: 14, fontWeight: '800' },
   emptyText: { color: '#667085', fontSize: 11, textAlign: 'center' },
   bundleCard: { alignItems: 'center', backgroundColor: '#ffffff', borderColor: '#e5e7eb', borderRadius: 12, borderWidth: 1, flexDirection: 'row', gap: 12, minHeight: 100, padding: 13 },
+  bundleCardFocused: { backgroundColor: '#f5f8ff', borderColor: '#0b57d0', borderWidth: 2 },
+  focusedLabel: { color: '#0b57d0', fontSize: 10, fontWeight: '900' },
   bundleCopy: { flex: 1, gap: 4 },
   destinationName: { color: '#101828', fontSize: 15, fontWeight: '900' },
   address: { color: '#475467', fontSize: 11, lineHeight: 16 },

@@ -1,0 +1,654 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import type { DriverDeliveryRoute } from '../api/dsvDriverRoute';
+import type { DriverProofPhotoUpload } from '../api/dsvDriverProofMedia';
+import { DriverOperationalApiError, type DriverExecutionContext, type DriverNotificationResolution } from '../api/dsvDriverOperational';
+import { PREVIEW_DELIVERY_ORDERS } from '../domain/delivery/deliveryPlan';
+import type { DriverNotificationClick } from '../domain/notifications/driverPushNotification';
+import { appRootHarness } from './driverNotificationAppRoot.test';
+import { createDeliveryDraftHarness } from './driverNotificationDrafts.test';
+import { workspaceHarness } from './driverWorkspaceReads.test';
+import { createProofModalHarness } from './deliveryProofModal.test';
+
+type ScreenProps = Parameters<typeof import('../ui/driver/DeliveryScreen')['DeliveryScreen']>[0];
+type RootHarnessOptions = NonNullable<Parameters<typeof appRootHarness>[0]>;
+const notificationId = '31200000-0000-4000-8000-000000000071';
+const routeAId = '31200000-0000-4000-8000-000000000072';
+const routeBId = '31200000-0000-4000-8000-000000000073';
+const childAId = '31200000-0000-4000-8000-000000000074';
+const childBId = '31200000-0000-4000-8000-000000000075';
+const stopAId = '31200000-0000-4000-8000-000000000076';
+const stopASecondId = '31200000-0000-4000-8000-000000000077';
+const stopBId = '31200000-0000-4000-8000-000000000078';
+const contextAId = '31200000-0000-4000-8000-000000000079';
+const contextBId = '31200000-0000-4000-8000-000000000080';
+const click: DriverNotificationClick = {
+  notificationId, kind: 'N06', schemaVersion: '1', status: 'current', expiresAt: '2099-10-07T01:00:00.000Z',
+};
+
+const routeA: DriverDeliveryRoute = {
+  availableRoutes: [], deliveryDate: '2026-10-07', depotCoordinate: null, destinationNotesById: {},
+  etaStatus: 'READY', executionStatus: 'IN_PROGRESS', nextDeliveryStopId: stopAId,
+  orders: [
+    { ...PREVIEW_DELIVERY_ORDERS[0]!, id: stopAId, destinationId: 'destination-A', destinationName: 'Current route first', status: 'PENDING' },
+    { ...PREVIEW_DELIVERY_ORDERS[1]!, id: stopASecondId, destinationId: 'destination-A-second', destinationName: 'Current route second', status: 'PENDING' },
+  ],
+  pickupCompletedAt: '2026-10-07T00:00:00Z', routeAccessToken: 'route-A-token', routeContext: routeAId,
+  routeId: routeAId, routeName: 'Current route', routePlanId: routeAId, routeVersionId: childAId,
+  serverRouteGeometry: null, timezone: 'Asia/Seoul',
+};
+const routeB: DriverDeliveryRoute = {
+  ...routeA, routeId: routeBId, routePlanId: routeBId, routeContext: routeBId, routeName: 'Notification route',
+  routeVersionId: childBId, routeAccessToken: 'route-B-token', nextDeliveryStopId: stopBId,
+  orders: [{ ...routeA.orders[0]!, id: stopBId, destinationId: 'destination-B', destinationName: 'Notification destination' }],
+};
+const contexts: DriverExecutionContext[] = [routeA, routeB].map((route, index) => ({
+  executionContextId: index === 0 ? contextAId : contextBId, routePlanId: route.routePlanId,
+  routeVersion: 1, assignmentEpoch: '1', assignmentGeneration: '1', expectedRouteVersionId: route.routeVersionId!,
+  serviceDate: route.deliveryDate, status: 'ACTIVE', startedAt: route.pickupCompletedAt,
+}));
+const destination: DriverNotificationResolution = {
+  notificationId, destination: { type: 'EXECUTION', executionContextId: contextBId, routePlanId: routeBId, targetStopId: stopBId },
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => { resolve = accept; });
+  return { promise, resolve };
+}
+
+// Feed real AppRoot child props into real Workspace renders/effects. Only native leaves are stubbed.
+async function connectedWorkspace(options: {
+  resolver?: (token: string, id: string) => Promise<DriverNotificationResolution>;
+  realExecution?: boolean;
+  proofApi?: Record<string, unknown>;
+  syntheticStopCompletion?: boolean;
+  loseStopCompletionResponse?: boolean;
+  loadRoute?: (routePlanId: string) => Promise<DriverDeliveryRoute>;
+  appStorage?: RootHarnessOptions['storage'];
+  acknowledge?: RootHarnessOptions['acknowledge'];
+  refresh?: RootHarnessOptions['refresh'];
+  onStopCompletion?(body: { occurredAt: string; deliveryStopIds: string[] }): void;
+} = {}) {
+  const reads = { choices: 0, routes: [] as string[], contexts: 0 };
+  const businessPosts: RequestInit[] = [];
+  const committedCompletions = new Map<string, { occurredAt: string }>();
+  let lostCompletionResponse = false;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (init?.method === 'POST') businessPosts.push(init);
+    if (options.syntheticStopCompletion && String(url).endsWith('/driver/destinations/complete')) {
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.routePlanId, routeAId);
+      assert.deepEqual(body.deliveryStopIds, [stopAId]);
+      const committed = committedCompletions.get(body.clientEventId);
+      if (committed === undefined) {
+        committedCompletions.set(body.clientEventId, { occurredAt: body.occurredAt });
+        options.onStopCompletion?.(body);
+      } else assert.equal(body.occurredAt, committed.occurredAt);
+      if (options.loseStopCompletionResponse && !lostCompletionResponse) {
+        lostCompletionResponse = true;
+        throw new Error('Synthetic completion committed before its HTTP response was lost');
+      }
+      return new Response(JSON.stringify({ data: {
+        completedStopCount: body.deliveryStopIds.length,
+        eventIds: body.deliveryStopIds.map((id: string) => `synthetic-STOP_DELIVERED:${id}`),
+      }, error: null }), { status: committed === undefined ? 202 : 200 });
+    }
+    throw new Error('A notification read must not make a business request');
+  };
+  const executionLock = { current: false };
+  let deliveryDraft: ReturnType<typeof createDeliveryDraftHarness> | undefined;
+  const app = appRootHarness({ resolver: options.resolver ?? (async () => destination),
+    storage: options.appStorage, acknowledge: options.acknowledge, refresh: options.refresh });
+  const workspace = workspaceHarness({ loadedRoute: routeA, executionLock,
+    realExecution: options.realExecution, proofApi: options.proofApi, routeApi: {
+    loadDriverDeliveryRouteChoices: async () => {
+      reads.choices += 1;
+      return [routeA, routeB].map((route) => ({
+        deliveryDate: route.deliveryDate, executionStatus: route.executionStatus,
+        routeAccessToken: route.routeAccessToken, routeContext: route.routeContext,
+        routeName: route.routeName, routePlanId: route.routePlanId,
+      }));
+    },
+    loadDriverDeliveryRoute: async (_token: string, routePlanId: string) => {
+      reads.routes.push(routePlanId);
+      assert.ok([routeAId, routeBId].includes(routePlanId));
+      return options.loadRoute?.(routePlanId) ?? (routePlanId === routeAId ? routeA : routeB);
+    },
+  }, operationalApi: {
+    DRIVER_OPERATIONAL_ENABLED: true,
+    loadDriverExecutionContexts: async () => { reads.contexts += 1; return contexts; },
+  } });
+  const harness = {
+    app, workspace, executionLock, reads, businessPosts, committedCompletions,
+    async settle() {
+      for (let index = 0; index < 5; index += 1) {
+        await app.settle();
+        const props = app.workspace();
+        assert.ok(props, 'AppRoot must keep the same authenticated Workspace mounted');
+        workspace.render(props);
+        await workspace.settle();
+        const screen = workspace.find((element) => element.type === 'DeliveryScreen');
+        if (deliveryDraft !== undefined && screen !== undefined) {
+          deliveryDraft.render(screen.props as ScreenProps);
+          await deliveryDraft.settle();
+        }
+      }
+      await app.settle();
+    },
+    screen(): ScreenProps {
+      const screen = workspace.find((element) => element.type === 'DeliveryScreen');
+      assert.ok(screen, 'The current delivery screen must remain available');
+      return screen.props as ScreenProps;
+    },
+    snapshotReads() { return { choices: reads.choices, routes: [...reads.routes], contexts: reads.contexts }; },
+    attachDeliveryDraft(draft: ReturnType<typeof createDeliveryDraftHarness>) { deliveryDraft = draft; },
+    dispose() {
+      deliveryDraft?.unmount();
+      workspace.unmount(); app.unmount();
+      if (previousFetch === undefined) delete (globalThis as { fetch?: unknown }).fetch;
+      else globalThis.fetch = previousFetch;
+    },
+  };
+  app.render(); await app.settle(); await app.login();
+  await harness.settle(); workspace.select(routeAId); await harness.settle();
+  assert.equal(harness.screen().nextDeliveryStopId, stopAId);
+  return harness;
+}
+
+describe('Connected notification navigation preserves active work', () => {
+  it('continues editing on the current route and leaves the click pending after the editor closes', async () => {
+    const h = await connectedWorkspace();
+    try {
+      const draft = createDeliveryDraftHarness(h.screen());
+      h.attachDeliveryDraft(draft); draft.render(); await draft.settle();
+      const edit = draft.find((element) => element.props.accessibilityLabel === '배송 순서 편집');
+      assert.ok(edit); (edit.props.onPress as () => void)();
+      await h.settle();
+      const editor = () => draft.find((element) => typeof element.type === 'function' && element.type.name === 'OrderSequenceEditor');
+      assert.ok(editor());
+      (editor()!.props.onDrop as (destinationId: string, index: number) => void)('destination-A', 1);
+      draft.render(); await draft.settle();
+      const draftIds = () => (editor()!.props.orders as ScreenProps['orders']).map(({ id }) => id);
+      assert.deepEqual(draftIds(), [stopASecondId, stopAId]);
+      const reads = h.snapshotReads();
+      h.app.receive(); await h.settle();
+      assert.deepEqual(draftIds(), [stopASecondId, stopAId]);
+      assert.deepEqual(h.snapshotReads(), reads);
+      h.app.click(click); await h.settle();
+      assert.ok(h.app.hasText('현재 작업 계속'));
+      assert.ok(h.app.hasText('알림으로 이동'));
+      const hold = h.app.alert();
+      const holdStyle = hold?.style as { bottom?: number; left?: number; paddingBottom?: number; position?: string; right?: number };
+      assert.equal(holdStyle.position, undefined, 'The shared banner must use the native overlay host placement');
+      assert.equal(holdStyle.paddingBottom, 16);
+      assert.equal((hold?.edges as string[]).includes('bottom'), true);
+      const continueStyle = h.app.pressable('현재 작업 계속')?.style as { minHeight?: number };
+      const moveStyle = h.app.pressable('알림으로 이동')?.style as [{ minHeight?: number }, unknown];
+      assert.equal(continueStyle.minHeight, 44);
+      assert.equal(moveStyle[0].minHeight, 44);
+      assert.equal(h.app.workspace()?.notificationDestination, undefined);
+      assert.deepEqual(h.snapshotReads(), reads);
+      assert.equal(h.screen().isEditing, true);
+      assert.deepEqual(draftIds(), [stopASecondId, stopAId]);
+      assert.deepEqual(h.screen().orders.map(({ id }) => id), [stopAId, stopASecondId]);
+      h.app.pressText('현재 작업 계속'); await h.settle();
+      assert.ok(h.app.hasText('보류된 알림'));
+      assert.equal(h.screen().isEditing, true);
+      assert.deepEqual(draftIds(), [stopASecondId, stopAId]);
+      (editor()!.props.onCancel as () => void)(); await h.settle();
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.ok(h.reads.routes.every((id) => id === routeAId));
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.app.acknowledgements.length, 0);
+      assert.equal(h.app.clearedNativeResponses, 0);
+      assert.ok(h.app.storage.snapshot().some((saved) => saved.includes(notificationId) && saved.includes('pending')));
+      assert.equal(h.businessPosts.length, 0);
+    } finally { h.dispose(); }
+  });
+
+  for (const protection of ['sequence save', 'delivery proof'] as const) {
+    it(`holds destination reads and OPENED through ${protection}, then follows an explicit move when safe`, async () => {
+      const h = await connectedWorkspace();
+      try {
+        if (protection === 'sequence save') {
+          h.screen().onEditingChange(true);
+          h.screen().onSequenceSavingChange(true);
+        } else h.executionLock.current = true;
+        h.workspace.render(); await h.settle();
+        const reads = h.snapshotReads();
+        h.app.click(click); await h.settle();
+        h.app.pressText('알림으로 이동'); await h.settle();
+        assert.equal(h.app.workspace()?.notificationDestination, undefined);
+        assert.deepEqual(h.snapshotReads(), reads);
+        assert.equal(h.app.resolutions.length, 0);
+        assert.equal(h.app.acknowledgements.length, 0);
+        assert.equal(h.screen().nextDeliveryStopId, stopAId);
+        if (protection === 'sequence save') {
+          h.screen().onSequenceSavingChange(false);
+          h.screen().onEditingChange(false);
+        } else h.executionLock.current = false;
+        h.workspace.render(); await h.settle();
+        assert.equal(h.app.resolutions.length, 1);
+        assert.equal(h.screen().nextDeliveryStopId, stopBId);
+        assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+        assert.equal(h.app.clearedNativeResponses, 1);
+        assert.equal(h.businessPosts.length, 0);
+      } finally { h.dispose(); }
+    });
+  }
+
+  it('keeps the real delivery proof and pending photo upload until completion succeeds before moving', async () => {
+    const upload = deferred<void>();
+    const uploads: DriverProofPhotoUpload[] = [];
+    const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, proofApi: {
+      uploadDriverProofPhoto: async (_token: string, input: DriverProofPhotoUpload) => {
+        uploads.push(input); await upload.promise;
+      },
+    } });
+    try {
+      assert.equal(h.workspace.controller?.executionState.phase, 'idle');
+      h.workspace.controller!.confirmDeliveryCompletion();
+      await h.settle();
+      assert.equal(h.workspace.controller?.executionState.phase, 'proof');
+      assert.equal(h.workspace.controller?.executionState.proof?.deliveryStopId, stopAId);
+      assert.equal(h.workspace.controller?.isLocked, true);
+      assert.equal(h.businessPosts.length, 0);
+      const uploading = h.workspace.controller!.submitDeliveryCompletion('2026-10-07T06:42:00.000Z', {
+        fileName: 'synthetic-proof-A.jpg', idempotencyKey: 'proof-media-v1:33333333333343338333000000000001', mimeType: 'image/jpeg', source: 'camera', uri: 'synthetic://proof-A.jpg',
+      });
+      await h.settle();
+      assert.equal(uploads.length, 1);
+      assert.equal(uploads[0]!.deliveryStopId, stopAId);
+      assert.equal(uploads[0]!.routePlanId, routeAId);
+      const reads = h.snapshotReads();
+      h.app.click(click); await h.settle();
+      h.app.pressText('알림으로 이동'); await h.settle();
+      assert.equal(h.workspace.controller?.executionState.phase, 'uploading-proof');
+      assert.equal(h.workspace.controller?.executionState.proof?.deliveryStopId, stopAId);
+      assert.equal(h.workspace.controller?.isLocked, true);
+      assert.equal(h.app.workspace()?.notificationDestination, undefined);
+      assert.deepEqual(h.snapshotReads(), reads);
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.app.acknowledgements.length, 0);
+      assert.equal(h.businessPosts.length, 1);
+      upload.resolve(); await uploading; await h.settle();
+      assert.equal(h.workspace.controller?.executionState.phase, 'idle');
+      assert.equal(h.screen().nextDeliveryStopId, stopBId);
+      assert.equal(h.app.resolutions.length, 1);
+      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+      assert.equal(h.businessPosts.length, 1);
+    } finally { upload.resolve(); h.dispose(); }
+  });
+
+  for (const responseLost of [false, true]) {
+    it(responseLost
+      ? 'retains the camera photo and time after unknown completion then duplicate 200 and refreshes assignment only on close'
+      : 'retains the approved time and camera photo key through notification taps and a failed photo-only retry after normal 202', async () => {
+      const permission = deferred<{ granted: boolean }>();
+      const camera = deferred<{ canceled: boolean; assets: { uri: string; fileName: string; mimeType: string }[] }>();
+      const retryUpload = deferred<void>();
+      const uploads: DriverProofPhotoUpload[] = [];
+      const confirmedPhotos: Omit<DriverProofPhotoUpload, 'routePlanId' | 'deliveryStopId'>[] = [];
+      let pendingSubmit: Promise<void> | undefined;
+      const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true, loseStopCompletionResponse: responseLost, proofApi: {
+        uploadDriverProofPhoto: async (_token: string, photo: DriverProofPhotoUpload) => {
+          uploads.push(photo);
+          if (uploads.length === 1) throw new Error('Synthetic isolated upload failure');
+          await retryUpload.promise;
+        },
+      } });
+      const renderProof = createProofModalHarness({
+        requestCameraPermissionsAsync: () => permission.promise,
+        launchCameraAsync: () => camera.promise,
+      });
+      type Element = { type: unknown; props: Record<string, unknown> };
+      function nodes(node: unknown): Element[] {
+        if (Array.isArray(node)) return node.flatMap(nodes);
+        if (node === null || typeof node !== 'object' || !('props' in node)) return [];
+        const element = node as Element;
+        return [element, ...nodes(element.props.children)];
+      }
+      function proofTree() {
+        const overlay = h.workspace.find((element) => typeof element.type === 'function' && element.type.name === 'DeliveryExecutionOverlay');
+        assert.ok(overlay, 'Workspace must render the production completion overlay');
+        const modal = (overlay.type as (props: unknown) => Element)(overlay.props);
+        assert.equal(modal.type, 'DeliveryProofModal');
+        const props = modal.props as Parameters<typeof import('../ui/driver/DeliveryProofModal')['DeliveryProofModal']>[0];
+        return renderProof({ ...props, onConfirm: (...args) => {
+          if (args[1] !== null) confirmedPhotos.push(args[1]);
+          pendingSubmit = props.onConfirm(...args); return pendingSubmit;
+        } });
+      }
+      function previewUri(tree: unknown) {
+        return (nodes(tree).find(({ type }) => type === 'Image')?.props.source as { uri?: string } | undefined)?.uri;
+      }
+      function pressConfirm(tree: unknown) {
+        const button = nodes(tree).find(({ type, props }) => type === 'Pressable'
+          && nodes(props.children).some((child) => child.props.children === '완료 확정'));
+        assert.ok(button); (button.props.onPress as () => void)();
+      }
+      try {
+        h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+        let tree = proofTree();
+        (nodes(tree).find(({ type }) => type === 'TextInput')!.props.onChangeText as (value: string) => void)('1542');
+        h.app.click(click); await h.settle(); tree = proofTree();
+        assert.equal(tree.type, 'Modal');
+        assert.ok(nodes(tree).some((element) => element.props.accessibilityRole === 'alert'));
+        assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
+        assert.equal(h.app.resolutions.length, 0);
+        h.app.pressText('현재 작업 계속'); await h.settle(); tree = proofTree();
+        (nodes(tree).find(({ props }) => props.label === '사진 촬영')!.props.onPress as () => void)();
+        await h.settle(); h.app.click(click); await h.settle();
+        assert.equal(h.app.resolutions.length, 0);
+        assert.equal(nodes(proofTree()).find(({ type }) => type === 'TextInput')!.props.value, '15:42');
+        permission.resolve({ granted: true }); await h.settle();
+        h.app.foreground(); h.app.click(click); await h.settle();
+        camera.resolve({ canceled: false, assets: [{ uri: 'file:///connected-camera-proof.jpg', fileName: 'isolated-camera.jpg', mimeType: 'image/jpeg' }] });
+        await h.settle(); tree = proofTree();
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        h.app.pressText('보류된 알림'); await h.settle();
+        h.app.pressText('알림으로 이동'); await h.settle();
+        assert.equal(h.app.resolutions.length, 0);
+        pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
+        const submittedIdentity = h.workspace.controller!.executionState.proof!.completionIdentity;
+        assert.ok(submittedIdentity);
+        assert.equal(h.committedCompletions.size, 1);
+        assert.equal(h.businessPosts.length, 1);
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
+        const completionPostCount = responseLost ? 2 : 1;
+        if (responseLost) {
+          assert.equal(h.workspace.controller!.executionState.proof!.completedAt, null);
+          assert.equal(uploads.length, 0);
+          const cancel = nodes(tree).find(({ type, props }) => type === 'Pressable'
+            && nodes(props.children).some((child) => child.props.children === '취소'));
+          assert.equal(cancel?.props.disabled, true);
+          (tree.props.onRequestClose as () => void)();
+          h.workspace.controller!.closeProofDelivery();
+          h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+          assert.deepEqual(h.workspace.controller!.executionState.proof!.completionIdentity, submittedIdentity);
+          assert.equal(h.app.resolutions.length, 0);
+          const unknownDialog = h.workspace.controller!.dialog as unknown as Element;
+          (unknownDialog.props.onDismiss as () => void)(); await h.settle();
+          pressConfirm(proofTree()); await pendingSubmit; await h.settle(); tree = proofTree();
+        }
+        const acceptedAt = h.workspace.controller!.executionState.proof!.completedAt;
+        assert.ok(acceptedAt);
+        assert.equal(acceptedAt, submittedIdentity.occurredAt);
+        assert.equal(h.businessPosts.length, completionPostCount);
+        assert.equal(h.committedCompletions.size, 1);
+        assert.equal(h.workspace.controller!.executionState.phase, 'proof');
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        assert.equal(nodes(tree).find(({ type }) => type === 'TextInput')!.props.editable, false);
+        const errorDialog = h.workspace.controller!.dialog as unknown as Element;
+        (errorDialog.props.onDismiss as () => void)(); await h.settle();
+        if (responseLost) {
+          tree = proofTree();
+          assert.equal(h.workspace.controller!.executionState.proof!.requiresAssignmentRefresh, true);
+          assert.equal(uploads.length, 0);
+          assert.equal(h.app.resolutions.length, 0);
+          assert.equal(confirmedPhotos.length, 2);
+          assert.equal(confirmedPhotos[1]!.idempotencyKey, confirmedPhotos[0]!.idempotencyKey);
+          assert.equal(confirmedPhotos[1]!.uri, confirmedPhotos[0]!.uri);
+          assert.ok(!nodes(tree).some(({ props }) => props.children === '완료 확정'));
+          assert.ok(!nodes(tree).some(({ props }) => ['사진 촬영', '앨범에서 선택'].includes(String(props.label))));
+          const readsBeforeClose = h.snapshotReads();
+          const close = nodes(tree).find(({ type, props }) => type === 'Pressable'
+            && nodes(props.children).some((child) => child.props.children === '닫고 배정 확인'));
+          assert.ok(close);
+          (close.props.onPress as () => void)();
+          await h.settle();
+          assert.equal(h.workspace.controller!.executionState.phase, 'idle');
+          assert.equal(h.screen().nextDeliveryStopId, stopBId);
+          assert.equal(h.app.resolutions.length, 1);
+          assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+          assert.ok(h.reads.routes.length > readsBeforeClose.routes.length, 'Safe close must return through current-assignment reads');
+          assert.equal(uploads.length, 0);
+          assert.equal(h.businessPosts.length, 2);
+          assert.equal(JSON.parse(String(h.businessPosts[0]!.body)).occurredAt, acceptedAt);
+          assert.deepEqual(JSON.parse(String(h.businessPosts[1]!.body)), JSON.parse(String(h.businessPosts[0]!.body)));
+          return;
+        }
+        assert.equal(uploads.length, 1);
+        pressConfirm(proofTree()); await h.settle();
+        assert.equal(h.workspace.controller!.executionState.phase, 'uploading-proof');
+        h.app.click(click); await h.settle(); tree = proofTree();
+        assert.equal(previewUri(tree), 'file:///connected-camera-proof.jpg');
+        assert.equal(h.workspace.controller!.executionState.proof!.completedAt, acceptedAt);
+        assert.equal(h.businessPosts.length, completionPostCount);
+        assert.equal(h.app.resolutions.length, 0);
+        retryUpload.resolve(); await pendingSubmit; await h.settle();
+        assert.equal(h.workspace.controller!.executionState.phase, 'idle');
+        assert.equal(h.screen().nextDeliveryStopId, stopBId);
+        assert.equal(h.app.resolutions.length, 1);
+        assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+        assert.equal(h.businessPosts.length, completionPostCount);
+        assert.equal(uploads.length, 2);
+        assert.match(uploads[0]!.idempotencyKey, /^proof-media-v1:[a-f0-9]{32}$/u);
+        assert.equal(uploads[1]!.idempotencyKey, uploads[0]!.idempotencyKey);
+        assert.deepEqual(uploads.map(({ deliveryStopId, routePlanId, uri }) => ({ deliveryStopId, routePlanId, uri })), [
+          { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
+          { deliveryStopId: stopAId, routePlanId: routeAId, uri: 'file:///connected-camera-proof.jpg' },
+        ]);
+        assert.equal(JSON.parse(String(h.businessPosts[0]!.body)).occurredAt, acceptedAt);
+      } finally { permission.resolve({ granted: true }); camera.resolve({ canceled: true, assets: [] }); retryUpload.resolve(); h.dispose(); }
+  });
+  }
+
+  it('retires only the locally completed N06 target and loads the remaining server stop after proof succeeds', async () => {
+    let delivered = false;
+    const h = await connectedWorkspace({ realExecution: true, syntheticStopCompletion: true,
+      resolver: async () => ({ notificationId, destination: {
+        type: 'EXECUTION', executionContextId: contextAId, routePlanId: routeAId, targetStopId: stopAId,
+      } }),
+      onStopCompletion: () => { delivered = true; },
+      loadRoute: async (routePlanId) => routePlanId === routeBId ? routeB : delivered ? {
+        ...routeA, nextDeliveryStopId: stopASecondId,
+        orders: routeA.orders.map((order) => order.id === stopAId ? { ...order, status: 'DELIVERED' } : order),
+      } : routeA,
+      proofApi: { uploadDriverProofPhoto: async () => undefined },
+    });
+    try {
+      h.app.click(click); await h.settle();
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+      h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+      await h.workspace.controller!.submitDeliveryCompletion('2026-10-07T06:42:00.000Z', {
+        fileName: 'targeted-proof.jpg', idempotencyKey: 'proof-media-v1:33333333333343338333000000000002', mimeType: 'image/jpeg', source: 'library', uri: 'file:///targeted-proof.jpg',
+      });
+      await h.settle();
+      assert.equal(h.workspace.controller!.executionState.phase, 'idle');
+      assert.equal(h.screen().nextDeliveryStopId, stopASecondId);
+      assert.equal(h.screen().orders.find(({ id }) => id === stopAId)!.status, 'DELIVERED');
+      assert.equal(h.businessPosts.length, 1);
+    } finally { h.dispose(); }
+  });
+
+  for (const status of [403, 409, 410]) {
+    it(`resolves an explicitly deferred destination again and handles HTTP ${status} without losing the current route`, async () => {
+      const initial = deferred<DriverNotificationResolution>();
+      let attempts = 0;
+      const h = await connectedWorkspace({ resolver: async () => {
+        attempts += 1;
+        if (attempts === 1) return initial.promise;
+        throw new DriverOperationalApiError(status, status === 410 ? 'EXPIRED' : 'ASSIGNMENT_CHANGED');
+      } });
+      try {
+        h.app.click(click); await h.app.settle();
+        assert.equal(h.app.resolutions.length, 1);
+        h.executionLock.current = true; h.workspace.render(); await h.settle();
+        const reads = h.snapshotReads();
+        initial.resolve(destination); await h.settle();
+        assert.equal(h.app.workspace()?.notificationDestination, undefined);
+        assert.deepEqual(h.snapshotReads(), reads);
+        h.app.pressText('알림으로 이동'); await h.settle();
+        assert.equal(h.app.resolutions.length, 1);
+        h.executionLock.current = false; h.workspace.render(); await h.settle();
+        assert.equal(h.app.resolutions.length, 2);
+        assert.match(String(h.app.find('Notice')?.props.message), /취소|재배정|만료/u);
+        assert.equal(h.screen().nextDeliveryStopId, stopAId);
+        assert.ok(h.reads.routes.every((id) => id === routeAId));
+        assert.equal(h.app.acknowledgements.length, 0);
+        assert.equal(h.app.clearedNativeResponses, 0);
+        assert.equal(h.businessPosts.length, 0);
+      } finally { initial.resolve(destination); h.dispose(); }
+    });
+  }
+
+  it('receives foreground notifications without refreshing routes, discarding edits, or sending business commands', async () => {
+    const h = await connectedWorkspace();
+    try {
+      h.screen().onEditingChange(true); h.workspace.render(); await h.settle();
+      const reads = h.snapshotReads();
+      const refreshRequestKey = h.app.workspace()?.refreshRequestKey;
+      h.app.receive(); await h.settle();
+      assert.deepEqual(h.snapshotReads(), reads);
+      assert.equal(h.app.workspace()?.refreshRequestKey, refreshRequestKey);
+      assert.equal(h.screen().isEditing, true);
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.app.acknowledgements.length, 0);
+      assert.equal(h.businessPosts.length, 0);
+    } finally { h.dispose(); }
+  });
+
+  it('blocks a delayed GET synchronously when editing starts before React commits the editing state', async () => {
+    const pending = deferred<DriverDeliveryRoute>();
+    const started = deferred<void>();
+    let refreshing = false;
+    const h = await connectedWorkspace({ loadRoute: async (id) => {
+      if (refreshing && id === routeAId) { started.resolve(); return pending.promise; }
+      return id === routeAId ? routeA : routeB;
+    } });
+    try {
+      const draft = createDeliveryDraftHarness(h.screen());
+      h.attachDeliveryDraft(draft); draft.render(); await draft.settle();
+      refreshing = true;
+      h.screen().onRefresh(); h.workspace.render(); await h.workspace.settle();
+      assert.ok(h.reads.routes.length > 1, 'The delayed refresh GET must have started');
+      await started.promise;
+      const edit = draft.find((element) => element.props.accessibilityLabel === '배송 순서 편집');
+      assert.ok(edit); (edit.props.onPress as () => void)();
+      // Resolve before rendering Workspace: an effect-only guard observes the previous false state.
+      pending.resolve({ ...routeA, orders: [...routeA.orders].reverse(), nextDeliveryStopId: stopASecondId });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await h.settle();
+      assert.equal(h.screen().isEditing, true);
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.deepEqual(h.screen().orders.map(({ id }) => id), [stopAId, stopASecondId]);
+      const editor = draft.find((element) => typeof element.type === 'function' && element.type.name === 'OrderSequenceEditor');
+      assert.ok(editor);
+      assert.deepEqual((editor.props.orders as ScreenProps['orders']).map(({ id }) => id), [stopAId, stopASecondId]);
+      assert.equal(h.businessPosts.length, 0);
+    } finally { pending.resolve(routeA); h.dispose(); }
+  });
+
+  it('protects an actual completion confirmation dialog and requires an explicit notification choice after cancel', async () => {
+    const h = await connectedWorkspace({ realExecution: true });
+    try {
+      h.workspace.controller!.confirmDeliveryCompletion(); await h.settle();
+      assert.equal(h.workspace.controller?.executionState.proof?.deliveryStopId, stopAId);
+      assert.equal(h.workspace.controller?.executionState.phase, 'proof');
+      assert.equal(h.workspace.controller?.isLocked, true);
+      const reads = h.snapshotReads();
+      h.app.click(click); await h.settle();
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.app.workspace()?.notificationDestination, undefined);
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.deepEqual(h.snapshotReads(), reads);
+      assert.equal(h.app.acknowledgements.length, 0);
+      h.workspace.controller!.closeProofDelivery(); await h.settle();
+      assert.equal(h.workspace.controller?.dialog, null);
+      assert.equal(h.workspace.controller?.isLocked, false);
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.equal(h.businessPosts.length, 0);
+      h.app.pressText('알림으로 이동'); await h.settle();
+      assert.equal(h.screen().nextDeliveryStopId, stopBId);
+      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+      assert.equal(h.businessPosts.length, 0);
+    } finally { h.dispose(); }
+  });
+
+  it('clears the first click storage error before a second click can expose and acknowledge its destination', async () => {
+    const values = new Map<string, string>();
+    let failed = false;
+    const visibleAcknowledgements: boolean[] = [];
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        const parsed = JSON.parse(value) as { pending?: { notificationId: string }[] };
+        if (!failed && parsed.pending?.some((item) => item.notificationId === notificationId)) {
+          failed = true; throw new Error('Synthetic first-click storage failure');
+        }
+        values.set(key, value);
+      },
+      removeItem: async (key: string) => { values.delete(key); },
+      snapshot: () => [...values.values()],
+    };
+    const h = await connectedWorkspace({ appStorage: storage, acknowledge: async () => {
+      visibleAcknowledgements.push(h.app.workspace()?.isVisible === true);
+    } });
+    try {
+      h.app.click(click); await h.settle();
+      assert.ok(h.app.find('Notice'));
+      assert.equal(h.app.workspace()?.isVisible, false);
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.app.acknowledgements.length, 0);
+      h.app.click(click); await h.app.settle();
+      assert.equal(h.app.find('Notice'), undefined);
+      assert.equal(h.app.workspace()?.isVisible, true);
+      assert.equal(h.app.workspace()?.notificationDestination?.routePlanId, routeBId);
+      assert.equal(h.app.acknowledgements.length, 0);
+      await h.settle();
+      assert.equal(h.screen().nextDeliveryStopId, stopBId);
+      assert.deepEqual(visibleAcknowledgements, [true]);
+      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+      assert.equal(h.businessPosts.length, 0);
+    } finally { h.dispose(); }
+  });
+
+  it('releases synchronous protection after an empty retry queue finishes before the refresh render', async () => {
+    const h = await connectedWorkspace();
+    try {
+      h.screen().onRefresh();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await h.settle();
+      h.app.click(click); await h.settle();
+      assert.equal(h.app.resolutions.length, 1);
+      assert.equal(h.app.hasText('현재 작업 계속'), false);
+      assert.equal(h.screen().nextDeliveryStopId, stopBId);
+      assert.equal(h.app.acknowledgements.filter(({ kind }) => kind === 'OPENED').length, 1);
+      assert.equal(h.businessPosts.length, 0);
+    } finally { h.dispose(); }
+  });
+
+  it('accepts a legacy handoff click only after the refreshed current route is visible', async () => {
+    const h = await connectedWorkspace();
+    const pendingCount = () => h.app.storage.snapshot().reduce((count, value) => {
+      const stored = JSON.parse(value) as { pending?: unknown[] };
+      return count + (stored.pending?.length ?? 0);
+    }, 0);
+    try {
+      h.app.click({ kind: 'bundle_handoff', notificationId: 'legacy-id', handoffRequestId: 'handoff-id' });
+      await h.app.settle();
+      assert.equal(h.app.workspace()?.notificationRefreshId, 'legacy-id');
+      assert.equal(pendingCount(), 1);
+      assert.equal(h.app.clearedNativeResponses, 0);
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.app.acknowledgements.length, 0);
+      await h.settle();
+      assert.equal(h.app.workspace()?.isVisible, true);
+      assert.equal(h.screen().nextDeliveryStopId, stopAId);
+      assert.ok(h.reads.routes.every((id) => id === routeAId));
+      assert.equal(pendingCount(), 0);
+      assert.equal(h.app.clearedNativeResponses, 1);
+      assert.equal(h.app.resolutions.length, 0);
+      assert.equal(h.app.acknowledgements.length, 0);
+      assert.equal(h.businessPosts.length, 0);
+    } finally { h.dispose(); }
+  });
+});

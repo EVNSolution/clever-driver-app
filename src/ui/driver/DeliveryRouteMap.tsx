@@ -1,5 +1,6 @@
 import {
   Camera,
+  type CameraRef,
   GeoJSONSource,
   Images,
   Layer,
@@ -8,7 +9,7 @@ import {
   UserLocation,
   type SymbolLayerSpecification,
 } from '@maplibre/maplibre-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -26,7 +27,15 @@ import {
   type ServerDeliveryRouteGeometry,
 } from '../../domain/delivery/deliveryPlan';
 
-const DESTINATION_PIN_IMAGE = require('../../../assets/map/destination-pin.png') as number;
+// The DSV web destination pin (clever-dsv-web DestinationMarkers.ts): lucide MapPin outline, white 3.2 stroke,
+// state colours planned #0066cc, current #1f8b4c, completed #8e8e93 with a check, failed #d92d20 with an x.
+// The PNGs were drawn with the web's canvas code; the stop number stays a text layer over the pin head.
+const DESTINATION_PIN_IMAGES = {
+  'delivery-pin-completed': require('../../../assets/map/destination-pin-completed.png') as number,
+  'delivery-pin-current': require('../../../assets/map/destination-pin-current.png') as number,
+  'delivery-pin-failed': require('../../../assets/map/destination-pin-failed.png') as number,
+  'delivery-pin-planned': require('../../../assets/map/destination-pin-planned.png') as number,
+};
 const DEPOT_PIN_IMAGE = require('../../../assets/map/depot-pin.png') as number;
 const COMPLETED_MAP_COLOR = '#98a2b3';
 
@@ -34,7 +43,14 @@ const DESTINATION_MARKER_LAYOUT = {
   'icon-allow-overlap': true,
   'icon-anchor': 'bottom',
   'icon-ignore-placement': true,
-  'icon-image': 'delivery-destination-pin-image',
+  'icon-image': [
+    'match',
+    ['get', 'markerState'],
+    'current', 'delivery-pin-current',
+    'completed', 'delivery-pin-completed',
+    'failed', 'delivery-pin-failed',
+    'delivery-pin-planned',
+  ],
   'icon-optional': false,
   'icon-size': 0.62,
   'symbol-sort-key': ['get', 'sortKey'],
@@ -43,23 +59,16 @@ const DESTINATION_MARKER_LAYOUT = {
   'text-field': ['get', 'label'],
   'text-font': ['Noto Sans Bold'],
   'text-ignore-placement': true,
-  'text-offset': [0, -2],
+  // The web draws the number at the pin head, 26 px above the tip of the 52 px pin, at 17 px. Both scale by 0.62.
+  'text-offset': [0, -1.53],
   'text-optional': false,
-  'text-size': 10,
+  'text-size': ['match', ['length', ['get', 'label']], 1, 10.5, 2, 9.9, 8],
 } satisfies SymbolLayerSpecification['layout'];
 
 const DESTINATION_MARKER_PAINT = {
-  'icon-color': [
-    'case',
-    ['==', ['get', 'markerState'], 'current'], '#12b76a',
-    ['==', ['get', 'markerState'], 'completed'], COMPLETED_MAP_COLOR,
-    '#0b57d0',
-  ],
-  'icon-halo-color': '#ffffff',
-  'icon-halo-width': 1,
   'text-color': '#ffffff',
   'text-halo-color': 'rgba(0, 0, 0, 0.32)',
-  'text-halo-width': 0.6,
+  'text-halo-width': 0.45,
 } satisfies SymbolLayerSpecification['paint'];
 
 const DEPOT_MARKER_LAYOUT = {
@@ -77,10 +86,14 @@ const MAP_PADDING = { bottom: 44, left: 34, right: 34, top: 44 } as const;
 const FALLBACK_BOUNDS = [126.91, 37.48, 127.16, 37.66] as const;
 
 type DeliveryRouteMapProps = {
+  /** Map space covered by a bottom sheet, kept clear when fitting and focusing. */
+  bottomInset?: number;
   currentDeliveryStopId?: string | null;
   depotCoordinate?: DeliveryCoordinate | null;
   interactionMode: 'explore' | 'pan-only';
+  onSelectDestination?(destinationId: string): void;
   orders: DeliveryOrder[];
+  selectedDestinationId?: string | null;
   serverRouteGeometry: ServerDeliveryRouteGeometry | null;
   style?: StyleProp<ViewStyle>;
 };
@@ -89,14 +102,18 @@ type MapLoadState = 'loading' | 'ready' | 'error';
 type LocationPermission = 'idle' | 'requesting' | 'granted' | 'denied';
 
 export function DeliveryRouteMap({
+  bottomInset = 0,
   currentDeliveryStopId = null,
   depotCoordinate = null,
   interactionMode,
+  onSelectDestination,
   orders,
+  selectedDestinationId = null,
   serverRouteGeometry,
   style,
 }: DeliveryRouteMapProps) {
   const canExplore = interactionMode === 'explore';
+  const cameraRef = useRef<CameraRef>(null);
   const [mapLoadState, setMapLoadState] = useState<MapLoadState>('loading');
   const [locationPermission, setLocationPermission] =
     useState<LocationPermission>(canExplore ? 'requesting' : 'idle');
@@ -106,9 +123,24 @@ export function DeliveryRouteMap({
       serverRouteGeometry,
       depotCoordinate,
       currentDeliveryStopId,
+      selectedDestinationId,
     ),
-    [currentDeliveryStopId, depotCoordinate, orders, serverRouteGeometry],
+    [currentDeliveryStopId, depotCoordinate, orders, selectedDestinationId, serverRouteGeometry],
   );
+  const selectedCoordinate = mapModel.markers.features.find(
+    ({ properties }) => properties.destinationId === selectedDestinationId,
+  )?.geometry.coordinates;
+  const selectedLongitude = selectedCoordinate?.[0];
+  const selectedLatitude = selectedCoordinate?.[1];
+
+  useEffect(() => {
+    if (selectedLongitude === undefined || selectedLatitude === undefined) return;
+    cameraRef.current?.easeTo({
+      center: [selectedLongitude, selectedLatitude],
+      duration: 350,
+      padding: { ...MAP_PADDING, bottom: MAP_PADDING.bottom + bottomInset },
+    });
+  }, [bottomInset, selectedLatitude, selectedLongitude]);
 
   useEffect(() => {
     if (!canExplore || locationPermission !== 'requesting') return undefined;
@@ -144,17 +176,18 @@ export function DeliveryRouteMap({
         touchZoom={canExplore}
       >
         <Camera
-          initialViewState={{ bounds: mapModel.bounds, padding: MAP_PADDING }}
+          initialViewState={{
+            bounds: mapModel.bounds,
+            padding: { ...MAP_PADDING, bottom: MAP_PADDING.bottom + bottomInset },
+          }}
           maxZoom={17}
           minZoom={4}
+          ref={cameraRef}
         />
         <Images
           images={{
+            ...DESTINATION_PIN_IMAGES,
             'delivery-depot-pin-image': DEPOT_PIN_IMAGE,
-            'delivery-destination-pin-image': {
-              sdf: true,
-              source: DESTINATION_PIN_IMAGE,
-            },
           }}
         />
         {mapModel.upcomingGeometry !== null ? (
@@ -211,7 +244,14 @@ export function DeliveryRouteMap({
             />
           </GeoJSONSource>
         ) : null}
-        <GeoJSONSource data={mapModel.markers} id="delivery-marker-source">
+        <GeoJSONSource
+          data={mapModel.markers}
+          id="delivery-marker-source"
+          onPress={onSelectDestination === undefined ? undefined : (event) => {
+            const destinationId = event.nativeEvent.features[0]?.properties?.destinationId;
+            if (typeof destinationId === 'string') onSelectDestination(destinationId);
+          }}
+        >
           <Layer
             id="delivery-destination-marker"
             layout={DESTINATION_MARKER_LAYOUT}
@@ -274,6 +314,7 @@ function buildDeliveryMapModel(
   serverRouteGeometry: ServerDeliveryRouteGeometry | null,
   depotCoordinate: DeliveryCoordinate | null,
   currentDeliveryStopId: string | null,
+  selectedDestinationId: string | null,
 ): {
   bounds: [number, number, number, number];
   completedGeometry: ServerDeliveryRouteGeometry | null;
@@ -335,7 +376,8 @@ function buildDeliveryMapModel(
           destinationId: point.destinationId,
           label: point.label,
           markerState: point.markerState,
-          sortKey: -point.sortOrder,
+          // A selected pin draws above every other pin.
+          sortKey: point.destinationId === selectedDestinationId ? 1 : -point.sortOrder,
         },
       })),
     },
