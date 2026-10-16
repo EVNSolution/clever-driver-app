@@ -37,6 +37,8 @@ type DeliveryMapScreenProps = {
   isReadOnly: boolean;
   lastUpdatedAt: Date | null;
   nextDeliveryStopId: string | null;
+  /** Opens 주문 교환 with the shown destination first. */
+  onOpenExchange?(destinationId: string): void;
   onRefresh(): void;
   orders: DeliveryOrder[];
   refreshing: boolean;
@@ -61,6 +63,7 @@ export function DeliveryMapScreen({
   isReadOnly,
   lastUpdatedAt,
   nextDeliveryStopId,
+  onOpenExchange,
   onRefresh,
   orders,
   refreshing,
@@ -288,6 +291,17 @@ export function DeliveryMapScreen({
           showsVerticalScrollIndicator={false}
           style={styles.deliveryPanel}
         >
+          {onOpenExchange === undefined || isReadOnly || shownDestinationId === null ? null : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => onOpenExchange(shownDestinationId)}
+              style={({ pressed }) => [styles.exchangeButton, pressed && styles.exchangeButtonPressed]}
+            >
+              <Text maxFontSizeMultiplier={1.3} style={styles.exchangeButtonText}>
+                이 배송지 주문 교환
+              </Text>
+            </Pressable>
+          )}
           {destinationOrders.length === 0 ? null : (
             <View style={styles.conditionSection}>
               <Text maxFontSizeMultiplier={1.3} style={styles.conditionSectionTitle}>
@@ -519,6 +533,22 @@ const styles = StyleSheet.create({
   },
   deliveryPanel: {
     flex: 1,
+  },
+  exchangeButton: {
+    alignItems: 'center',
+    borderColor: '#b2ccff',
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingVertical: 12,
+  },
+  exchangeButtonPressed: {
+    backgroundColor: '#eff4ff',
+  },
+  exchangeButtonText: {
+    color: '#0b57d0',
+    fontSize: 14,
+    fontWeight: '800',
   },
   deliveryPanelContent: {
     paddingBottom: 24,

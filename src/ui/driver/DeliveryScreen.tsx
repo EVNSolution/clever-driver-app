@@ -82,6 +82,8 @@ type DeliveryScreenProps = {
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
+  /** Opens 주문 교환 with one destination first. */
+  onOpenExchangeForDestination?(destinationId: string): void;
   onLoadDestinationVisits?(destinationId: string, cursor: string | null): Promise<DriverDestinationVisitPage>;
   onReadDriverMessage(messageId: string): Promise<void>;
   onRefresh(): void;
@@ -115,6 +117,7 @@ export function DeliveryScreen({
   onAcknowledgeTimeConstraint,
   onEditingChange,
   onOpenDeliverySpace,
+  onOpenExchangeForDestination,
   onLoadDestinationVisits,
   onReadDriverMessage,
   onRefresh,
@@ -467,6 +470,13 @@ export function DeliveryScreen({
             () => onAcknowledgeTimeConstraint(deliveryStopId),
           )}
           onClose={() => setSelectedDestinationId(null)}
+          {...(onOpenExchangeForDestination === undefined ? {} : {
+            onOpenExchange: () => {
+              const destinationId = selectedDestinationGroup.destinationId;
+              setSelectedDestinationId(null);
+              onOpenExchangeForDestination(destinationId);
+            },
+          })}
           {...(onLoadDestinationVisits === undefined ? {} : {
             onOpenVisitHistory: () => {
               setVisitHistory({

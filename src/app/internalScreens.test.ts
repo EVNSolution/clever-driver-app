@@ -614,6 +614,13 @@ describe('authenticated driver screens', () => {
     assert.match(screenSource, /<GestureDetector gesture=\{sheetDrag\}>/u);
     assert.match(screenSource, /배송 정보 펼치기/u);
     assert.match(screenSource, /지금 가는 배송지 보기/u);
+    // 주문 교환 is reachable from the destination itself, with that destination listed first.
+    assert.match(screenSource, /이 배송지 주문 교환/u);
+    const spaceSource = readFileSync(join(appDirectory, '../ui/driver/DeliverySpaceScreen.tsx'), 'utf8');
+    assert.match(spaceSource, /focusDestinationId/u);
+    assert.match(spaceSource, /선택한 배송지/u);
+    const sheetSource = readFileSync(join(appDirectory, '../ui/driver/DestinationNotesSheet.tsx'), 'utf8');
+    assert.match(sheetSource, /onOpenExchange === undefined \|\| isReadOnly/u);
     // The sheet drops to a minimum card: number, name, status, orders, boxes and completion time only.
     assert.match(screenSource, /type SheetSnap = 'mini' \| 'summary' \| 'open'/u);
     assert.match(screenSource, /styles\.miniSummary/u);
