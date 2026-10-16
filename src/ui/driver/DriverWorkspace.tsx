@@ -45,6 +45,7 @@ import {
 import {
   DriverRouteApiError,
   loadDriverCompletedRouteHistory,
+  loadDriverDestinationVisits,
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
   updateDriverDeliveryOrder,
@@ -1149,6 +1150,11 @@ export function DriverWorkspace({
                 onRefresh={refreshRoute}
                 onSequenceSavingChange={changeSequenceSaving}
                 onWorkProtectionChange={reportDeliveryInput}
+                onLoadDestinationVisits={(destinationId, cursor) => loadDriverDestinationVisits(
+                  authSession.accessToken,
+                  destinationId,
+                  cursor,
+                )}
                 onSaveDestinationNotes={saveDestinationNotes}
                 onSaveDeliveryOrder={saveDeliveryOrder}
                 orders={orders}

@@ -559,6 +559,46 @@ export async function loadDriverCompletedRouteHistory(
     }));
 }
 
+export type DriverDestinationNoteField =
+  | 'lunchEntryStatus'
+  | 'lunchTimeRange'
+  | 'memo'
+  | 'openTime'
+  | 'requiredArrivalTime';
+
+export type DriverDestinationVisit = {
+  boxCount: number;
+  changedFields: DriverDestinationNoteField[];
+  deliveryDate: string;
+  notes: Record<DriverDestinationNoteField, string | null>;
+  orderCount: number;
+  orderNotes: string[];
+  outcome: 'DELIVERED' | 'FAILED' | 'PARTIAL';
+  routeName: string;
+  routePlanId: string;
+  visitedAt: string | null;
+};
+
+export type DriverDestinationVisitPage = {
+  nextCursor: string | null;
+  visits: DriverDestinationVisit[];
+};
+
+/** The driver's own visits to a destination, newest first, 20 per page, with the notes of each visit. */
+export async function loadDriverDestinationVisits(
+  accountAccessToken: string,
+  destinationId: string,
+  cursor: string | null,
+): Promise<DriverDestinationVisitPage> {
+  const query = cursor === null ? '' : `?cursor=${encodeURIComponent(cursor)}`;
+  const envelope = await requestJson<{
+    data: DriverDestinationVisitPage | null;
+    error?: { code: string; message: string } | null;
+  }>(`/driver/destinations/${encodeURIComponent(destinationId)}/visits${query}`, accountAccessToken);
+  if (envelope.data === null) throwEnvelopeError(envelope.error);
+  return envelope.data;
+}
+
 async function requestJson<T>(
   path: string,
   accessToken: string,

@@ -21,6 +21,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import type {
   DriverCompletedRouteHistory,
+  DriverDestinationVisitPage,
   DriverRouteExecutionStatus,
 } from '../../api/dsvDriverRoute';
 import {
@@ -56,6 +57,7 @@ import {
 import { DriverRefreshControl } from './DriverRefreshControl';
 import { DeliveryRouteMap } from './DeliveryRouteMap';
 import { DestinationNotesSheet } from './DestinationNotesSheet';
+import { DestinationVisitHistory } from './DestinationVisitHistory';
 
 const EDITOR_ORDER_ROW_BASE_HEIGHT = 84;
 const EDITOR_ORDER_ROW_GAP = 6;
@@ -80,6 +82,7 @@ type DeliveryScreenProps = {
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onEditingChange(isEditing: boolean): void;
   onOpenDeliverySpace(): void;
+  onLoadDestinationVisits?(destinationId: string, cursor: string | null): Promise<DriverDestinationVisitPage>;
   onReadDriverMessage(messageId: string): Promise<void>;
   onRefresh(): void;
   onSequenceSavingChange(isSaving: boolean): void;
@@ -112,6 +115,7 @@ export function DeliveryScreen({
   onAcknowledgeTimeConstraint,
   onEditingChange,
   onOpenDeliverySpace,
+  onLoadDestinationVisits,
   onReadDriverMessage,
   onRefresh,
   onSequenceSavingChange,
@@ -132,6 +136,8 @@ export function DeliveryScreen({
   const [isSequenceSaving, setIsSequenceSaving] = useState(false);
   const [selectedDestinationId, setSelectedDestinationId] =
     useState<string | null>(null);
+  const [visitHistory, setVisitHistory] =
+    useState<{ destinationId: string; destinationName: string } | null>(null);
   const totalBoxes = orders.reduce(
     (sum, order) => sum + order.shippedBoxes,
     0,
@@ -396,11 +402,19 @@ export function DeliveryScreen({
         ) : null}
         {destinationGroups.length === 0 && historySummary !== undefined
           ? completedRouteDestinations(historySummary.stops).map((destination, index, all) => (
-            <View
+            <Pressable
+              accessibilityLabel={`${destination.destinationName} 방문 이력 보기`}
+              accessibilityRole="button"
+              disabled={onLoadDestinationVisits === undefined}
               key={destination.destinationId}
-              style={[
+              onPress={() => setVisitHistory({
+                destinationId: destination.destinationId,
+                destinationName: destination.destinationName,
+              })}
+              style={({ pressed }) => [
                 styles.orderRow,
                 index < all.length - 1 && styles.orderRowDivider,
+                pressed && styles.groupRowPressed,
               ]}
             >
               <View style={[styles.sequenceBadge, styles.sequenceBadgeCompleted]}>
@@ -415,7 +429,7 @@ export function DeliveryScreen({
                 {destination.destinationName}
                 {destination.completionTime === null ? '' : ` (${destination.completionTime})`}
               </Text>
-            </View>
+            </Pressable>
           ))
           : null}
         {destinationGroups.map((group, index) => {
@@ -453,6 +467,15 @@ export function DeliveryScreen({
             () => onAcknowledgeTimeConstraint(deliveryStopId),
           )}
           onClose={() => setSelectedDestinationId(null)}
+          {...(onLoadDestinationVisits === undefined ? {} : {
+            onOpenVisitHistory: () => {
+              setVisitHistory({
+                destinationId: selectedDestinationGroup.destinationId,
+                destinationName: selectedDestinationGroup.destinationName,
+              });
+              setSelectedDestinationId(null);
+            },
+          })}
           onReadDriverMessage={(messageId) => runOrderAction(
             () => onReadDriverMessage(messageId),
           )}
@@ -472,6 +495,14 @@ export function DeliveryScreen({
             }
           }}
           timezone={timezone}
+        />
+      )}
+      {visitHistory === null || onLoadDestinationVisits === undefined ? null : (
+        <DestinationVisitHistory
+          destinationName={visitHistory.destinationName}
+          key={visitHistory.destinationId}
+          onClose={() => setVisitHistory(null)}
+          onLoad={(cursor) => onLoadDestinationVisits(visitHistory.destinationId, cursor)}
         />
       )}
       {dialog}

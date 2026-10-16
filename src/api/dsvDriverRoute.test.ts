@@ -5,6 +5,7 @@ import {
   loadDriverDeliveryRoute,
   loadDriverDeliveryRouteChoices,
   loadDriverCompletedRouteHistory,
+  loadDriverDestinationVisits,
   updateDriverDeliveryOrder,
   updateDriverDestinationNotes,
 } from './dsvDriverRoute';
@@ -16,6 +17,22 @@ describe('DSV assigned route API client', () => {
   afterEach(() => {
     process.env.EXPO_PUBLIC_DSV_API_BASE_URL = ORIGINAL_BASE_URL;
     delete (globalThis as { fetch?: unknown }).fetch;
+  });
+
+  it('pages destination visits with the account token and an encoded cursor', async () => {
+    process.env.EXPO_PUBLIC_DSV_API_BASE_URL = 'https://dsv.example.test';
+    const requests: { input: string; init?: RequestInit }[] = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ input: input.toString(), init });
+      return new Response(JSON.stringify({ data: { nextCursor: null, visits: [] }, error: null }));
+    };
+
+    assert.deepEqual(await loadDriverDestinationVisits('account-token', 'destination/1', null), { nextCursor: null, visits: [] });
+    await loadDriverDestinationVisits('account-token', 'destination-1', 'a+b=');
+
+    assert.equal(requests[0]?.input, 'https://dsv.example.test/driver/destinations/destination%2F1/visits');
+    assert.equal(requests[1]?.input, 'https://dsv.example.test/driver/destinations/destination-1/visits?cursor=a%2Bb%3D');
+    assert.equal((requests[0]?.init?.headers as Headers).get('Authorization'), 'Bearer account-token');
   });
 
   it('loads recent completed route history with the account token', async () => {

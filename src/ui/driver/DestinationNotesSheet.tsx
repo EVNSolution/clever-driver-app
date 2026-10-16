@@ -30,6 +30,7 @@ export function DestinationNotesSheet({
   notes,
   onAcknowledgeTimeConstraint,
   onClose,
+  onOpenVisitHistory,
   onReadDriverMessage,
   onSave,
   orders,
@@ -42,6 +43,8 @@ export function DestinationNotesSheet({
   notes: DestinationNotes;
   onAcknowledgeTimeConstraint(deliveryStopId: string): Promise<void>;
   onClose(): void;
+  /** Opens the driver's own past visits to this destination. */
+  onOpenVisitHistory?(): void;
   onReadDriverMessage(messageId: string): Promise<void>;
   onSave(values: DestinationNoteValues): Promise<void> | void;
   orders: DeliveryOrder[];
@@ -119,6 +122,16 @@ export function DestinationNotesSheet({
               <Text numberOfLines={2} style={styles.address}>
                 {address}
               </Text>
+              {onOpenVisitHistory === undefined ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={onOpenVisitHistory}
+                  style={({ pressed }) => [styles.historyButton, pressed && styles.buttonPressed]}
+                >
+                  <Text style={styles.historyButtonText}>이력 보기</Text>
+                </Pressable>
+              )}
             </View>
             <Pressable
               accessibilityLabel="배송 정보 닫기"
@@ -577,6 +590,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     marginTop: 2,
+  },
+  historyButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#eff4ff',
+    borderRadius: 9,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  historyButtonText: {
+    color: '#0b57d0',
+    fontSize: 12,
+    fontWeight: '800',
   },
   closeButton: {
     alignItems: 'center',

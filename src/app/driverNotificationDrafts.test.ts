@@ -71,6 +71,7 @@ function componentHarness<P extends object>(fileName: string, exportName: string
     './DriverRefreshControl': { DriverRefreshControl: 'DriverRefreshControl' },
     './DeliveryRouteMap': { DeliveryRouteMap: 'DeliveryRouteMap' },
     './DestinationNotesSheet': { DestinationNotesSheet: 'DestinationNotesSheet' },
+    './DestinationVisitHistory': { DestinationVisitHistory: 'DestinationVisitHistory' },
     ...extraDependencies,
   };
   const source = readFileSync(new URL(`../ui/driver/${fileName}`, import.meta.url), 'utf8');
