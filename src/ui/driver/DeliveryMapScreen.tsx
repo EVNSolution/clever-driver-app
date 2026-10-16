@@ -44,9 +44,9 @@ type DeliveryMapScreenProps = {
   timezone: string;
 };
 
-// Share of the screen the open sheet covers; large text gets more room.
-const SHEET_OPEN_SHARE = 0.78;
-const SHEET_OPEN_SHARE_LARGE_TEXT = 0.88;
+// Share of the screen the open sheet covers, leaving the selected pin visible above it; large text gets more room.
+const SHEET_OPEN_SHARE = 0.6;
+const SHEET_OPEN_SHARE_LARGE_TEXT = 0.72;
 const SHEET_SETTLE = { duration: 260, easing: Easing.out(Easing.cubic) };
 const SHEET_FLICK_VELOCITY = 600;
 
@@ -135,7 +135,7 @@ export function DeliveryMapScreen({
       style={styles.screen}
     >
       <DeliveryRouteMap
-        bottomInset={peekHeight}
+        bottomInset={isSheetOpen ? openHeight : peekHeight}
         currentDeliveryStopId={nextDeliveryStopId}
         depotCoordinate={depotCoordinate}
         interactionMode="explore"
